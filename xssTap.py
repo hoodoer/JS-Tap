@@ -12,11 +12,11 @@ CORS(app)
 
 def printHeader():
     print("""
-                          .▄▄ ·  ▄ .▄ ▄▄▄· ·▄▄▄▄       ▄▄▌ ▐ ▄▌
-                          ▐█ ▀. ██▪▐█▐█ ▀█ ██▪ ██▪     ██· █▌▐█
-                          ▄▀▀▀█▄██▀▐█▄█▀▀█ ▐█· ▐█▌▄█▀▄ ██▪▐█▐▐▌
-                          ▐█▄▪▐███▌▐▀▐█ ▪▐▌██. ██▐█▌.▐▌▐█▌██▐█▌
-                           ▀▀▀▀ ▀▀▀ · ▀  ▀ ▀▀▀▀▀• ▀█▄▀▪ ▀▀▀▀ ▀▪                                                                                                                    
+                                     ▐▄• ▄ .▄▄ · .▄▄ · 
+                                      █▌█▌▪▐█ ▀. ▐█ ▀. 
+                                      ·██· ▄▀▀▀█▄▄▀▀▀█▄
+                                     ▪▐█·█▌▐█▄▪▐█▐█▄▪▐█
+                                     •▀▀ ▀▀ ▀▀▀▀  ▀▀▀▀                                                                                                                    
                                                              ,/,@ ...          
               ....,,*,.                                 .&@( .@&%.   @         
                ,@@/ ,#@@@@@&*    .*(%@@@@%/.        %@@@@#         &*          
@@ -39,12 +39,11 @@ def printHeader():
                                                @@@,                   *@@(     
                                              &@@%                      &@@,    
                                           ,@@@(                         @@@                                                               
-                                     ▐▄• ▄ .▄▄ · .▄▄ · 
-                                      █▌█▌▪▐█ ▀. ▐█ ▀. 
-                                      ·██· ▄▀▀▀█▄▄▀▀▀█▄
-                                     ▪▐█·█▌▐█▄▪▐█▐█▄▪▐█
-                                     •▀▀ ▀▀ ▀▀▀▀  ▀▀▀▀ 
-
+                                     ▄▄▄▄▄ ▄▄▄·  ▄▄▄·
+                                     •██  ▐█ ▀█ ▐█ ▄█
+                                      ▐█.▪▄█▀▀█  ██▀·
+                                      ▐█▌·▐█ ▪▐▌▐█▪·•
+                                      ▀▀▀  ▀  ▀ .▀   
                                        by @hoodoer
         """)
 
@@ -106,9 +105,9 @@ def findLootDirectory(identifier):
 # API Endpoints
 
 # Send a copy of the payload
-@app.route('/lib/shdwlib.js', methods=['GET'])
+@app.route('/lib/telemlib.js', methods=['GET'])
 def sendPayload():
-    with open('./shdwlib.js', 'rb') as file:
+    with open('./telemlib.js', 'rb') as file:
         return file.read(), 200
 
 
