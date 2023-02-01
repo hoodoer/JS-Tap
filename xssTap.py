@@ -94,6 +94,11 @@ def findLootDirectory(identifier):
             sessionFile.write("Session identifier: ")
             sessionFile.write(identifier + "\n")
             sessionFile.close()
+
+            # Record the client index
+            clientFile = open("./loot/clients.txt", "a")
+            clientFile.write(str(time.time()) + ", " + identifier + ": " + lootPath + "\n")
+            clientFile.close()
         # else:
         #     print("Loot directory already exists")
 
