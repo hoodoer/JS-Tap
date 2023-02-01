@@ -72,39 +72,31 @@ def findLootDirectory(identifier):
 
     global lootDirCounter
 
-    if identifier in SessionDirectories.keys():
-        print("We already have this session")
-    else:
-        print("New session!")
-        # Initialize or storage
+    if identifier not in SessionDirectories.keys():
+        print("New session for client: " + identifier)
+
+        # Initialize our storage
         SessionDirectories[identifier] = lootDirCounter
         lootDirCounter = lootDirCounter + 1
-        lootPath = './loot/' + str(SessionDirectories[identifier])
-        print("Checking if loot dir exists: " + lootPath)
+        lootPath = './loot/client_' + str(SessionDirectories[identifier])
+        #print("Checking if loot dir exists: " + lootPath)
 
         if not os.path.exists(lootPath):
-            print("Creating directory...")
+            #print("Creating directory...")
             os.mkdir(lootPath)
             sessionFile = open(lootPath + "/session.txt", "w")
             sessionFile.write("Session identifier:\n")
             sessionFile.write(identifier + "\n")
             sessionFile.close()
-        else:
-            print("Loot directory already exists")
+        # else:
+        #     print("Loot directory already exists")
 
         # Initialize our screenshot number tracker
         SessionImages[identifier] = 1;
 
-    lootDir = SessionDirectories[identifier]
-    print("Loot directory is: " + str(lootDir))
-    return str(lootDir)
-
-
-
-
-
-#def saveScreenshot(identifier):
-
+    lootDir = "client_" + str(SessionDirectories[identifier])
+    #print("Loot directory is: " + lootDir)
+    return lootDir
 
 
 
@@ -130,12 +122,12 @@ def recordScreenshot(identifier):
 
     if identifier in SessionImages.keys():
         imageNumber = SessionImages[identifier]
-        print("Using image number: " + str(imageNumber))
+        #print("Using image number: " + str(imageNumber))
         SessionImages[identifier] = imageNumber + 1
     else:
         raise RuntimeError("Session image counter not found")
 
-    print("Writing the file to disk...")
+    #print("Writing the file to disk...")
     with open ("./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
         binary_file.write(image)
         binary_file.close()
@@ -146,4 +138,9 @@ def recordScreenshot(identifier):
 
 if __name__ == '__main__':
     printHeader()
+
+    # Check for loot directory
+    if not os.path.exists("./loot"):
+        os.mkdir("./loot")
+
     app.run(debug=False, host='0.0.0.0', port=8444)
