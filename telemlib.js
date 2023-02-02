@@ -138,7 +138,7 @@ function sendScreenshot()
 	console.log("---Snagging screenshot...");
 
 //	html2canvas(document.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
-	html2canvas(document.getElementById("iframe_a").contentDocument, {scale: 1}).then(canvas => 
+	html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 	{
 		function responseHandler() 
 		{
