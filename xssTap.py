@@ -148,7 +148,7 @@ def recordScreenshot(identifier):
 
     #print("Writing the file to disk...")
     with open ("./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
-        logEvent(identifier, str(imageNumber) + "_Screenshot.png")
+        logEvent(identifier, "Screenshot: " + str(imageNumber) + "_Screenshot.png")
         binary_file.write(image)
         binary_file.close()
 

