@@ -10,14 +10,44 @@ from fpdf import FPDF
 
 
 def printHeader():
-	print("Header stuffs...")
+    print("""
+                                    ▐▄• ▄ .▄▄ · .▄▄ ·                       
+             .* ./,                  █▌█▌▪▐█ ▀. ▐█ ▀.                
+             ,    ,,,                ·██· ▄▀▀▀█▄▄▀▀▀█▄                                           
+            *     .,.*              ▪▐█·█▌▐█▄▪▐█▐█▄▪▐█                                           
+           ,*      ,. *.            •▀▀ ▀▀ ▀▀▀▀  ▀▀▀▀         .(/,#/            
+           *        *  *,         .,,.                      ,#%&&&&#            
+          ./        ,,  /.          ./#%%&&&&&&&&&&&&%#((//,  ,#%%#/*           
+          *,        .*  .(,               ,/#%%&&&&&&&&&&&&&#,   ,   ,.         
+          #,         *.  ,(                    .*#%&&&&&&&&&&&%#*     *         
+         ,#          .,   /,                  ./(#(  ,*#%%&&&&&&&&(. ,.         
+         ,/          .*   ,/                 *%%#(%%%%(   .*(%%%%%&#(,          
+ ./*.  ../(,,*******/,/.  ,%/////.         .(*  ,%%%%/     */  ...,%%%%/.       
+ *.                 *//   ,#     *.       /,          .***,(.,/    , ,(###*     
+ ,,.*,,*/(##((/*/***///   (*....,(.     *,           .*/(%%%(,(*..*.      .*/.  
+          #,     .,, /*  */..(*,      ,,       .,/(/,(%%&&&&&&&&%%%/.           
+          **         /. ,/  ,,*,    ,,    ,//,       */%%%%%&&&&&&%%%#*         
+          .(        */ .*  .*,, , .***,.             *(/%%%%%((#%%%%%%%%#*      
+           /       .(,**  *.*,. .,                   *%((%%&%&(#&%&#%%&%%%%(,   
+           */      /(/, .*.(.     ,*,               .#%%//%%%&(%&&&(%&&&&&&&&%* 
+            (,    *%/.  ,.**... ,..(%%(,           .(%%%#*#%&#(&&%#/&&&&&&&&&&%#
+            ./   ,(, ** ..  *,,/**%%&&&%%%#/,,..  *#%%%%* *%#*%&&%((&&&&&&&&&&&&
+             ,/.*,    *%(.  .  , .*#%%%%%%%&&&&/(/#%%%#,  .##%&&&%/%&&&&&&&&&&&&
+                     .((/,....         ,/##%%%%&&%&%%(.    *%&&&%/%&&&&&&&&&&&&&
+                                     ▄▄▄▄▄ ▄▄▄·  ▄▄▄·
+                                     •██  ▐█ ▀█ ▐█ ▄█        IПƬΣᄂ
+                                      ▐█.▪▄█▀▀█  ██▀·        ЯΣPӨЯƬ
+                                      ▐█▌·▐█ ▪▐▌▐█▪·•        GΣПΣЯΛƬӨЯ
+                                      ▀▀▀  ▀  ▀ .▀   
+                                    by ＠ｈｏｏｄｏｅｒ
+        """)
 
 
 
 def create_title(title, pdf):
 
 	# Add main title
-	pdf.set_font('Helvetica', 'b', 20)  
+	pdf.set_font('Helvetica', 'b', 30)  
 	pdf.ln(40)
 	pdf.write(5, title)
 	pdf.ln(10)
@@ -43,18 +73,18 @@ def write_to_pdf(pdf, words, bold):
 	# pdf.set_font('Helvetica', '', 12)
 	
 	pdf.write(5, words)
-	pdf.ln(6)
+	#pdf.ln(6)
 
 
 
 
 def readSession():
-	print("Reading session file...")
+	print("Reading spy notes...")
 
 
 	directories = os.listdir("./loot")
 
-	print("Directories: " + str(directories))
+	#print("Directories: " + str(directories))
 
 
 	for lootDir in directories:
@@ -66,7 +96,7 @@ def readSession():
 			sessionLines = sessionFile.readlines()
 
 			# Generate PDF
-			Title = "TrustedSec Intel Report"
+			Title = "TrustedSec XSS-TAP\n\nIntel Report"
 
 			# A4 size in mm
 			Width = 210
@@ -81,7 +111,7 @@ def readSession():
 
 
 			for line in sessionLines:
-				print("--- " + line)
+				print("thunking on spy notes...")
 				if ("Session identifier:" in line):
 					splitLine = line.split(": ")
 					sessionID = splitLine[1]
@@ -91,82 +121,65 @@ def readSession():
 					pdf.set_text_color(r=0,g=0,b=0)
 					pdf.set_font('Helvetica', 'b', 16)
 
-					pdf.write(5, "Client: " + sessionID)
+					pdf.write(5, "Client: \n" + sessionID)
 					pdf.ln(5)
+					pdf.image("./reportSplash.png", w=170)
+
+
 
 				else:
 					# Normal line, we need to parse the type of event and 
 					# timestamps
 					splitLine = line.split(": ")
 					timeStamp = splitLine[0]
-					# print("Timestamp is: " + timeStamp)
 					date_conv = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(float(timeStamp)))
-
-					# print("Timestamp: " + timeStamp)
-					# intTime = timeStamp.split(".")[0]
-					# date_conv = time.localtime(int(intTime))
-					# # cleanTime = datetime.datetime.fromtimestamp(int(intTime))
-					print("Cleaned up time: " + date_conv)
-					writeLine = date_conv + " UTC:"
-					pdf.ln(5)
-					write_to_pdf(pdf, writeLine, True)
 
 					# Ok, now handle the event type:
 					eventType = splitLine[1]
-					print("Got event type: " + eventType)
+					#print("Got event type: " + eventType)
 
 					if (eventType == "URL Visited"):
-						write_to_pdf(pdf, eventType + "\n" + splitLine[2], False)
+						# New URL, let's break the page
+						pdf.add_page()
+
+					#print("Cleaned up time: " + date_conv)
+					writeLine = date_conv + " UTC:\n"
+					pdf.ln(5)
+					write_to_pdf(pdf, writeLine, False)
+
+					if (eventType == "URL Visited"):
+						write_to_pdf(pdf, eventType + ":\n", False)
+						write_to_pdf(pdf, splitLine[2] + "\n", True)
 					elif (eventType == "User input field"):
-						write_to_pdf(pdf, eventType + "\n" + splitLine[2], False)
+						values = splitLine[2].split(", ")
+						write_to_pdf(pdf, eventType + ": ", False)
+						write_to_pdf(pdf, values[0] + "\n", True)
+						write_to_pdf(pdf, values[1] + ": ", False)
+						write_to_pdf(pdf, splitLine[3] + "\n", True)
 					elif (eventType == "Cookie Name"):
-						write_to_pdf(pdf, eventType + "\n" + splitLine[2], False)
+						values = splitLine[2].split(", ")
+						write_to_pdf(pdf, eventType + ": ", False)
+						write_to_pdf(pdf, values[0] + "\n", True)
+						write_to_pdf(pdf, values[1] + ": ", False)
+						write_to_pdf(pdf, splitLine[3] + "\n", True)
 					elif (eventType == "Local Storage Entry"):
-						write_to_pdf(pdf, eventType + "\n" + splitLine[2], False)
+						values = splitLine[2].split(", ")
+						write_to_pdf(pdf, eventType + ": ", False)
+						write_to_pdf(pdf, values[0] + "\n", True)
+						write_to_pdf(pdf, values[1] + ": ", False)
+						write_to_pdf(pdf, splitLine[3] + "\n", True)
 					elif (eventType == "Screenshot"):
-						write_to_pdf(pdf, eventType, False)
+						write_to_pdf(pdf, eventType + "\n", False)
 						imageFile = path + "/" + splitLine[2]
 						imageFile = imageFile[:-1]
 						pdf.image(imageFile, w=170)
-						#pdf.image("./loot/client_1/1_Screenshot.png", w=170)
-
 						pdf.ln(10)
 					else:
 						print("ERROR: Unhandled event type in generator")
 
 
-
-
-
-
-			print("Output path is: " + path)
+			print("Intel report file: " + path + ".pdf")
 			pdf.output(path + ".pdf")
-
-
-
-			return
-
-	# # Generate PDF
-	# Title = "TrustedSec Intel Report"
-
-	# # A4 size in mm
-	# Width = 210
-	# Height = 297
-
-	# pdf = FPDF()
-
-	# # First page
-	# pdf.add_page()
-	# create_title(Title, pdf)
-
-
-	# write_to_pdf(pdf, "TrustedSec Intel Report")
-	# pdf.image("./loot/client_1/1_Screenshot.png", w=170)
-	# pdf.ln(15)
-
-
-	# pdf.output("./testReport.pdf", 'F')
-
 
 
 
