@@ -2,10 +2,10 @@
 import os
 import time
 import datetime
-#import pandas as pd 
 import dataframe_image as dfi
 import fpdf
 from fpdf import FPDF
+import progressbar
 
 
 
@@ -66,9 +66,9 @@ def write_to_pdf(pdf, words, bold):
 	# Set text colour, font size, and font type
 	pdf.set_text_color(r=0,g=0,b=0)
 	if (bold):
-		pdf.set_font('Helvetica', 'b', 12)
+		pdf.set_font('Helvetica', 'b', 10)
 	else:
-		pdf.set_font('Helvetica', '', 12)
+		pdf.set_font('Helvetica', '', 10)
 	
 	# pdf.set_font('Helvetica', '', 12)
 	
@@ -79,9 +79,6 @@ def write_to_pdf(pdf, words, bold):
 
 
 def readSession():
-	print("Reading spy notes...")
-
-
 	directories = os.listdir("./loot")
 
 	#print("Directories: " + str(directories))
@@ -95,6 +92,12 @@ def readSession():
 			sessionFile = open(path + "/sessionLog.txt", "r")
 			sessionLines = sessionFile.readlines()
 
+			numLines = len(sessionLines)
+			lineCounter = 1;
+
+			widgets = ['  Loot Thunking Analysis Module ', progressbar.Bar()]
+			bar = progressbar.ProgressBar(widgets=widgets).start()
+
 			# Generate PDF
 			Title = "TrustedSec XSS-TAP\n\nIntel Report"
 
@@ -107,22 +110,25 @@ def readSession():
 			# First page
 			pdf.add_page()
 			create_title(Title, pdf)
-			# write_to_pdf(pdf, "Client: ")
 
 
 			for line in sessionLines:
-				print("thunking on spy notes...")
+				percentage = (int(lineCounter)/int(numLines)) * 100
+				bar.update(percentage)
+
+				lineCounter = lineCounter + 1
+				#print("thunking on spy notes...")
 				if ("Session identifier:" in line):
 					splitLine = line.split(": ")
 					sessionID = splitLine[1]
-					print("Pulled client ID: " + sessionID)
+					print("Processing data for client ID:\n" + sessionID)
 					# write_to_pdf(pdf, "Client: " + sessionID)
 
 					pdf.set_text_color(r=0,g=0,b=0)
 					pdf.set_font('Helvetica', 'b', 16)
 
 					pdf.write(5, "Client: \n" + sessionID)
-					pdf.ln(5)
+					pdf.ln(20)
 					pdf.image("./reportSplash.png", w=170)
 
 
@@ -178,6 +184,7 @@ def readSession():
 						print("ERROR: Unhandled event type in generator")
 
 
+			print("")
 			print("Intel report file: " + path + ".pdf")
 			pdf.output(path + ".pdf")
 

