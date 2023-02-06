@@ -95,7 +95,7 @@ def readSession():
 			numLines = len(sessionLines)
 			lineCounter = 1;
 
-			widgets = ['  Loot Thunking Analysis Module ', progressbar.Bar()]
+			widgets = ['  Loot Analysis Module ', progressbar.Bar()]
 			bar = progressbar.ProgressBar(widgets=widgets).start()
 
 			# Generate PDF
@@ -186,6 +186,13 @@ def readSession():
 						imageFile = imageFile[:-1]
 						pdf.image(imageFile, w=170)
 						pdf.ln(10)
+					elif (eventType == "HTML Copy"):
+						values = splitLine[2].split(", ")
+						write_to_pdf(pdf, eventType + ": ", False)
+						write_to_pdf(pdf, values[0] + "\n", True)
+						# write_to_pdf(pdf, values[1] + ": ", False)
+						# htmlFile = path + "/" + splitLine[2]
+						# htmlFile = imageFile[:-1]
 					else:
 						print("ERROR: Unhandled event type in generator")
 

