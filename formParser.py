@@ -2,7 +2,6 @@ from bs4 import BeautifulSoup
 from pprint import pprint
 
 
-
 def get_all_forms(filename):
 
     with open(filename) as file:
@@ -86,5 +85,30 @@ if __name__ == "__main__":
     # iteratte over forms
     for i, form in enumerate(forms, start=1):
         form_details = get_form_details(form)
+        # jsonForm = json.loads("'" + str(form_details) + "'")
+        # print("Method: " + jsonForm["method"])
+        # print(form_details)
+
         print("="*50, f"form #{i}", "="*50)
         pprint(form_details)
+
+
+        print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+        print("JS Payload Prototype:")
+        print("-----CODE BEGIN-------")
+        print()
+        # print("Size of inputs: " + str(len(form_details['inputs'])))
+
+        print('var body = "";')
+
+        for i in range(len(form_details['inputs'])):
+            # print("i is: " + str(i))
+            if (form_details['inputs'][i]['name'] != None):
+                if (i == len(form_details['inputs'])-1):
+                    print('body += "' + form_details['inputs'][i]['name'] + '=' + form_details['inputs'][i]['value'] + '";')
+                else:
+                    print('body += "' + form_details['inputs'][i]['name'] + '=' + form_details['inputs'][i]['value'] + '&";')
+
+        
+        print("-----CODE END-------")
+        print("\n\n\n\n")
