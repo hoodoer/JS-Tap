@@ -5,6 +5,7 @@ from enum import Enum
 import json
 import os
 import time
+import threading
 
 
 app = Flask(__name__)
@@ -51,6 +52,8 @@ SessionDirectories = {}
 SessionImages = {}
 SessionHTML = {}
 lootDirCounter = 1
+threadLock = ""
+
 
 logFileName = "sessionLog.txt"
 
@@ -60,8 +63,11 @@ logFileName = "sessionLog.txt"
 # Support Functions
 
 
+
+# Thread safe raw data logging
 def logEvent(identifier, logString):
-    print("++ Start logEvent")
+    threadLock.acquire()
+    # print("++ Start logEvent")
     lootPath = './loot/client_' + str(SessionDirectories[identifier])
 
     # We're going to append to the logfile
@@ -69,7 +75,8 @@ def logEvent(identifier, logString):
     #print("In logEvent with time: " + str(time.localtime(time.time())))
     sessionFile.write(str(time.time()) + ": " + logString + "\n")
     sessionFile.close()
-    print("-- End logEvent")
+    threadLock.release()
+    # print("-- End logEvent")
 
 # Need function to check session, return download directory
 def findLootDirectory(identifier):
@@ -276,6 +283,9 @@ def recordSessionStorageEntry(identifier):
 
 if __name__ == '__main__':
     printHeader()
+
+    # Initilize our thread lock
+    threadLock = threading.Lock()
 
     # Check for loot directory
     if not os.path.exists("./loot"):
