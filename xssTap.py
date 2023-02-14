@@ -297,4 +297,4 @@ if __name__ == '__main__':
     if not os.path.exists("./loot"):
         os.mkdir("./loot")
 
-    app.run(debug=False, host='0.0.0.0', port=8444)
+    app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')

