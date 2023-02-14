@@ -531,6 +531,9 @@ function runUpdate()
 	// Check session storage
 	// Will only report when new or changed data found
 	checkSessionStorage();
+
+	// Fake the URL that the user sees. This is important. 
+	window.history.replaceState(null, '', fakeUrl);
 }
 
 
