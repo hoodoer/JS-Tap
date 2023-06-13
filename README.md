@@ -1,5 +1,6 @@
-# XSS TAP
-Tailored XSS payload that uses iFrame traps to spy on user. Intended for redteam ops. 
+# JS-TAP
+Tailored XSS payload that uses iFrame traps to spy on user. Can also be used as a post exploitation payload. 
+Intended for redteam ops. 
 @hoodoer
 
 This tool is intended to be used on systems you are authorized to attack.
