@@ -363,16 +363,17 @@ function checkLocalStorage()
 // Only update backend if new data or value changed.
 function checkSessionStorage()
 {
+	console.log("!!! Top of checkSessionStorage...");
 	for (index = 0; index < sessionStorage.length; index++)
 	{
 		key = sessionStorage.key(index)
 		value = sessionStorage.getItem(key)
-		// console.log("~~~ Session storage: {" + key + ", " + value + "}");
+		console.log("~~~ Session storage: {" + key + ", " + value + "}");
 
 		if (key in tapersessionStorageDict)
 		{
 			// Existing local storage key
-			//console.log("!!! Existing localstorage key...");
+			console.log("!!! Existing localstorage key...");
 			if (tapersessionStorageDict[key] != value)
 			{
 				// Existing localStorage, but the value has changed
