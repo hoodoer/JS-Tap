@@ -5,7 +5,7 @@
 	<title>JS-Tap</title>
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
 
-	<style>
+<!-- 	<style>
 		[class*="col"] {
 			padding: 1rem;
 			background-color: #505763;
@@ -13,49 +13,94 @@
 			color: #fff;
 		}
 	</style>
+-->
 </head>
 
 <body>	
-<script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
-
-<nav class="navbar navbar-dark bg-dark">
-  <a class="navbar-brand" href="#">
-    <img src="static/reportSplash.png" width="140" height="100" class="d-inline-block align-top" alt="">
-    JS-Tap
-  </a>
-</nav>
+	<script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
+	<!-- <script src="static/jquery-3.7.0.min.js"></script> -->
 
 
+	<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+		<a class="navbar-brand" href="#"><img src="static/reportSplash.png" width="140" height="100" class="d-inline-block align-center" alt="">   JS-Tap</a>
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-  <a class="navbar-brand" href="#">JS-Tap</a>
-  <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-    <span class="navbar-toggler-icon"></span>
-  </button>
+		<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+			<span class="navbar-toggler-icon"></span>
+		</button>
 
-  <div class="collapse navbar-collapse" id="navbarSupportedContent">
-    <ul class="navbar-nav mr-auto">
-      <li class="nav-item active">
-        <a class="nav-link" href="#">Home <span class="sr-only">(current)</span></a>
-      </li>
+		<div class="collapse navbar-collapse" id="navbarSupportedContent">
+			<ul class="navbar-nav mr-auto">
 
-      <li class="nav-item">
-        <a class="nav-link" href="#">Settings</a>
-      </li>
- 
+				<li class="nav-item">
+					<a class="nav-link" href="#settings">Settings</a>
+				</li>
 
-      <li class="nav-item">
-        <a class="nav-link" href="#">About</a>
-      </li>
-    </ul>
-      </div>
-</nav>
 
+				<li class="nav-item">
+					<a class="nav-link" href="#about">About</a>
+				</li>
+			</ul>
+		</div>
+	</nav>
+
+	
 	<div class="container-fluid border">
 		<div class="row">
-			<div class="col-3">Client</div>
-			<div class="col">Data</div>
+			<div class="col-3">
+				<table class="table table-bordered">
+					<thead>
+						<tr>
+							<th scope="col">#</th>
+							<th scope="col">Client</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<th scope="row">1</th>
+							<td>Angry-Tapir-Junkie</td>
+						</tr>
+						<tr>
+							<th scope="row">2</th>
+							<td>Sad-Panda-Flunkie</td>
+						</tbody>
+					</table>
+				</div>
+
+
+				<div class="col-5">
+					<table class="table table-bordered">
+						<thead>
+							<tr>
+								<th scope="col">Loot</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>TIMESTAMP</td>
+							</tr>
+							<tr>
+								<td>https://www.target.com/admin</td>
+							</tr>
+							<tr>
+								<td>Screenshot 1</td>
+							</tr>
+							<tr>
+								<td>TIMESTAMP</td>
+							</tr>
+							<tr>
+								<td>https://www.target.com/dashboard</td>
+							</tr>
+							<tr>
+								<td>Screenshot 2</td>
+							</tr>
+
+						</tbody>
+					</table>
+
+
+				</div>
+			</div>
 		</div>
-	</div>
-</body>
-</html>
+
+	</body>
+	</html>
