@@ -83,6 +83,7 @@ class Client(db.Model):
 
 
 # Thread safe raw data logging
+# Could put database stuff here...
 def logEvent(identifier, logString):
     threadLock.acquire()
     # print("++ Start logEvent")
