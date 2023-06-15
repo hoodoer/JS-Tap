@@ -11,9 +11,12 @@ import threading
 
 app = Flask(__name__)
 CORS(app)
-db = SQLAlchemy()
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///jsTap.db"
-db.init_app(app)
+baseDir = os.path.abspath(os.path.dirname(__file__))
+app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'jsTap.db')
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
+
+# db.init_app(app)
 
 
 def printHeader():
@@ -65,6 +68,16 @@ logFileName = "sessionLog.txt"
 
 
 #***************************************************************************
+# Database classes
+class Client(db.Model):
+    id = db.Column(db.String(100), primary_key=True)
+    # lastSeen = db.Column(DateTime, nullable=False)
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+#***************************************************************************
 # Support Functions
 
 
@@ -92,8 +105,15 @@ def findLootDirectory(identifier):
 
     global lootDirCounter
 
+    threadLock.acquire()
     if identifier not in SessionDirectories.keys():
+
         print("New session for client: " + identifier)
+
+        # Database Entry
+        newClient = Client(id=identifier)
+        db.session.add(newClient)
+        db.session.commit()
 
         # Initialize our storage
         SessionDirectories[identifier] = lootDirCounter
@@ -119,6 +139,9 @@ def findLootDirectory(identifier):
         # Initialize our number trackers
         SessionImages[identifier] = 1;
         SessionHTML[identifier] = 1;
+    
+    threadLock.release()
+
 
     lootDir = "client_" + str(SessionDirectories[identifier])
     #print("Loot directory is: " + lootDir)
