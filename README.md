@@ -13,11 +13,16 @@ Pip requirements:
 Server ones:
 flask
 flask-cors
+flask-sqlalchemy
+
+
 
 Generator ones:
 dataframe_image
 fpdf
 progressbar
+
+
 
 
 HTML Parser:

@@ -1,6 +1,7 @@
 #!usr/bin/env python
 from flask import Flask, jsonify, abort, make_response, g, request, render_template
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 from enum import Enum
 import json
 import os
@@ -10,6 +11,9 @@ import threading
 
 app = Flask(__name__)
 CORS(app)
+db = SQLAlchemy()
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///jsTap.db"
+db.init_app(app)
 
 
 def printHeader():
