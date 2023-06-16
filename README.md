@@ -14,7 +14,7 @@ Server ones:
 flask
 flask-cors
 flask-sqlalchemy
-
+sqlalchemy-utils
 
 
 Generator ones:

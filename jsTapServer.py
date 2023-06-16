@@ -2,6 +2,8 @@
 from flask import Flask, jsonify, abort, make_response, g, request, render_template
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import DateTime, func
+from sqlalchemy_utils import database_exists
 from enum import Enum
 import json
 import os
@@ -15,8 +17,6 @@ baseDir = os.path.abspath(os.path.dirname(__file__))
 app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'jsTap.db')
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
-
-# db.init_app(app)
 
 
 def printHeader():
@@ -61,6 +61,7 @@ SessionImages = {}
 SessionHTML = {}
 lootDirCounter = 1
 threadLock = ""
+databaseLock = ""
 
 
 logFileName = "sessionLog.txt"
@@ -70,8 +71,11 @@ logFileName = "sessionLog.txt"
 #***************************************************************************
 # Database classes
 class Client(db.Model):
-    id = db.Column(db.String(100), primary_key=True)
-    # lastSeen = db.Column(DateTime, nullable=False)
+    id        = db.Column(db.String(100), primary_key=True)
+    nickname  = db.Column(db.String(100), unique=True, nullable=True)
+    notes     = db.Column(db.Text)
+    firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
+    lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
 
     def __repr__(self):
         return f'<Client {self.id}>'
@@ -319,8 +323,56 @@ def recordSessionStorageEntry(identifier):
 if __name__ == '__main__':
     printHeader()
 
-    # Initilize our thread lock
-    threadLock = threading.Lock()
+    # Initilize our locks
+    threadLock   = threading.Lock()
+    databaseLock = threading.Lock()
+
+
+    # Database Entry
+    # with app.app_context():
+    #     newClient = Client(id=1)
+    #     newClient2 = Client(id=2)
+    #     db.session.add(newClient)
+    #     db.session.add(newClient2)
+    #     db.session.commit()
+
+
+
+    # Check for existing database file
+    if database_exists('sqlite:///' + os.path.join(baseDir, 'jsTap.db')):
+        with app.app_context():
+            print("!! SQLite database already exists:")
+            clients = Client.query.all()
+            numClients = len(clients)
+
+            if numClients==0:
+                print("No clients found in database, rebuilding")
+                db.drop_all()
+                db.create_all()
+            else:
+                print("Existing database has " + str(numClients) + " clients.")
+                print("Make selection:")
+                print("1 - Continue using existing database")
+                print("2 - Delete database and start fresh")
+
+                val = int(input("\nSelection: "))
+                if val == 2:
+                    print("Dropping tables, rebuilding")
+                    db.drop_all()
+                    db.create_all()
+                elif val == 1:
+                    print("Using existing database")
+                else:
+                    print("Invalid choice.")
+                    exit()
+
+    else:
+        print("No database found")
+        print("... creating database...")
+        with app.app_context():
+            db.drop_all()
+            db.create_all()
+
 
     # Check for loot directory
     if not os.path.exists("./loot"):
