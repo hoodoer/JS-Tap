@@ -313,6 +313,13 @@ def recordHTML(identifier):
         html_file.close()
 
 
+    # Put it in the DB
+    databaseLock.acquire()
+    newHtml = HtmlCode(clientID=identifier, url=content['url'], code=content['html'])
+    db.session.add(newHtml)
+    db.session.commit()
+    databaseLock.release()
+
     return "ok", 200
 
 
@@ -327,6 +334,15 @@ def recordUrl(identifier):
     url = content['url']
     # print("Got URL: " + url)
     logEvent(identifier, "URL Visited: " + url)
+
+
+    # Put it in the DB
+    databaseLock.acquire()
+    newUrl = UrlVisited(clientID=identifier, url=content['url'])
+    db.session.add(newUrl)
+    db.session.commit()
+    databaseLock.release()
+
 
     return "ok", 200
 
@@ -343,6 +359,15 @@ def recordInput(identifier):
     inputValue = content['inputValue']
     # print("Got input: " + inputName + ", value: " + inputValue)
     logEvent(identifier, "User input field: " + inputName + ", value: " + inputValue)
+
+
+    # Put it in the DB
+    databaseLock.acquire()
+    newInput = UserInput(clientID=identifier, inputName=content['inputName'], inputValue=content['inputValue'])
+    db.session.add(newInput)
+    db.session.commit()
+    databaseLock.release()
+
 
     return "ok", 200
 
