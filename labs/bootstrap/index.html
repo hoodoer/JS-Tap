@@ -4,6 +4,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>JS-Tap</title>
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
+	<link rel="stylesheet" href="static/node_modules/bootstrap-table/dist/bootstrap-table.css">
 
 <!-- 	<style>
 		[class*="col"] {
@@ -18,8 +19,9 @@
 
 <body>	
 	<script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
+	<script src="static/node_modules/bootstrap-table/dist/bootstrap-table.min.js"></script>
+	<script src="static/jquery-3.7.0.min.js"></script>
 	<script src="static/main.js"></script>
-	<!-- <script src="static/jquery-3.7.0.min.js"></script> -->
 
 
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -48,11 +50,23 @@
 	<div class="container-fluid border">
 		<div class="row">
 			<div class="col-3">
-				<table class="table table-bordered">
+				<table class="table table-bordered" id="table">
 					<thead>
 						<tr>
-							<th scope="col">#</th>
+<!-- 							<th scope="col">#</th>
 							<th scope="col">Client</th>
+							<th scope="col">Last Seen</th>
+ -->					
+ 						<th data-field="id">
+ 							<span class="text">ID</span>
+						</th>
+		 				<th data-field="nickname">
+ 							<span class="text">Client</span>
+						</th>
+		 				<th data-field="lastSeen">
+ 							<span class="text">Last Seen</span>
+						</th>
+					
 						</tr>
 					</thead>
 					<tbody>
