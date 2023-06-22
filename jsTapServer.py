@@ -290,6 +290,7 @@ def sendHtml2Canvas():
 
 
 
+#***************************************************************************
 # Loot API endpoints
 
 # Capture screenshot
@@ -467,6 +468,29 @@ def recordSessionStorageEntry(identifier):
 
 
     return "ok", 200
+
+
+
+#***************************************************************************
+# UI API Endpoints
+
+
+# Get clients list
+@app.route('/api/getClients', methods=['GET'])
+def getClients():
+    clients = Client.query.all()
+
+    allClients = [{'id':client.id, 'nickname':client.nickname, 'notes':client.notes, 
+        'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen} for client in clients]
+
+    return jsonify(allClients)
+
+
+
+
+
+
+
 
 
 #**************************************************************************
