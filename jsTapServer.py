@@ -265,7 +265,7 @@ def clientSeen(identifier):
 
 
 #***************************************************************************
-# API Endpoints
+# Page Endpoints
 
 # Send a copy of the payload
 @app.route('/lib/telemlib.js', methods=['GET'])
@@ -288,6 +288,11 @@ def sendHtml2Canvas():
 
         return response
 
+
+# Send c2 UI index page
+# @app.route('/', methods=['GET'])
+# def sendIndex():
+#     return render_template('index.html')
 
 
 #***************************************************************************
