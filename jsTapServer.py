@@ -4,6 +4,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
 from sqlalchemy_utils import database_exists
+from flask_login import LoginManager
 from enum import Enum
 import json
 import os
@@ -18,6 +19,8 @@ baseDir = os.path.abspath(os.path.dirname(__file__))
 app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'jsTap.db')
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.login_view = 'login'
 
 
 # *********************************************************************
@@ -164,7 +167,29 @@ class SessionStorage(db.Model):
         return f'<Client {self.id}>'
 
 
-# User C2 UI session?
+# User C2 UI session
+class User(db.Model):
+    __table_name__ = 'user'
+    username      = db.Column(db.String, primary_key=True)
+    password      = db.Column(db.String, nullable=False)
+    authenticated = db.Column(db.Boolean, default=False)
+
+    def is_active(self):
+        # We don't need to deactivate user accounts, but
+        # this is a required method
+        return True
+
+    def get_id(self):
+        return self.username
+
+
+    def is_authenticated(self):
+        return self.authenticated
+
+
+    def is_anonymous(self):
+        # Another unused but required method
+        return False
 
 
 #***************************************************************************
@@ -263,6 +288,11 @@ def clientSeen(identifier):
 
 
 
+# Needed by flask-login
+@login_manager.user_loader
+def user_loader(username):
+    return User.query.get(username)
+
 
 #***************************************************************************
 # Page Endpoints
@@ -290,9 +320,15 @@ def sendHtml2Canvas():
 
 
 # Send c2 UI index page
-# @app.route('/', methods=['GET'])
-# def sendIndex():
-#     return render_template('index.html')
+@app.route('/', methods=['GET'])
+def sendIndex():
+    with open('./index.html', 'r') as file:
+        index = file.read()
+        response = make_response(index, 200)
+        response.mimetype(text/html)
+
+        return response
+
 
 
 #***************************************************************************
