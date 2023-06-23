@@ -15,6 +15,8 @@ flask
 flask-cors
 flask-sqlalchemy
 sqlalchemy-utils
+flask-login
+flask-bcrypt
 
 
 Generator ones:

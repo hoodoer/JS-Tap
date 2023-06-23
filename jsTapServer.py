@@ -5,11 +5,16 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
 from sqlalchemy_utils import database_exists
 from flask_login import LoginManager
+from flask_bcrypt import Bcrypt
 from enum import Enum
 import json
 import os
 import time
 import threading
+import string
+import random
+
+
 
 
 # Initialization stuff
@@ -21,6 +26,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
+bcrypt = Bcrypt(app)
 
 
 # *********************************************************************
@@ -294,6 +300,31 @@ def user_loader(username):
     return User.query.get(username)
 
 
+# Need an admin account
+def addAdminUser():
+    passwordLength = 25
+
+    randomPassword = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase 
+        + string.digits + string.punctuation, k=passwordLength))
+
+    print("*******************************")
+    print("WebApp admin creds:")
+    print("admin:" + randomPassword)
+    print("*******************************")
+
+    adminUser = User(username='admin', password=bcrypt.generate_password_hash(randomPassword))
+
+    # Will return true if password correct
+    # bcrypt.check_password_hash(pw_hash, candidate) 
+    db.session.add(adminUser)
+    dbCommit()
+
+    # Need to check if admin already in database and
+    # ask user what they want to do
+    
+
+
+
 #***************************************************************************
 # Page Endpoints
 
@@ -329,6 +360,20 @@ def sendIndex():
 
         return response
 
+
+@app.route('/login', methods=['POST'])
+def login():
+    info = json.loads(request.data)
+    username = info.get('username')
+    password = info.get('password')
+    print("--- Got login: " + username + ":" + password)
+    user = User.objects(username=username, password=password).first()
+
+    if user:
+        login_user(username)
+        return jsonify(user.to_json())
+    else:
+        return jsonify({"status": 401, "reason":"No."})
 
 
 #***************************************************************************
@@ -584,12 +629,16 @@ if __name__ == '__main__':
                     print("Invalid choice.")
                     exit()
 
+            addAdminUser()
+
+
     else:
         print("No database found")
         print("... creating database...")
         with app.app_context():
             db.drop_all()
             db.create_all()
+
 
 
     # Check for loot directory
