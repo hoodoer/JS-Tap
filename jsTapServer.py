@@ -13,6 +13,7 @@ import time
 import threading
 import string
 import random
+import shutil
 
 
 
@@ -188,10 +189,8 @@ class User(db.Model):
     def get_id(self):
         return self.username
 
-
     def is_authenticated(self):
         return self.authenticated
-
 
     def is_anonymous(self):
         # Another unused but required method
@@ -280,16 +279,7 @@ def dbCommit():
 
 # Updates "last seen" timestamp"
 def clientSeen(identifier):
-    # print("Searching db for identifier: " + identifier)
-    # clients = Client.query.all()
-    # numClients = len(clients)
-    # print("++ Num clients in DB is: " + str(numClients))
-
-    # for client in clients:
-    #     print("Client id: " + str(client.id) + ", nickname: " + client.nickname)
-
     client = Client.query.filter_by(nickname=identifier).first()
-    # print("** in clientSeen func, clientID: " + str(client.id) + ", nickname: " + client.nickname)
     client.update()
 
 
@@ -307,6 +297,7 @@ def addAdminUser():
     randomPassword = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase 
         + string.digits + string.punctuation, k=passwordLength))
 
+
     print("*******************************")
     print("WebApp admin creds:")
     print("admin:" + randomPassword)
@@ -316,12 +307,9 @@ def addAdminUser():
 
     # Will return true if password correct
     # bcrypt.check_password_hash(pw_hash, candidate) 
+
     db.session.add(adminUser)
     dbCommit()
-
-    # Need to check if admin already in database and
-    # ask user what they want to do
-    
 
 
 
@@ -591,16 +579,6 @@ if __name__ == '__main__':
     databaseLock = threading.Lock()
 
 
-    # Database Entry
-    # with app.app_context():
-    #     newClient = Client(id=1)
-    #     newClient2 = Client(id=2)
-    #     db.session.add(newClient)
-    #     db.session.add(newClient2)
-    #     db.session.commit()
-
-
-
     # Check for existing database file
     if database_exists('sqlite:///' + os.path.join(baseDir, 'jsTap.db')):
         with app.app_context():
@@ -608,28 +586,59 @@ if __name__ == '__main__':
             clients = Client.query.all()
             numClients = len(clients)
 
-            if numClients==0:
-                print("----No clients found in database, rebuilding")
-                db.drop_all()
-                db.create_all()
-            else:
-                print("----Existing database has " + str(numClients) + " clients.")
-                print("Make selection:")
-                print("1 - Continue using existing database")
-                print("2 - Delete database and start fresh")
+            users = User.query.all()
+            numUsers = len(users)
+
+            print("Existing database has " + str(numClients) + " clients and " 
+                + str(numUsers) + " users.")
+
+            if numUsers != 0:
+                print("Make selection on how to handle existing users:")
+                print("1 - Keep existing users")
+                print("2 - Delete all users and generate new admin account")
 
                 val = int(input("\nSelection: "))
                 if val == 2:
-                    print("Dropping tables, rebuilding")
-                    db.drop_all()
+                    print("Generating new admin account")
+                    User.__table__.drop(db.engine)
+                    dbCommit()
+
                     db.create_all()
+
+                    addAdminUser()
                 elif val == 1:
-                    print("Using existing database")
+                    print("Keeping existing users.")
                 else:
-                    print("Invalid choice.")
+                    print("Invalid selection.")
                     exit()
 
-            addAdminUser()
+
+            if numClients != 0:
+                print("Make selection on how to handle existing clients:")
+                print("1 - Keep existing client data")
+                print("2 - Delete all client data and start fresh")
+
+
+                val = int(input("\nSelection: "))
+                if val == 2:
+                    print("Clearing client data")
+                    Client.__table__.drop(db.engine)
+                    Screenshot.__table__.drop(db.engine)
+                    HtmlCode.__table__.drop(db.engine)
+                    UrlVisited.__table__.drop(db.engine)
+                    UserInput.__table__.drop(db.engine)
+                    Cookie.__table__.drop(db.engine)
+                    LocalStorage.__table__.drop(db.engine)
+                    SessionStorage.__table__.drop(db.engine)
+                    dbCommit()
+
+                    db.create_all()
+                    shutil.rmtree("./loot")
+                elif val == 1:
+                    print("Keeping existing client data.")
+                else:
+                    print("Invalid selection.")
+                    exit()
 
 
     else:
@@ -638,6 +647,8 @@ if __name__ == '__main__':
         with app.app_context():
             db.drop_all()
             db.create_all()
+            shutil.rmtree("./loot")
+
 
 
 
