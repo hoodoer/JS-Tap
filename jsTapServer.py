@@ -351,17 +351,26 @@ def sendIndex():
 
 @app.route('/login', methods=['POST'])
 def login():
-    info = json.loads(request.data)
-    username = info.get('username')
-    password = info.get('password')
-    print("--- Got login: " + username + ":" + password)
-    user = User.objects(username=username, password=password).first()
+    print("Top of login...")
+    # info = request.json
+    # username = info['username']
+    # password = info['password']
+    # print("--- Got login: " + username + ":" + password)
 
-    if user:
-        login_user(username)
-        return jsonify(user.to_json())
-    else:
-        return jsonify({"status": 401, "reason":"No."})
+    # exit()
+    # # info = json.loads(request.data)
+    # # username = info.get('username')
+    # # password = info.get('password')
+
+    # hash = bcrypt.generate_password_hash(password)
+    # print("--- Got login: " + username + ":" + password)
+    # user = User.objects(username=username, password=hash).first()
+
+    # if user:
+    #     login_user(username)
+    #     return jsonify(user.to_json())
+    # else:
+    #     return jsonify({"status": 401, "reason":"No."})
 
 
 #***************************************************************************
