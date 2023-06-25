@@ -4,7 +4,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
 from sqlalchemy_utils import database_exists
-from flask_login import LoginManager, login_user, UserMixin
+from flask_login import LoginManager, login_user, UserMixin, login_required, current_user
 from flask_bcrypt import Bcrypt
 from enum import Enum
 import json
@@ -295,10 +295,10 @@ def user_loader(username):
 
 # Need an admin account
 def addAdminUser():
-    passwordLength = 25
+    passwordLength = 45
 
     randomPassword = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase 
-        + string.digits + string.punctuation, k=passwordLength))
+        + string.digits, k=passwordLength))
 
 
     print("*******************************")
@@ -343,6 +343,7 @@ def sendHtml2Canvas():
 
 # Send c2 UI index page
 @app.route('/', methods=['GET'])
+@login_required
 def sendIndex():
     with open('./index.html', 'r') as file:
         index = file.read()
@@ -358,33 +359,30 @@ def login():
     info = request.json
     username = info['username']
     password = info['password']
-    print("--- Got login: " + username + ":" + password)
 
-    # exit()
-    # info = json.loads(request.data)
-    # username = info.get('username')
-    # password = info.get('password')
-
-    hash = bcrypt.generate_password_hash(password)
-    print("Calculated hash is: " + str(hash))
-    print("--- Got login: " + username + ":" + password)
     user = User.query.filter_by(username=username).first()
 
-
-
-#     client = Client.query.filter_by(nickname=identifier).first()
-
-    #user = User.objects(username=username, password=hash).first()
-
     if user:
-        print("Valid login!")
-        login_user(user)
-        print(user)
-        response = make_response("Successful login.", 200)
-        return response
+        isValidPassword = bcrypt.check_password_hash(user.password, password) 
+
+        if isValidPassword:
+            print("Password matched!")
+            login_user(user)
+            response = make_response("Successful login.", 200)
+            return response
+        else:
+            print("Auth: Password didn't match")
+            response = make_response("No.", 401)
+            return response
+            rint("Password didn't match :(")
     else:
-        print("Creds fail...")
-        return jsonify({"status": 401, "reason":"No."})
+        # Make sure equal processing time, avoiding time based user enum
+        hash = bcrypt.generate_password_hash(password)
+
+        print("Auth: User not found")
+        response = make_response("No.", 401)
+        return response
+
 
 
 #***************************************************************************
