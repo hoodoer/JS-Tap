@@ -4,7 +4,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
 from sqlalchemy_utils import database_exists
-from flask_login import LoginManager, login_user, UserMixin, login_required, current_user
+from flask_login import LoginManager, login_user, logout_user, UserMixin, login_required, current_user
 from flask_bcrypt import Bcrypt
 from enum import Enum
 import json
@@ -396,6 +396,12 @@ def login():
             response = make_response("No.", 401)
             return response
 
+
+
+@app.route('/logout', methods=['GET'])
+def logout():
+    logout_user()
+    return redirect("login")
 
 
 #***************************************************************************
