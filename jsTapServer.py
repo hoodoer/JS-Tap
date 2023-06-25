@@ -4,7 +4,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
 from sqlalchemy_utils import database_exists
-from flask_login import LoginManager
+from flask_login import LoginManager, login_user, UserMixin
 from flask_bcrypt import Bcrypt
 from enum import Enum
 import json
@@ -24,9 +24,12 @@ CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
 app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'jsTap.db')
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config['SECRET_KEY'] = 'b4CtXzlMp9tsATa3i7jgNiB10eiJbrQG'
+app.config['SESSION_COOKIE_SECURE'] = True
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
+login_manager.init_app(app)
 bcrypt = Bcrypt(app)
 
 
@@ -175,7 +178,7 @@ class SessionStorage(db.Model):
 
 
 # User C2 UI session
-class User(db.Model):
+class User(UserMixin, db.Model):
     __table_name__ = 'user'
     username      = db.Column(db.String, primary_key=True)
     password      = db.Column(db.String, nullable=False)
@@ -352,25 +355,36 @@ def sendIndex():
 @app.route('/login', methods=['POST'])
 def login():
     print("Top of login...")
-    # info = request.json
-    # username = info['username']
-    # password = info['password']
-    # print("--- Got login: " + username + ":" + password)
+    info = request.json
+    username = info['username']
+    password = info['password']
+    print("--- Got login: " + username + ":" + password)
 
     # exit()
-    # # info = json.loads(request.data)
-    # # username = info.get('username')
-    # # password = info.get('password')
+    # info = json.loads(request.data)
+    # username = info.get('username')
+    # password = info.get('password')
 
-    # hash = bcrypt.generate_password_hash(password)
-    # print("--- Got login: " + username + ":" + password)
-    # user = User.objects(username=username, password=hash).first()
+    hash = bcrypt.generate_password_hash(password)
+    print("Calculated hash is: " + str(hash))
+    print("--- Got login: " + username + ":" + password)
+    user = User.query.filter_by(username=username).first()
 
-    # if user:
-    #     login_user(username)
-    #     return jsonify(user.to_json())
-    # else:
-    #     return jsonify({"status": 401, "reason":"No."})
+
+
+#     client = Client.query.filter_by(nickname=identifier).first()
+
+    #user = User.objects(username=username, password=hash).first()
+
+    if user:
+        print("Valid login!")
+        login_user(user)
+        print(user)
+        response = make_response("Successful login.", 200)
+        return response
+    else:
+        print("Creds fail...")
+        return jsonify({"status": 401, "reason":"No."})
 
 
 #***************************************************************************
