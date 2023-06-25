@@ -14,6 +14,23 @@ function unselectAllClients()
 }
 
 
+
+function getClientDetails(id)
+{
+	console.log("** Fetching details for client: " + id);
+
+	var req = new XMLHttpRequest();
+	req.responseType = 'json';
+	req.open('GET', "/api/clientDetails/" + id, true);
+	req.onload  = function() {
+		console.log("Got client details response");
+
+	};
+	req.send(null);
+
+}
+
+
 function updateClients()
 {
 	var req = new XMLHttpRequest();
@@ -59,6 +76,7 @@ function updateClients()
 				unselectAllClients();
 				rows[i].classList.add("table-active");
 				selectedClientId = rows[i].cells[0].innerHTML;
+				getClientDetails(selectedClientId);
 			})
 		}
 	};

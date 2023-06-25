@@ -601,7 +601,14 @@ def getClients():
 
 
 
+# Get client details (it's selected in UI)
+@app.route('/api/clientDetails/<id>', methods=['GET'])
+@login_required
+def getClientDetails(id):
+    print("** Got client details request for client " + id)
 
+
+    return "ok", 200
 
 
 
