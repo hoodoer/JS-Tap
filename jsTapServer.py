@@ -308,9 +308,6 @@ def addAdminUser():
 
     adminUser = User(username='admin', password=bcrypt.generate_password_hash(randomPassword))
 
-    # Will return true if password correct
-    # bcrypt.check_password_hash(pw_hash, candidate) 
-
     db.session.add(adminUser)
     dbCommit()
 
@@ -591,6 +588,7 @@ def recordSessionStorageEntry(identifier):
 
 # Get clients list
 @app.route('/api/getClients', methods=['GET'])
+@login_required
 def getClients():
     clients = Client.query.all()
 
@@ -598,6 +596,8 @@ def getClients():
         'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen} for client in clients]
 
     return jsonify(allClients)
+
+
 
 
 
