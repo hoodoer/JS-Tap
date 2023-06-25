@@ -83,5 +83,9 @@ function updateClients()
 	req.send(null);
 }
 
+
+
 // Every 2 seconds...
 setInterval(updateClients, 2000);
+
+updateClients();
