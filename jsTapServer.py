@@ -1,5 +1,5 @@
 #!usr/bin/env python
-from flask import Flask, jsonify, abort, make_response, g, request, render_template
+from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
@@ -303,7 +303,7 @@ def addAdminUser():
 
     print("*******************************")
     print("WebApp admin creds:")
-    print("admin:" + randomPassword)
+    print("admin : " + randomPassword)
     print("*******************************")
 
     adminUser = User(username='admin', password=bcrypt.generate_password_hash(randomPassword))
@@ -348,40 +348,53 @@ def sendIndex():
     with open('./index.html', 'r') as file:
         index = file.read()
         response = make_response(index, 200)
-        response.mimetype(text/html)
+        #response.mimetype('text/html')
 
         return response
 
 
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['POST', 'GET'])
 def login():
     print("Top of login...")
-    info = request.json
-    username = info['username']
-    password = info['password']
 
-    user = User.query.filter_by(username=username).first()
+    if request.method == 'GET':
+        print("** Handling login GET...")
+        with open('./login.html', 'r') as file:
+            loginForm = file.read()
+            response = make_response(loginForm, 200)
+            #response.mimetype('text/html')
 
-    if user:
-        isValidPassword = bcrypt.check_password_hash(user.password, password) 
-
-        if isValidPassword:
-            print("Password matched!")
-            login_user(user)
-            response = make_response("Successful login.", 200)
             return response
+
+
+    if request.method == 'POST':
+        print("** Handling login POST...")
+        username = request.form['username']
+        password = request.form['password']
+
+        user = User.query.filter_by(username=username).first()
+
+        if user:
+            isValidPassword = bcrypt.check_password_hash(user.password, password) 
+
+            if isValidPassword:
+                print("Password matched!")
+                login_user(user)
+                return redirect(url_for('sendIndex'))
+                # response = make_response("Successful login.", 200)
+                # return response
+            else:
+                print("Auth: Password didn't match")
+                response = make_response("No.", 401)
+                return response
+                rint("Password didn't match :(")
         else:
-            print("Auth: Password didn't match")
+            # Make sure equal processing time, avoiding time based user enum
+            hash = bcrypt.generate_password_hash(password)
+
+            print("Auth: User not found")
             response = make_response("No.", 401)
             return response
-            rint("Password didn't match :(")
-    else:
-        # Make sure equal processing time, avoiding time based user enum
-        hash = bcrypt.generate_password_hash(password)
-
-        print("Auth: User not found")
-        response = make_response("No.", 401)
-        return response
 
 
 
