@@ -177,6 +177,17 @@ class SessionStorage(db.Model):
         return f'<Client {self.id}>'
 
 
+class Event(db.Model):
+    id        = db.Column(db.Integer, primary_key=True)
+    clientID  = db.Column(db.string(100), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True))
+    eventType = db.Column(db.string(100), nullable=False)
+    eventID   = db.Column(db.Integer, nullable=False)
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+   
+
 # User C2 UI session
 class User(UserMixin, db.Model):
     __table_name__ = 'user'
