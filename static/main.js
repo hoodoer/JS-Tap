@@ -21,10 +21,10 @@ function getClientDetails(id)
 
 	var req = new XMLHttpRequest();
 	req.responseType = 'json';
-	req.open('GET', "/api/clientScreenshots/" + id, true);
+	req.open('GET', "/api/clientEvents/" + id, true);
 	req.onload  = function() {
-		console.log("Got client screenshot response");
-
+		console.log("Got client event response");
+		console.log(req.response);
 	};
 	req.send(null);
 

