@@ -15,11 +15,11 @@
 	</style>
 -->
 
-  <style>
-    .table-active {
-      background-color: #f8f9fa; /* Set your desired highlight color */
-    }
-  </style>
+<style>
+	.table-active {
+		background-color: #f8f9fa; /* Set your desired highlight color */
+	}
+</style>
 </head>
 
 <body>	
@@ -48,83 +48,62 @@
 
 				<li class="nav-item">
 					<a class="nav-link" href="/logout">Logout</a
->				</li>
+					>				</li>
 
-			</ul>
-		</div>
-	</nav>
-
-	
-	<div class="container-fluid border">
-		<div class="row">
-			<div class="col-4">
-				<table class="table table-bordered" id="table">
-					<thead>
-						<tr>
-<!-- 							<th scope="col">#</th>
-							<th scope="col">Client</th>
-							<th scope="col">Last Seen</th>
- -->					
- 						<th data-field="id">
- 							<span class="text">ID</span>
-						</th>
-		 				<th data-field="nickname">
- 							<span class="text">Client</span>
-						</th>
-		 				<th data-field="lastSeen">
- 							<span class="text">Last Seen</span>
-						</th>
-					
-						</tr>
-					</thead>
-					<tbody id="client-table">
-<!-- 						Use dynamic generation
-<tr>
-							<th scope="row">1</th>
-							<td>Angry-Tapir-Junkie</td>
-						</tr>
-						<tr>
-							<th scope="row">2</th>
-							<td>Sad-Panda-Flunkie</td>
- -->						</tbody>
-					</table>
-				</div>
+				</ul>
+			</div>
+		</nav>
 
 
-				<div class="col-5">
-					<table class="table table-bordered">
+		<div class="container-fluid border">
+			<div class="row">
+				<div class="col-4">
+					<table class="table table-bordered" id="table">
 						<thead>
 							<tr>
-								<th scope="col">Loot</th>
+								<th data-field="id">
+									<span class="text">ID</span>
+								</th>
+								<th data-field="nickname">
+									<span class="text">Client</span>
+								</th>
+								<th data-field="lastSeen">
+									<span class="text">Last Seen</span>
+								</th>
+
 							</tr>
 						</thead>
-						<tbody>
-							<tr>
-								<td>TIMESTAMP</td>
-							</tr>
-							<tr>
-								<td>https://www.target.com/admin</td>
-							</tr>
-							<tr>
-								<td>Screenshot 1</td>
-							</tr>
-							<tr>
-								<td>TIMESTAMP</td>
-							</tr>
-							<tr>
-								<td>https://www.target.com/dashboard</td>
-							</tr>
-							<tr>
-								<td>Screenshot 2</td>
-							</tr>
-
-						</tbody>
-					</table>
+						<tbody id="client-table">
+<!-- 						Use dynamic generation
+-->						</tbody>
+</table>
+</div>
 
 
-				</div>
-			</div>
-		</div>
+<div class="col-5">
+	<table class="table table-bordered" id="details-table">
+		<thead>
+			<tr>
+				<th data-field="timestamp">
+					<span class="text">Timestamp</span>
+				</th>
+				<th data-field="event">
+					<span class="text">Event</span>
+				</th>
+				<th data-field="Stuff">
+					<span class="text">Detailed Stuff</span>
+				</th>
+			</tr>
+		</thead>
+		<tbody id="client-details-table">
 
-	</body>
-	</html>
+		</tbody>
+	</table>
+
+
+</div>
+</div>
+</div>
+
+</body>
+</html>

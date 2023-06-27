@@ -293,8 +293,10 @@ def dbCommit():
 
 # Updates "last seen" timestamp"
 def clientSeen(identifier):
+    # print("*** Starting clientSeen Update!")
     client = Client.query.filter_by(nickname=identifier).first()
     client.update()
+    # print("--- Done client seen update...")
 
 
 
