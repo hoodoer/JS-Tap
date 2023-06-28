@@ -150,29 +150,7 @@ function getClientDetails(id)
 
 		for (let i = 0; i < jsonResponse.length; i++)
 		{
-			// newDiv = document.createElement('div');
-			// newDiv.setAttribute("id", "row" + i);
-			// newDiv.className = "row";
-			// divContent = document.createTextNode("Test Top Row");
-			// newDiv.appendChild(divContent);
-			// new_clientDetailsTable.appendChild(newDiv);
-
-			// collapseDiv = document.createElement('div');
-			// collapseDiv.setAttribute("id", newDiv.getAttribute("id") + "_details");
-			// collapseDiv.className = 'row collapse additional-content';
-			// collapseContent = document.createTextNode("Details!");
-			// collapseDiv.appendChild(collapseContent);
-			// new_clientDetailsTable.appendChild(collapseDiv);
-
-			// newDiv.addEventListener('click', function() {
-			// 	var row = newDiv.closest("div div");
-			// 	var additionalContent = row.querySelector('.additional-content');
-			// 	additionalContent.classList.toggle('show');
-
-			// });
-
-
-//  Working
+			//  Working but very boring rows
 			// var row = new_clientDetailsTable.insertRow(-1);
 			// var cell1 = row.insertCell(0);
 			// var cell2 = row.insertCell(1);
@@ -182,6 +160,43 @@ function getClientDetails(id)
 			// cell1.innerHTML = humanized_time_span(jsonResponse[i].timeStamp);
 			// cell2.innerHTML = jsonResponse[i].eventType;
 			// cell3.innerHTML = "stub"
+
+
+			// We'll want different layouts for
+			// different event types
+			switch(jsonResponse[i].eventType)
+			{
+			case 'COOKIE':
+				console.log("COOKIE SWITCH");
+				break;
+
+			case 'LOCALSTORAGE':
+				console.log("LOCALSTORAGE SWITCH");
+				break;
+
+			case 'SESSIONSTORAGE':
+				console.log("SESSIONSTORAGE SWITCH");
+				break;
+
+			case 'URLVISITED':
+				console.log("URLVISITED SWITCH");
+				break;
+
+			case 'HTML':
+				console.log("HTML SWITCH");
+				break;
+
+			case 'SCREENSHOT':
+				console.log("SCREENSHOT SWITCH");
+				break;
+
+			case 'USERINPUT':
+				console.log("USERINPUT SWITCH");
+				break;
+
+			default:
+				alert('Switch default!');
+			}
 
 
 
