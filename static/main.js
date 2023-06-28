@@ -129,6 +129,9 @@ function unselectAllClients()
 
 
 
+
+
+
 function getClientDetails(id)
 {
 	console.log("** Fetching details for client: " + id);
@@ -147,15 +150,71 @@ function getClientDetails(id)
 
 		for (let i = 0; i < jsonResponse.length; i++)
 		{
-			var row = new_clientDetailsTable.insertRow(-1);
-			var cell1 = row.insertCell(0);
-			var cell2 = row.insertCell(1);
-			var cell3 = row.insertCell(2);
+			// newDiv = document.createElement('div');
+			// newDiv.setAttribute("id", "row" + i);
+			// newDiv.className = "row";
+			// divContent = document.createTextNode("Test Top Row");
+			// newDiv.appendChild(divContent);
+			// new_clientDetailsTable.appendChild(newDiv);
+
+			// collapseDiv = document.createElement('div');
+			// collapseDiv.setAttribute("id", newDiv.getAttribute("id") + "_details");
+			// collapseDiv.className = 'row collapse additional-content';
+			// collapseContent = document.createTextNode("Details!");
+			// collapseDiv.appendChild(collapseContent);
+			// new_clientDetailsTable.appendChild(collapseDiv);
+
+			// newDiv.addEventListener('click', function() {
+			// 	var row = newDiv.closest("div div");
+			// 	var additionalContent = row.querySelector('.additional-content');
+			// 	additionalContent.classList.toggle('show');
+
+			// });
+
+
+//  Working
+			// var row = new_clientDetailsTable.insertRow(-1);
+			// var cell1 = row.insertCell(0);
+			// var cell2 = row.insertCell(1);
+			// var cell3 = row.insertCell(2);
 		
-			// console.log("^^^^^ Nice timing output: " + humanized_time_span(jsonResponse[i].timeStamp))
-			cell1.innerHTML = humanized_time_span(jsonResponse[i].timeStamp);
-			cell2.innerHTML = jsonResponse[i].eventType;
-			cell3.innerHTML = "stub"
+			// // console.log("^^^^^ Nice timing output: " + humanized_time_span(jsonResponse[i].timeStamp))
+			// cell1.innerHTML = humanized_time_span(jsonResponse[i].timeStamp);
+			// cell2.innerHTML = jsonResponse[i].eventType;
+			// cell3.innerHTML = "stub"
+
+
+
+			// Cards
+			var cardStack = document.getElementById('detail-stack');
+
+			var card = document.createElement('div');
+			card.className ='card';
+			
+			var cardBody = document.createElement('div');
+    		cardBody.className = 'card-body';
+
+
+			var cardTitle = document.createElement('h5');
+			cardTitle.className = "card-title";
+			cardTitle.innerHTML = jsonResponse[i].eventType;
+
+			var cardSubtitle = document.createElement('h6');
+			cardSubtitle.className = "card-subtitle mb-2 text-muted";
+			cardSubtitle.innerHTML = humanized_time_span(jsonResponse[i].timeStamp);
+
+			var cardText = document.createElement('p');
+			cardText.className = 'card-text';
+			cardText.innerHTML = "Detail Stub";
+
+
+			cardBody.appendChild(cardTitle);
+			cardBody.appendChild(cardSubtitle);
+			cardBody.appendChild(cardText);
+
+			card.appendChild(cardBody);
+
+			cardStack.appendChild(card);
 		}
 
 		var old_clientDetailTable = document.getElementById('client-details-table');
