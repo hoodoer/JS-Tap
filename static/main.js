@@ -111,13 +111,23 @@ function humanized_time_span(date, ref_date, date_formats, time_units) {
 }
 
 
-var cookies = [];
-var localStores = [];
-var sessionStores = [];
-var urlsVisited = [];
-
-
+// ********************************************************
 //  Back to my code
+
+
+
+// Memory for storing event details
+// Fills up when a client is selected
+// Emptied when a different client is selected
+var cookies       = [];
+var localStores   = [];
+var sessionStores = [];
+var urlsVisited   = [];
+var htmlCode      = [];
+var screenshots   = [];
+var userInputs    = [];
+
+
 
 function getEventDetails(event)
 {
@@ -129,7 +139,7 @@ function getEventDetails(event)
 		console.log("cookie...");
 		var req = new XMLHttpRequest();
 		req.responseType = 'json';
-		req.open('GET', "/api/clientCookies/" + event.eventID, true);
+		req.open('GET', "/api/clientCookie/" + event.eventID, true);
 		req.onload  = function() {
 			var jsonResponse = req.response;
 			cookies.push(jsonResponse);
@@ -171,6 +181,14 @@ function getEventDetails(event)
 
 	case 'URLVISITED':
 		console.log("urlvisited...");
+		var req = new XMLHttpRequest();
+		req.responseType = 'json';
+		req.open('GET', "/api/clientUrl/" + event.eventID, true);
+		req.onload  = function() {
+			var jsonResponse = req.response;
+			urlsVisited.push(jsonResponse);
+		};
+		req.send(null);
 		// cardTitle.innerHTML = "URL Location Change";
 
 
@@ -178,6 +196,14 @@ function getEventDetails(event)
 
 	case 'HTML':
 		console.log("HTML...");
+		var req = new XMLHttpRequest();
+		req.responseType = 'json';
+		req.open('GET', "/api/clientHtml/" + event.eventID, true);
+		req.onload  = function() {
+			var jsonResponse = req.response;
+			htmlCode.push(jsonResponse);
+		};
+		req.send(null);
 		// cardTitle.innerHTML = "HTML Code Scraped";
 
 
@@ -185,6 +211,14 @@ function getEventDetails(event)
 
 	case 'SCREENSHOT':
 		console.log("screenshot...");
+		var req = new XMLHttpRequest();
+		req.responseType = 'json';
+		req.open('GET', "/api/clientScreenshot/" + event.eventID, true);
+		req.onload  = function() {
+			var jsonResponse = req.response;
+			screenshots.push(jsonResponse);
+		};
+		req.send(null);
 		// cardTitle.innerHTML = "Screenshot Captured";
 
 
@@ -192,6 +226,14 @@ function getEventDetails(event)
 
 	case 'USERINPUT':
 		console.log("userinput...");
+		var req = new XMLHttpRequest();
+		req.responseType = 'json';
+		req.open('GET', "/api/clientUserInput/" + event.eventID, true);
+		req.onload  = function() {
+			var jsonResponse = req.response;
+			userInputs.push(jsonResponse);
+		};
+		req.send(null);
 		// cardTitle.innerHTML = "User Input Captured";
 
 
@@ -374,6 +416,17 @@ function unselectAllClients()
 	{
 		rows[i].classList.remove("table-active");
 	}
+
+	// Clear memory of detailed
+	// event info for selected client
+	cookies       = [];
+	localStores   = [];
+	sessionStores = [];
+	urlsVisited   = [];
+	htmlCode      = [];
+	screenshots   = [];
+	userInputs    = [];
+
 }
 
 

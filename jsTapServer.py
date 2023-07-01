@@ -681,10 +681,10 @@ def getClientEvents(id):
 
     
 
-@app.route('/api/clientScreenshots/<key>', methods=['GET'])
+@app.route('/api/clientScreenshot/<key>', methods=['GET'])
 @login_required
 def getClientScreenshots(key):
-    screenshot = Screenshot.query.filter_by(id=key)
+    screenshot = Screenshot.query.filter_by(id=key).first()
 
     screenshotData = {'fileName':screenshot.fileName}
     
@@ -693,70 +693,43 @@ def getClientScreenshots(key):
 
 
 
-@app.route('/api/clientHtml/<id>', methods=['GET'])
+@app.route('/api/clientHtml/<key>', methods=['GET'])
 @login_required
-def getClientHtml(id):
-    print("** Got client html request for client " + id)
+def getClientHtml(key):
+    htmlCode = HtmlCode.query.filter_by(id=key).first()
 
-    # Let's find all our loot in the database
-    client = Client.query.filter_by(id=id).first()
-
-    clientName = client.nickname;
-
-    print("Digging up look for client: " + clientName)
-
-    htmlCode = HtmlCode.query.filter_by(clientID=clientName)
-
-    htmlData = [{'id':html.id, 'timeStamp':html.timeStamp, 'url':html.url, 'code':html.code} for html in htmlCode]
+    htmlData = {'url':htmlCode.url, 'code':htmlCode.code}
     
 
     return jsonify(htmlData)
 
 
 
-@app.route('/api/clientUrl/<id>', methods=['GET'])
+@app.route('/api/clientUrl/<key>', methods=['GET'])
 @login_required
-def getClientUrls(id):
-    print("** Got client URL request for client " + id)
+def getClientUrls(key):
+    urlsVisited = UrlVisited.query.filter_by(id=key).first()
 
-    # Let's find all our loot in the database
-    client = Client.query.filter_by(id=id).first()
-
-    clientName = client.nickname;
-
-    print("Digging up look for client: " + clientName)
-
-    urlsVisited = UrlVisited.query.filter_by(clientID=clientName)
-
-    urlData = [{'id':urlVisited.id, 'timeStamp':urlVisited.timeStamp, 'url':urlVisited.url} for urlVisited in urlsVisited]
+    urlData = {'url':urlsVisited.url}
     
 
     return jsonify(urlData)
 
 
 
-@app.route('/api/clientUserInputs/<id>', methods=['GET'])
+@app.route('/api/clientUserInput/<key>', methods=['GET'])
 @login_required
-def getClientUserInputs(id):
-    print("** Got client user inputs request for client " + id)
+def getClientUserInputs(key):
+    userInput = UserInput.query.filter_by(id=key).first()
 
-    # Let's find all our loot in the database
-    client = Client.query.filter_by(id=id).first()
-
-    clientName = client.nickname;
-
-    print("Digging up look for client: " + clientName)
-
-    userInputs = UserInput.query.filter_by(clientID=clientName)
-
-    userInputData = [{'id':userInput.id, 'timeStamp':userInput.timeStamp, 'inputName':userInput.inputName, 'inputValue':userInput.inputValue} for userInput in userInputs]
+    userInputData = {'inputName':userInput.inputName, 'inputValue':userInput.inputValue}
     
 
     return jsonify(userInputData)
 
 
 
-@app.route('/api/clientCookies/<key>', methods=['GET'])
+@app.route('/api/clientCookie/<key>', methods=['GET'])
 @login_required
 def getClientCookies(key):
     print("*** In cookie lookup, key is: " + key)
