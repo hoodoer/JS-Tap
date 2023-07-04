@@ -1,0 +1,10 @@
+static/node_modules/.package-lock.json
+static/package-lock.json
+static/package.json
+__pycache__/
+instance/
+jsTap.db
+loot/
+static/node_modules/bootstrap/dist/css/bootstrap.css.orig
+static/node_modules/bootstrap/dist/css/gunmetal-bootstrap.css
+static/node_modules/jquery/

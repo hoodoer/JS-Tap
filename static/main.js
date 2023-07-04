@@ -118,139 +118,6 @@ function humanized_time_span(date, ref_date, date_formats, time_units) {
 
 
 
-async function getEventDetails(event)
-{
-	console.log("Fetting event details for: " + event.eventType);
-
-	switch(event.eventType)
-	{
-	case 'COOKIE':
-		console.log("cookie...");
-		var req = await fetch('/api/clientCookie/' + event.eventID);
-		var jsonResponse = await req.json();
-
-		console.log("In fetch code, return stuff is: ");
-		console.log("**" + JSON.stringify(jsonResponse));
-
-		return jsonResponse;
-		// var req = new XMLHttpRequest();
-		// req.responseType = 'json';
-		// req.open('GET', "/api/clientCookie/" + event.eventID, true);
-		// req.onload  = function() {
-		// 	var jsonResponse = req.response;
-		// 	cookies.push(jsonResponse);
-		// 	return jsonResponse;
-		// };
-		// req.send(null);
-
-		break;
-
-	case 'LOCALSTORAGE':
-		console.log("localstorage...");
-		var req = new XMLHttpRequest();
-		req.responseType = 'json';
-		req.open('GET', "/api/clientLocalStorage/" + event.eventID, true);
-		req.onload  = function() {
-			var jsonResponse = req.response;
-			localStores.push(jsonResponse);
-			return jsonResponse;
-		};
-		req.send(null);
-		// cardTitle.innerHTML = "Local Storage Value";
-
-
-		break;
-
-	case 'SESSIONSTORAGE':
-		console.log("sessionstorage...");
-		var req = new XMLHttpRequest();
-		req.responseType = 'json';
-		req.open('GET', "/api/clientSessionStorage/" + event.eventID, true);
-		req.onload  = function() {
-			var jsonResponse = req.response;
-			sessionStores.push(jsonResponse);
-			return jsonResponse;
-		};
-		req.send(null);
-		// cardTitle.innerHTML = "Local Storage Value";
-		// cardTitle.innerHTML = "Session Storage Value";
-
-
-		break;
-
-	case 'URLVISITED':
-		console.log("urlvisited...");
-		var req = new XMLHttpRequest();
-		req.responseType = 'json';
-		req.open('GET', "/api/clientUrl/" + event.eventID, true);
-		req.onload  = function() {
-			var jsonResponse = req.response;
-			urlsVisited.push(jsonResponse);
-			return jsonResponse;
-		};
-		req.send(null);
-		// cardTitle.innerHTML = "URL Location Change";
-
-
-		break;
-
-	case 'HTML':
-		console.log("HTML...");
-		var req = new XMLHttpRequest();
-		req.responseType = 'json';
-		req.open('GET', "/api/clientHtml/" + event.eventID, true);
-		req.onload  = function() {
-			var jsonResponse = req.response;
-			htmlCode.push(jsonResponse);
-			return jsonResponse;
-		};
-		req.send(null);
-		// cardTitle.innerHTML = "HTML Code Scraped";
-
-
-		break;
-
-	case 'SCREENSHOT':
-		console.log("screenshot...");
-		var req = new XMLHttpRequest();
-		req.responseType = 'json';
-		req.open('GET', "/api/clientScreenshot/" + event.eventID, true);
-		req.onload  = function() {
-			var jsonResponse = req.response;
-			screenshots.push(jsonResponse);
-			return jsonResponse;
-		};
-		req.send(null);
-		// cardTitle.innerHTML = "Screenshot Captured";
-
-
-		break;
-
-	case 'USERINPUT':
-		console.log("userinput...");
-		var req = new XMLHttpRequest();
-		req.responseType = 'json';
-		req.open('GET', "/api/clientUserInput/" + event.eventID, true);
-		req.onload  = function() {
-			var jsonResponse = req.response;
-			userInputs.push(jsonResponse);
-			return jsonResponse;
-		};
-		req.send(null);
-		// cardTitle.innerHTML = "User Input Captured";
-
-
-		break;
-
-	default:
-		alert('!!!!Switch default-No good. Your code sucks.');
-	}
-
-
-
-}
-
-
 
 async function getClientDetails(id) 
 {
@@ -290,7 +157,7 @@ async function getClientDetails(id)
 
 
 
-
+		// Handle event specific details and formatting
 		switch(event.eventType)
 		{
 		case 'COOKIE':
@@ -328,7 +195,7 @@ async function getClientDetails(id)
 
 		case 'URLVISITED':
 			urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
-			urlVisitedJson  = await urlVisitedReq.json();
+			urlVisitedJson = await urlVisitedReq.json();
 
 			cardTitle.innerHTML = "URL Visited";
 			cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
@@ -342,10 +209,11 @@ async function getClientDetails(id)
 			break;
 
 		case 'SCREENSHOT':
-			console.log("screenshot...");
+			screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
+			screenshotJson = await screenshotReq.json();
+
 			cardTitle.innerHTML = "Screenshot Captured";
-
-
+			cardText.innerHTML  = '<img src="' + screenshotJson.fileName + '" class="img-thumbnail">';
 			break;
 
 		case 'USERINPUT':
@@ -362,12 +230,7 @@ async function getClientDetails(id)
 			alert('!!!!Switch default-No good');
 		}
 
-		// cardTitle.innerHTML = event.eventType;
-
 		cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
-
-		// cardText.innerHTML = "Detail Stub";
-
 
 		cardBody.appendChild(cardTitle);
 		cardBody.appendChild(cardSubtitle);

@@ -1,5 +1,5 @@
 #!usr/bin/env python
-from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for
+from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
@@ -362,6 +362,15 @@ def sendIndex():
         #response.mimetype('text/html')
 
         return response
+
+
+
+# Serve up loot files
+# for images and HTML code
+@app.route('/loot/<path:path>')
+@login_required
+def sendLootFile(path):
+    return send_from_directory('loot', path)
 
 
 @app.route('/login', methods=['POST', 'GET'])
