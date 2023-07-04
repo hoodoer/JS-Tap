@@ -116,20 +116,9 @@ function humanized_time_span(date, ref_date, date_formats, time_units) {
 
 
 
-// Memory for storing event details
-// Fills up when a client is selected
-// Emptied when a different client is selected
-var cookies       = [];
-var localStores   = [];
-var sessionStores = [];
-var urlsVisited   = [];
-var htmlCode      = [];
-var screenshots   = [];
-var userInputs    = [];
 
 
-
-function getEventDetails(event)
+async function getEventDetails(event)
 {
 	console.log("Fetting event details for: " + event.eventType);
 
@@ -137,14 +126,22 @@ function getEventDetails(event)
 	{
 	case 'COOKIE':
 		console.log("cookie...");
-		var req = new XMLHttpRequest();
-		req.responseType = 'json';
-		req.open('GET', "/api/clientCookie/" + event.eventID, true);
-		req.onload  = function() {
-			var jsonResponse = req.response;
-			cookies.push(jsonResponse);
-		};
-		req.send(null);
+		var req = await fetch('/api/clientCookie/' + event.eventID);
+		var jsonResponse = await req.json();
+
+		console.log("In fetch code, return stuff is: ");
+		console.log("**" + JSON.stringify(jsonResponse));
+
+		return jsonResponse;
+		// var req = new XMLHttpRequest();
+		// req.responseType = 'json';
+		// req.open('GET', "/api/clientCookie/" + event.eventID, true);
+		// req.onload  = function() {
+		// 	var jsonResponse = req.response;
+		// 	cookies.push(jsonResponse);
+		// 	return jsonResponse;
+		// };
+		// req.send(null);
 
 		break;
 
@@ -156,6 +153,7 @@ function getEventDetails(event)
 		req.onload  = function() {
 			var jsonResponse = req.response;
 			localStores.push(jsonResponse);
+			return jsonResponse;
 		};
 		req.send(null);
 		// cardTitle.innerHTML = "Local Storage Value";
@@ -171,6 +169,7 @@ function getEventDetails(event)
 		req.onload  = function() {
 			var jsonResponse = req.response;
 			sessionStores.push(jsonResponse);
+			return jsonResponse;
 		};
 		req.send(null);
 		// cardTitle.innerHTML = "Local Storage Value";
@@ -187,6 +186,7 @@ function getEventDetails(event)
 		req.onload  = function() {
 			var jsonResponse = req.response;
 			urlsVisited.push(jsonResponse);
+			return jsonResponse;
 		};
 		req.send(null);
 		// cardTitle.innerHTML = "URL Location Change";
@@ -202,6 +202,7 @@ function getEventDetails(event)
 		req.onload  = function() {
 			var jsonResponse = req.response;
 			htmlCode.push(jsonResponse);
+			return jsonResponse;
 		};
 		req.send(null);
 		// cardTitle.innerHTML = "HTML Code Scraped";
@@ -217,6 +218,7 @@ function getEventDetails(event)
 		req.onload  = function() {
 			var jsonResponse = req.response;
 			screenshots.push(jsonResponse);
+			return jsonResponse;
 		};
 		req.send(null);
 		// cardTitle.innerHTML = "Screenshot Captured";
@@ -232,6 +234,7 @@ function getEventDetails(event)
 		req.onload  = function() {
 			var jsonResponse = req.response;
 			userInputs.push(jsonResponse);
+			return jsonResponse;
 		};
 		req.send(null);
 		// cardTitle.innerHTML = "User Input Captured";
@@ -240,7 +243,7 @@ function getEventDetails(event)
 		break;
 
 	default:
-		alert('!!!!Switch default-No good');
+		alert('!!!!Switch default-No good. Your code sucks.');
 	}
 
 
@@ -249,184 +252,148 @@ function getEventDetails(event)
 
 
 
-function getClientDetails(id)
+async function getClientDetails(id) 
 {
 	console.log("** Fetching details for client: " + id);
 
-	var req = new XMLHttpRequest();
-	req.responseType = 'json';
-	req.open('GET', "/api/clientEvents/" + id, true);
-	req.onload  = function() {
-		var jsonResponse = req.response;
+	// Get high level event stack for client
+	var req = await fetch('/api/clientEvents/' + id);
+	var jsonResponse = await req.json();
 
-		// console.log("Got client event response");
-		// console.log(req.response);
+	var new_clientDetailsTable = document.createElement('tbody');
+	new_clientDetailsTable.setAttribute("id", "client-details-table");
 
-		var new_clientDetailsTable = document.createElement('tbody');
-		new_clientDetailsTable.setAttribute("id", "client-details-table");
+	// Start setting up our cards
+	var cardStack = document.getElementById('detail-stack');
 
-		for (let i = 0; i < jsonResponse.length; i++)
+
+	// Let's get event details for each event
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		event = jsonResponse[i];
+		var eventKey = event.eventID;
+	
+		var card = document.createElement('div');
+		card.className ='card';
+
+		var cardBody = document.createElement('div');
+		cardBody.className = 'card-body';
+
+		var cardTitle = document.createElement('h5');
+		cardTitle.className = "card-title";
+
+		var cardSubtitle = document.createElement('h6');
+		cardSubtitle.className = "card-subtitle mb-2 text-muted";
+
+		var cardText = document.createElement('p');
+		cardText.className = 'card-text';
+
+
+
+
+		switch(event.eventType)
 		{
-			event = jsonResponse[i];
-			getEventDetails(event);
+		case 'COOKIE':
+			cookieReq  = await fetch('/api/clientCookie/' + eventKey);
+			cookieJson = await cookieReq.json();
 
-			console.log("** Event loop: " + i);
-			//  Working but very boring rows
-			// var row = new_clientDetailsTable.insertRow(-1);
-			// var cell1 = row.insertCell(0);
-			// var cell2 = row.insertCell(1);
-			// var cell3 = row.insertCell(2);
+			cardTitle.innerHTML = "Cookie";
+			cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
+			cardText.innerHTML += "<br>";
+			cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
+			break;
 
-			// // console.log("^^^^^ Nice timing output: " + humanized_time_span(jsonResponse[i].timeStamp))
-			// cell1.innerHTML = humanized_time_span(jsonResponse[i].timeStamp);
-			// cell2.innerHTML = jsonResponse[i].eventType;
-			// cell3.innerHTML = "stub"
+		case 'LOCALSTORAGE':
+			localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
+			localStorageJson = await localStorageReq.json();
 
+			console.log("*** Local storage api call received: ");
+			console.log(JSON.stringify(localStorageJson));
 
-			// Need to fetch all the information first
-			// Then build up UI
-			// 
+			cardTitle.innerHTML = "Local Storage";
+			cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
+			cardText.innerHTML += "<br>";
+			cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
+			break;
 
-			// Cards
-			// var cardStack = document.getElementById('detail-stack');
+		case 'SESSIONSTORAGE':
+			sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
+			sessiontorageJson  = await sessionStorageReq.json();
 
-			// var card = document.createElement('div');
-			// card.className ='card';
-			
-			// var cardBody = document.createElement('div');
-			// cardBody.className = 'card-body';
-			
-			// var cardTitle = document.createElement('h5');
-			// cardTitle.className = "card-title";
+			cardTitle.innerHTML = "Session Storage";
+			cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
+			cardText.innerHTML += "<br>";
+			cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
+			break;
 
-			// var cardSubtitle = document.createElement('h6');
-			// cardSubtitle.className = "card-subtitle mb-2 text-muted";
+		case 'URLVISITED':
+			urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
+			urlVisitedJson  = await urlVisitedReq.json();
 
-			// var cardText = document.createElement('p');
-			// cardText.className = 'card-text';
+			cardTitle.innerHTML = "URL Visited";
+			cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
+			break;
 
-			// // Time will be the same across events
-			// cardSubtitle.innerHTML = humanized_time_span(jsonResponse[i].timeStamp);
-
-			// cardText.innerHTML = "DB Key is " + jsonResponse[i].eventID;
-
-			// var eventKey = jsonResponse[i].eventID;
-
-			// We'll want different layouts for
-			// different event types
-			// switch(jsonResponse[i].eventType)
-			// {
-			// case 'COOKIE':
-			// 	console.log("cookie...");
-			// 	cardTitle.innerHTML = "Cookie Value";
-
-			// 	var cookieReq = new XMLHttpRequest();
-			// 	cookieReq.responseType = 'json';
-			// 	cookieReq.open('GET', "/api/clientCookies/" + eventKey, true);
-			// 	cookieReq.onload  = function() {
-			// 		var cookieJsonResponse = cookieReq.response;
-			// 		cardText.innerHTML = "Cookie Name: " + cookieJsonResponse.cookieName;
-			// 	};
-			// 	cookieReq.send(null);
-
-			// 	break;
-
-			// case 'LOCALSTORAGE':
-			// 	console.log("localstorage...");
-			// 	cardTitle.innerHTML = "Local Storage Value";
+		case 'HTML':
+			console.log("HTML...");
+			cardTitle.innerHTML = "HTML Code Scraped";
 
 
-			// 	break;
+			break;
 
-			// case 'SESSIONSTORAGE':
-			// 	console.log("sessionstorage...");
-			// 	cardTitle.innerHTML = "Session Storage Value";
-
-
-			// 	break;
-
-			// case 'URLVISITED':
-			// 	console.log("urlvisited...");
-			// 	cardTitle.innerHTML = "URL Location Change";
+		case 'SCREENSHOT':
+			console.log("screenshot...");
+			cardTitle.innerHTML = "Screenshot Captured";
 
 
-			// 	break;
+			break;
 
-			// case 'HTML':
-			// 	console.log("HTML...");
-			// 	cardTitle.innerHTML = "HTML Code Scraped";
+		case 'USERINPUT':
+			userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
+			userInputJson = await userInputReq.json();
 
+			cardTitle.innerHTML = "User Input";
+			cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
+			cardText.innerHTML += "<br>";
+			cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
+			break;
 
-			// 	break;
-
-			// case 'SCREENSHOT':
-			// 	console.log("screenshot...");
-			// 	cardTitle.innerHTML = "Screenshot Captured";
-
-
-			// 	break;
-
-			// case 'USERINPUT':
-			// 	console.log("userinput...");
-			// 	cardTitle.innerHTML = "User Input Captured";
-
-
-			// 	break;
-
-			// default:
-			// 	alert('!!!!Switch default-No good');
-			// }
-
-
-
-
-			// cardTitle.innerHTML = jsonResponse[i].eventType;
-
-			// cardSubtitle.innerHTML = humanized_time_span(jsonResponse[i].timeStamp);
-
-			// cardText.innerHTML = "Detail Stub";
-
-
-			// cardBody.appendChild(cardTitle);
-			// cardBody.appendChild(cardSubtitle);
-			// cardBody.appendChild(cardText);
-
-			// card.appendChild(cardBody);
-
-			// cardStack.appendChild(card);
+		default:
+			alert('!!!!Switch default-No good');
 		}
 
-		var old_clientDetailTable = document.getElementById('client-details-table');
-		old_clientDetailTable.parentNode.replaceChild(new_clientDetailsTable, old_clientDetailTable);
+		// cardTitle.innerHTML = event.eventType;
+
+		cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
+
+		// cardText.innerHTML = "Detail Stub";
 
 
-	};
-	req.send(null);
+		cardBody.appendChild(cardTitle);
+		cardBody.appendChild(cardSubtitle);
+		cardBody.appendChild(cardText);
 
+		card.appendChild(cardBody);
+
+		cardStack.appendChild(card);
+	}
+
+
+	var old_clientDetailTable = document.getElementById('client-details-table');
+	old_clientDetailTable.parentNode.replaceChild(new_clientDetailsTable, old_clientDetailTable);
 }
+
+
 
 
 
 function unselectAllClients()
 {
-	let clientTable = document.getElementById('client-table');
-	let rows = clientTable.rows;
-
-	for (let i = 0; i < rows.length; i++)
+	cardStack = document.getElementById('detail-stack');
+	while (cardStack.firstChild)
 	{
-		rows[i].classList.remove("table-active");
+		cardStack.firstChild.remove();
 	}
-
-	// Clear memory of detailed
-	// event info for selected client
-	cookies       = [];
-	localStores   = [];
-	sessionStores = [];
-	urlsVisited   = [];
-	htmlCode      = [];
-	screenshots   = [];
-	userInputs    = [];
-
 }
 
 

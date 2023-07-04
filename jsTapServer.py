@@ -747,7 +747,9 @@ def getClientCookies(key):
 @app.route('/api/clientLocalStorage/<key>', methods=['GET'])
 @login_required
 def getClientLocalStorage(key):
+    print("**** Fetching client local storage...")
     localStorage = LocalStorage.query.filter_by(id=key).first()
+    print("Sending back: " + localStorage.key + ":" + localStorage.value)
     
     localStorageData = {'localStorageKey':localStorage.key, 'localStorageValue':localStorage.value}
     
