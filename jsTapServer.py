@@ -1,5 +1,5 @@
 #!usr/bin/env python
-from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for, send_from_directory
+from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for, send_from_directory, escape
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
@@ -707,7 +707,7 @@ def getClientScreenshots(key):
 def getClientHtml(key):
     htmlCode = HtmlCode.query.filter_by(id=key).first()
 
-    htmlData = {'url':htmlCode.url, 'code':htmlCode.code}
+    htmlData = {'url':htmlCode.url, 'code':escape(htmlCode.code)}
     
 
     return jsonify(htmlData)

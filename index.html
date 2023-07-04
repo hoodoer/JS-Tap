@@ -4,6 +4,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>JS-Tap</title>
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
+	<link rel="stylesheet" href="static/prism.css" data-noprefix />
 
 <!-- 	<style>
 		[class*="col"] {
@@ -32,6 +33,7 @@
 	<script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
 	<!-- <script src="static/node_modules/bootstrap-table/dist/bootstrap-table.min.js"></script> -->
 	<script src="static/main.js"></script>
+	<script src="static/prism.js"></script>
 
 
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -80,53 +82,39 @@
 							</tr>
 						</thead>
 						<tbody id="client-table">
-<!-- 						Use dynamic generation
--->						</tbody>
+<!-- 						Use dynamic generation -->
+					</tbody>
 </table>
 </div>
 
-<!-- Below is working basic table -->
-<!-- <div class="col-5">
-	<table class="table table-bordered" id="details-table">
-		<thead>
-			<tr>
-				<th data-field="timestamp">
-					<span class="text">Event Time</span>
-				</th>
-				<th data-field="event">
-					<span class="text">Event</span>
-				</th>
-				<th data-field="Stuff">
-					<span class="text">Details</span>
-				</th>
-			</tr>
-		</thead>
-		<tbody id="client-details-table">
-
-		</tbody>
-	</table>
 
 
-</div>
-</div>
- -->
-
-
-<!-- Test with stacks/cards -->
+<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
 <div class="col-7">
 <div class="card-stack" id="detail-stack">
-<!-- 	<div class="card">
-		<h5 class="card-title">URL Visited</h5>
-		<h6 class="card-subtitle mb-2 text-muted">Timestamp</h6>
-		<p class="card-text">https://somewhere.com</p>
-	</div>
-	<div class="bg-light border">First item</div>
- 	<div class="bg-light border">Second item</div>
- 	<div class="bg-light border">Third item</div>
- --></div>
+</div>
 </div>
 
 
+</div>
+
+
+<!-- HTML Code Viewer Modal -->
+<div class="modal fade" id="codeModal" tabindex="-1" aria-labelledby="modalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="htmlCodeModal">HTML Code Viewer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="code-viewer-body">
+        ...
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 </body>

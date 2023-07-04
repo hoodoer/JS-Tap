@@ -115,7 +115,13 @@ function humanized_time_span(date, ref_date, date_formats, time_units) {
 //  Back to my code
 
 
+var scrapedHtmlCode = "";
 
+
+function showHtmlCode()
+{
+	console.log("$$$$$ in show code with: " + scrapedHtmlCode);
+}
 
 
 
@@ -197,15 +203,21 @@ async function getClientDetails(id)
 			urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
 			urlVisitedJson = await urlVisitedReq.json();
 
-			cardTitle.innerHTML = "URL Visited";
+			cardTitle.innerHTML = "<b>URL Visited</b>";
 			cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
 			break;
 
 		case 'HTML':
-			console.log("HTML...");
-			cardTitle.innerHTML = "HTML Code Scraped";
+			htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
+			htmlScrapeJson = await htmlScrapeReq.json();
+			// code = btoa(htmlScrapeJson.code);
+			// console.log("******* Got HTML code: " + htmlScrapeJson.code)
+			scrapedHtmlCode = htmlScrapeJson.code;
 
-
+			cardTitle.innerHTML = "HTML Scraped";
+			cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br>";
+			// cardText.innerHTML += '<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#codeModal">View Code</button>';
+			cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
 			break;
 
 		case 'SCREENSHOT':
@@ -213,7 +225,7 @@ async function getClientDetails(id)
 			screenshotJson = await screenshotReq.json();
 
 			cardTitle.innerHTML = "Screenshot Captured";
-			cardText.innerHTML  = '<img src="' + screenshotJson.fileName + '" class="img-thumbnail">';
+			cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
 			break;
 
 		case 'USERINPUT':
