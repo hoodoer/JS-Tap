@@ -120,7 +120,12 @@ var scrapedHtmlCode = "";
 
 function showHtmlCode()
 {
-	console.log("$$$$$ in show code with: " + scrapedHtmlCode);
+	cleanCode = Prism.highlight(scrapedHtmlCode, Prism.languages.html);
+	modalContent = document.getElementById("code-viewer-body");
+	modalContent.innerHTML = cleanCode;
+
+	var modal = new bootstrap.Modal(document.getElementById('codeModal'));
+  modal.show();
 }
 
 
@@ -210,13 +215,12 @@ async function getClientDetails(id)
 		case 'HTML':
 			htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
 			htmlScrapeJson = await htmlScrapeReq.json();
-			// code = btoa(htmlScrapeJson.code);
-			// console.log("******* Got HTML code: " + htmlScrapeJson.code)
+
+			// Dump it in a variable. So many issues trying to pass this code in generated HTML lol
 			scrapedHtmlCode = htmlScrapeJson.code;
 
 			cardTitle.innerHTML = "HTML Scraped";
-			cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br>";
-			// cardText.innerHTML += '<button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#codeModal">View Code</button>';
+			cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
 			cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
 			break;
 

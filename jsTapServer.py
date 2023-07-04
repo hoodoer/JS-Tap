@@ -707,7 +707,8 @@ def getClientScreenshots(key):
 def getClientHtml(key):
     htmlCode = HtmlCode.query.filter_by(id=key).first()
 
-    htmlData = {'url':htmlCode.url, 'code':escape(htmlCode.code)}
+    # htmlData = {'url':htmlCode.url, 'code':escape(htmlCode.code)}
+    htmlData = {'url':htmlCode.url, 'code':htmlCode.code}
     
 
     return jsonify(htmlData)
