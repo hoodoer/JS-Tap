@@ -7,6 +7,7 @@ from sqlalchemy_utils import database_exists
 from flask_login import LoginManager, login_user, logout_user, UserMixin, login_required, current_user
 from flask_bcrypt import Bcrypt
 from enum import Enum
+import magic
 import json
 import os
 import time
@@ -25,6 +26,7 @@ baseDir = os.path.abspath(os.path.dirname(__file__))
 app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'jsTap.db')
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config['SECRET_KEY'] = 'b4CtXzlMp9tsATa3i7jgNiB10eiJbrQG'
+# app.config['SECRET_KEY'] = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=45))
 app.config['SESSION_COOKIE_SECURE'] = True
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -434,6 +436,13 @@ def recordScreenshot(identifier):
     #print("Looking up loot dir...")
     lootDir = findLootDirectory(identifier)
     image = request.data
+    file_type = magic.from_buffer(image, mime=True)
+
+    # Make sure the html2canvas screenshot is 
+    # what we're expecting. Definitely don't want SVGs
+    if file_type != 'image/png':
+        # Shenanigans from the 'client' are afoot
+        return "No.", 401
 
     if identifier in SessionImages.keys():
         imageNumber = SessionImages[identifier]

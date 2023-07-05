@@ -16,6 +16,7 @@ flask-sqlalchemy
 sqlalchemy-utils
 flask-login
 flask-bcrypt
+python-magic
 
 
 Generator ones:
