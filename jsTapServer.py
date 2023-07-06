@@ -676,7 +676,7 @@ def getClients():
     clients = Client.query.all()
 
     allClients = [{'id':escape(client.id), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
-        'firstSeen':escape(client.firstSeen), 'lastSeen':escape(client.lastSeen)} for client in clients]
+        'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen} for client in clients]
 
     return jsonify(allClients)
 
@@ -692,7 +692,7 @@ def getClientEvents(id):
 
     events = Event.query.filter_by(clientID=clientName)
 
-    eventData = [{'id':escape(event.id), 'timeStamp':escape(event.timeStamp), 
+    eventData = [{'id':escape(event.id), 'timeStamp':event.timeStamp, 
         'eventType':escape(event.eventType), 'eventID':escape(event.eventID)} for event in events]
 
     return jsonify(eventData)

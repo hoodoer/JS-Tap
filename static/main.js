@@ -118,6 +118,9 @@ function humanized_time_span(date, ref_date, date_formats, time_units) {
 var scrapedHtmlCode = "";
 
 
+
+
+
 function showHtmlCode()
 {
 	cleanCode = Prism.highlight(scrapedHtmlCode, Prism.languages.html);
@@ -126,6 +129,15 @@ function showHtmlCode()
 
 	var modal = new bootstrap.Modal(document.getElementById('codeModal'));
   modal.show();
+}
+
+
+
+
+function showAboutModal()
+{
+	var modal = new bootstrap.Modal(document.getElementById("aboutModal"));
+	modal.show();
 }
 
 
@@ -161,7 +173,19 @@ async function getClientDetails(id)
 		cardTitle.className = "card-title";
 
 		var cardSubtitle = document.createElement('h6');
+
+		// Add tooltip
 		cardSubtitle.className = "card-subtitle mb-2 text-muted";
+		cardSubtitle.setAttribute("data-toggle", "tooltip")
+		cardSubtitle.setAttribute("title", event.timeStamp);
+		cardSubtitle.setAttribute("data-placement", "left");
+		const tooltipOptions = {
+    	animation: true, // Optional: Enable tooltip animation
+      delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
+      container: cardSubtitle // Optional: Specify a container for the tooltip
+		};
+		new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
+
 
 		var cardText = document.createElement('p');
 		cardText.className = 'card-text';
@@ -185,8 +209,8 @@ async function getClientDetails(id)
 			localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
 			localStorageJson = await localStorageReq.json();
 
-			console.log("*** Local storage api call received: ");
-			console.log(JSON.stringify(localStorageJson));
+			// console.log("*** Local storage api call received: ");
+			// console.log(JSON.stringify(localStorageJson));
 
 			cardTitle.innerHTML = "Local Storage";
 			cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
@@ -256,10 +280,6 @@ async function getClientDetails(id)
 
 		cardStack.appendChild(card);
 	}
-
-
-	var old_clientDetailTable = document.getElementById('client-details-table');
-	old_clientDetailTable.parentNode.replaceChild(new_clientDetailsTable, old_clientDetailTable);
 }
 
 

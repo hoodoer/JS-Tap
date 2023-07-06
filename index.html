@@ -37,7 +37,7 @@
 
 
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-		<a class="navbar-brand" href="#"><img src="static/reportSplash.png" width="140" height="100" class="d-inline-block align-center" alt="">   JS-Tap</a>
+		<a class="navbar-brand" href="#"><img src="static/logo.png" width="140" height="100" class="d-inline-block align-center" alt="">     JS-Tap</a>
 
 		<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
 			<span class="navbar-toggler-icon"></span>
@@ -46,13 +46,21 @@
 		<div class="collapse navbar-collapse" id="navbarSupportedContent">
 			<ul class="navbar-nav mr-auto">
 
-				<li class="nav-item">
+<!-- 				<li class="nav-item">
 					<a class="nav-link" href="#settings">Settings</a>
 				</li>
-
+ -->
 				<li class="nav-item">
-					<a class="nav-link" href="#about">About</a>
+					<a class="nav-link" href="#about" id="aboutLink">About</a>
 				</li>
+
+				<script>
+					navAboutLink = document.getElementById("aboutLink");
+					navAboutLink.addEventListener("click", function(event){
+						event.preventDefault();
+						showAboutModal();
+					});
+				</script>
 
 				<li class="nav-item">
 					<a class="nav-link" href="/logout">Logout</a
@@ -109,6 +117,31 @@
       </div>
       <div class="modal-body" id="code-viewer-body">
         ...
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- About Modal -->
+<div class="modal fade modal-lg" id="aboutModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="aboutTitle">About JS-Tap</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="code-viewer-body">
+        This tool is designed to help red teamers recon web applications using XSS payloads or post exploitation implants. <br><br>
+        This tool is intended to be used on systems you are authorized to attack.
+				Do not use this tool for illegal purposes, or I will be very grumpy in your general direction. <br><br>
+
+				https://github.com/hoodoer/JS-Tap<br>
+				@hoodoer<br>
+				drew.kirkpatrick@trustedsec.com
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
