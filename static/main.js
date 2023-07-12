@@ -165,9 +165,6 @@ async function getClientDetails(id)
 	var req = await fetch('/api/clientEvents/' + id);
 	var jsonResponse = await req.json();
 
-	// var new_clientDetailsTable = document.createElement('tbody');
-	// new_clientDetailsTable.setAttribute("id", "client-details-table");
-
 	// Start setting up our cards
 	var cardStack = document.getElementById('detail-stack');
 
@@ -304,66 +301,113 @@ async function getClientDetails(id)
 
 function unselectAllClients()
 {
-	cardStack = document.getElementById('detail-stack');
-	while (cardStack.firstChild)
+	// Remove detail cards
+	detailCardStack = document.getElementById('detail-stack');
+	while (detailCardStack.firstChild)
 	{
-		cardStack.firstChild.remove();
+		detailCardStack.firstChild.remove();
+	}
+
+	// Unselect client cards
+	clientCardStack = document.getElementById('client-stack');
+	var cards = clientCardStack.querySelectorAll('.card');
+	for (let i = 0; i < cards.length; i++)
+	{
+		cards[i].classList.remove("table-active");
 	}
 }
 
 
 
-function updateClients()
+
+async function updateClients()
 {
-	var req = new XMLHttpRequest();
-	req.responseType = 'json';
-	req.open('GET', "/api/getClients", true);
-	req.onload  = function() {
-		var jsonResponse = req.response;
+	// Get client info
+	var req = await fetch('/api/getClients');
+	var jsonResponse = await req.json();
 
-		var new_clientTable = document.createElement('tbody');
-		new_clientTable.setAttribute("id", "client-table");
+	// Start setting up the client cards
+	var cardStack = document.getElementById('client-stack');
 
-		for (let i = 0; i < jsonResponse.length; i++)
+	// First clear out our existing cards
+		while (cardStack.firstChild)
+	{
+		cardStack.firstChild.remove();
+	}
+
+
+	// let's layout our clients
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		client = jsonResponse[i];
+
+		var card = document.createElement('div');
+		card.className = 'card';
+		card.setAttribute("clientIndex", client.id);
+		card.setAttribute("id", "clientCard" + client.id);
+
+		// On refresh, see if we were the previously
+		// selected client and re-select
+
+		// console.log("Selected ID: " + selectedClientId + ", current client id: " + client.id);
+		if (client.id == selectedClientId)
 		{
-			var row = new_clientTable.insertRow(-1);
-			var cell1 = row.insertCell(0);
-			var cell2 = row.insertCell(1);
-			var cell3 = row.insertCell(2);   
-
-			cell1.innerHTML = jsonResponse[i].id;
-			cell2.innerHTML = jsonResponse[i].nickname;
-			cell3.innerHTML = humanized_time_span(jsonResponse[i].lastSeen);
-
-		   // Keep the selected client selected on refresh
-			if (jsonResponse[i].id == selectedClientId)
-			{
-				row.classList.add("table-active");
-			}
+				card.classList.add("table-active");
 		}
 
-		var old_clientTable = document.getElementById('client-table');
-		old_clientTable.parentNode.replaceChild(new_clientTable, old_clientTable);
+
+		var cardBody = document.createElement('div');
+		cardBody.className = 'card-body';
+
+		var cardTitle = document.createElement('h5');
+		cardTitle.className = "card-title";
+
+		var cardSubtitle = document.createElement('h6');
+
+		// Add tooltip
+		cardSubtitle.className = "card-subtitle mb-2 text-muted";
+		cardSubtitle.setAttribute("data-toggle", "tooltip")
+		cardSubtitle.setAttribute("title", "Last Seen: " + client.lastSeen);
+		cardSubtitle.setAttribute("data-placement", "left");
+		const tooltipOptions = {
+    	animation: true, // Optional: Enable tooltip animation
+      delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
+      container: cardSubtitle // Optional: Specify a container for the tooltip
+		};
+		new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
 
 
-	   	// Add click interaction
-		let clientTable = document.getElementById('client-table');
+		var cardText = document.createElement('p');
+		cardText.className = 'card-text';
 
-		let rows = clientTable.rows;
+		cardTitle.innerHTML = client.nickname;
+		cardText.innerHTML  = client.notes;
 
-		for (let i = 0; i < rows.length; i++)
-		{
-			// console.log("loop... " + i);
-			rows[i].addEventListener("click", function() {
-				unselectAllClients();
-				rows[i].classList.add("table-active");
-				selectedClientId = rows[i].cells[0].innerHTML;
-				getClientDetails(selectedClientId);
-			})
-		}
-	};
-	req.send(null);
+		cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "<br>";
+		cardSubtitle.innerHTML += "Last Seen: " + humanized_time_span(client.lastSeen);
+
+		cardBody.appendChild(cardTitle);
+		cardBody.appendChild(cardSubtitle);
+		cardBody.appendChild(cardText);
+
+		card.appendChild(cardBody);
+
+		card.onclick =  function(event) {
+			unselectAllClients();
+			clickedClient = this.getAttribute("clientIndex");
+			// console.log("$$ Name: " + this.getAttribute("clientIndex"));
+			// console.log("Selecting client index: " + client.id + ", name: " + client.nickname);
+			// event.stopPropagation();
+			// unselectAllClients();
+			this.classList.add("table-active");
+			selectedClientId = clickedClient;
+			getClientDetails(selectedClientId);
+		};
+
+		cardStack.appendChild(card);
+	}
 }
+
 
 
 

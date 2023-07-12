@@ -77,139 +77,111 @@
 				<li class="nav-item">
 					<a class="nav-link" href="/logout">&nbsp;Logout&nbsp;</a>				
 				</li>
-				</ul>
-			</div>
-		</nav>
+			</ul>
+		</div>
+	</nav>
 
 
 
-		<div class="container-fluid border">
+	<div class="container-fluid border">
+		<div class="row"> 
 
-
-
-			<!-- Old Row based client table -->
-			<div class="row">
-				<div class="col-4">
-					<table class="table table-bordered" id="table">
-						<thead>
-							<tr>
-								<th data-field="id">
-									<span class="text">ID</span>
-								</th>
-								<th data-field="nickname">
-									<span class="text">Client</span>
-								</th>
-								<th data-field="lastSeen">
-									<span class="text">Last Seen</span>
-								</th>
-
-							</tr>
-						</thead>
-						<tbody id="client-table">
-						</tbody>
-					</table>
+			<!-- Client Card Stack -->
+			<div class="col-4">
+				<div class="card-stack" id="client-stack">
 				</div>
-
-
-
-				<!-- Client Card Stack -->
-<!-- 				<div class="col-4">
-					<div class="card-stack" id="client-stack">
-					</div>
-				</div>
- -->
-
-
-
-				<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
-				<div class="col-8">
-					<div class="card-stack" id="detail-stack">
-					</div>
-				</div>
-
-
 			</div>
 
-
-			<!-- HTML Code Viewer Modal -->
-			<div class="modal fade modal-xl" id="codeModal" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h5 class="modal-title" id="htmlCodeModal">HTML Code Viewer</h5>
-							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-						</div>
-						<div class="modal-body" id="code-viewer-body">
-							...
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-						</div>
-					</div>
+			<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
+			<div class="col-8">
+				<div class="card-stack" id="detail-stack">
 				</div>
 			</div>
 
 
+		</div>
 
+		<!-- Modals below -->
 
-			<!-- About Modal -->
-			<div class="modal fade modal-lg" id="aboutModal" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h5 class="modal-title" id="aboutTitle">About JS-Tap</h5>
-							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-						</div>
-						<div class="modal-body" id="code-viewer-body">
-							This tool is designed to help red teamers recon web applications using XSS payloads or post exploitation implants. <br><br>
-							This tool is intended to be used on systems you are authorized to attack.
-							Do not use this tool for illegal purposes, or I will be very grumpy in your general direction. <br><br>
-
-							<a href="https://github.com/hoodoer/JS-Tap" target="_blank">https://github.com/hoodoer/JS-Tap</a><br><br><br>
-
-							Contact:<br>
-							<a href="https://twitter.com/hoodoer" target="_blank">@hoodoer</a><br>
-							<a href="mailto:hoodoer@bitwisemunitions.dev" target="_blank">hoodoer@bitwisemunitions.dev</a>
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-						</div>
+		<!-- HTML Code Viewer Modal -->
+		<div class="modal fade modal-xl" id="codeModal" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="htmlCodeModal">HTML Code Viewer</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body" id="code-viewer-body">
+						...
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 					</div>
 				</div>
 			</div>
+		</div>
 
 
 
 
-			<!-- Guide Modal -->
-			<div class="modal fade modal-lg" id="guideModal" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h5 class="modal-title" id="guideTitle">JS-Tap Guide</h5>
-							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-						</div>
-						<div class="modal-body" id="guide-body">
-							There are a few settings in the JS-Tap payload that need to be set prior<br>
-							to your engagement. The primary JavaScript payload is contained in <b>telemlib.js.</b><br><br>
-							JS-Tap has two modes of operation, Trap mode and Implant mode.<br>
-							Trap mode is what you use as an XSS payload, and it uses<br>
-							an iFrame trap as a method of persisting the execution of the payload.<br><br>
-							Implant mode does not use this persistence method, and assumes the <br>
-							payload has been directly added to the JavaScript files of the application<br>
-							by the red team. <br><br>	
-							In the <b>initGlobals()</b> function you need to set the start page of the iFrame trap<br>
-							and the jsTapServer hostname/port. 
+		<!-- About Modal -->
+		<div class="modal fade modal-lg" id="aboutModal" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="aboutTitle">About JS-Tap</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body" id="code-viewer-body">
+						This tool is designed to help red teamers recon web applications using XSS payloads or post exploitation implants. <br><br>
+						This tool is intended to be used on systems you are authorized to attack.
+						Do not use this tool for illegal purposes, or I will be very grumpy in your general direction. <br><br>
 
+						<a href="https://github.com/hoodoer/JS-Tap" target="_blank">https://github.com/hoodoer/JS-Tap</a><br><br><br>
 
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-						</div>
+						Contact:<br>
+						<a href="https://twitter.com/hoodoer" target="_blank">@hoodoer</a><br>
+						<a href="mailto:hoodoer@bitwisemunitions.dev" target="_blank">hoodoer@bitwisemunitions.dev</a>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 					</div>
 				</div>
 			</div>
+		</div>
 
 
-		</body>
-		</html>
+
+
+		<!-- Guide Modal -->
+		<div class="modal fade modal-lg" id="guideModal" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="guideTitle">JS-Tap Guide</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body" id="guide-body">
+						There are a few settings in the JS-Tap payload that need to be set prior<br>
+						to your engagement. The primary JavaScript payload is contained in <b>telemlib.js.</b><br><br>
+						JS-Tap has two modes of operation, Trap mode and Implant mode.<br>
+						Trap mode is what you use as an XSS payload, and it uses<br>
+						an iFrame trap as a method of persisting the execution of the payload.<br><br>
+						Implant mode does not use this persistence method, and assumes the <br>
+						payload has been directly added to the JavaScript files of the application<br>
+						by the red team. <br><br>	
+						In the <b>initGlobals()</b> function you need to set the start page of the iFrame trap<br>
+						and the jsTapServer hostname/port. 
+
+
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+
+	</body>
+	</html>
