@@ -165,8 +165,8 @@ async function getClientDetails(id)
 	var req = await fetch('/api/clientEvents/' + id);
 	var jsonResponse = await req.json();
 
-	var new_clientDetailsTable = document.createElement('tbody');
-	new_clientDetailsTable.setAttribute("id", "client-details-table");
+	// var new_clientDetailsTable = document.createElement('tbody');
+	// new_clientDetailsTable.setAttribute("id", "client-details-table");
 
 	// Start setting up our cards
 	var cardStack = document.getElementById('detail-stack');
@@ -310,6 +310,7 @@ function unselectAllClients()
 		cardStack.firstChild.remove();
 	}
 }
+
 
 
 function updateClients()
