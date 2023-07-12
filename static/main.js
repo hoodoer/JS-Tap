@@ -246,6 +246,7 @@ async function getClientDetails(id)
 			cardTitle.innerHTML = "HTML Scraped";
 			cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
 			cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
+			cardText.innerHTML += '&nbsp;&nbsp;&nbsp;<a href="'  + htmlScrapeJson.fileName + '" target="_blank">HTML Code Download</a>'
 			break;
 
 		case 'SCREENSHOT':
