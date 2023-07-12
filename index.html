@@ -50,10 +50,10 @@
 		<div class="collapse navbar-collapse" id="navbarSupportedContent">
 			<ul class="navbar-nav mr-auto">
 
-<!-- 				<li class="nav-item">
-					<a class="nav-link" href="#settings">Settings</a>
+				<li class="nav-item">
+					<a class="nav-link" href="#guide" id="guideLink">Guide</a>
 				</li>
- -->
+
 				<li class="nav-item">
 					<a class="nav-link" href="#about" id="aboutLink">About</a>
 				</li>
@@ -64,6 +64,13 @@
 						event.preventDefault();
 						showAboutModal();
 					});
+
+					navGuideLink = document.getElementById("guideLink");
+					navGuideLink.addEventListener("click", function(event){
+						event.preventDefault();
+						showGuideModal();
+					});
+
 				</script>
 
 				<li class="nav-item">
@@ -155,6 +162,37 @@
     </div>
   </div>
 </div>
+
+
+<!-- Guide Modal -->
+<div class="modal fade modal-lg" id="guideModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="guideTitle">JS-Tap Guide</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="guide-body">
+      	There are a few settings in the JS-Tap payload that need to be set prior<br>
+      	to your engagement. The primary JavaScript payload is contained in <b>telemlib.js.</b><br><br>
+      	JS-Tap has two modes of operation, Trap mode and Implant mode.<br>
+      	Trap mode is what you use as an XSS payload, and it uses<br>
+      	an iFrame trap as a method of persisting the execution of the payload.<br><br>
+      	Implant mode does not use this persistence method, and assumes the <br>
+      	payload has been directly added to the JavaScript files of the application<br>
+      	by the red team. <br><br>	
+      	In the <b>initGlobals()</b> function you need to set the start page of the iFrame trap<br>
+      	and the jsTapServer hostname/port. 
+
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 </body>
 </html>

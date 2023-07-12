@@ -142,6 +142,15 @@ function showAboutModal()
 
 
 
+function showGuideModal()
+{
+	var modal = new bootstrap.Modal(document.getElementById("guideModal"));
+	modal.show();
+}
+
+
+
+
 async function getClientDetails(id) 
 {
 	console.log("** Fetching details for client: " + id);
