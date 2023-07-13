@@ -17,6 +17,10 @@ sqlalchemy-utils
 flask-login
 flask-bcrypt
 python-magic
+pyyaml
+ua-parser
+user-agents
+
 
 
 Generator ones:

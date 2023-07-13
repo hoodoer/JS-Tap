@@ -140,6 +140,12 @@ function downloadHtmlCode(fileName)
 
 
 
+function showNoteEditor(notes)
+{
+
+}
+
+
 function showAboutModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("aboutModal"));
@@ -380,11 +386,27 @@ async function updateClients()
 		var cardText = document.createElement('p');
 		cardText.className = 'card-text';
 
-		cardTitle.innerHTML = client.nickname;
-		cardText.innerHTML  = client.notes;
+		cardTitle.innerHTML = "<u>" + client.nickname + "</u>";
 
-		cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "<br>";
-		cardSubtitle.innerHTML += "Last Seen: " + humanized_time_span(client.lastSeen);
+
+
+		cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b><br>";
+		//What to do about client notes?
+		if (client.notes.length > 0)
+		{
+			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.notes + `'`+ ')>Edit Notes</button>';
+		}
+		else
+		{
+			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.notes + `'`+ ')>Add Notes</button>';
+		}
+
+		cardText.innerHTML += "Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
+		cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
+
+		cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
+		cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
+
 
 		cardBody.appendChild(cardTitle);
 		cardBody.appendChild(cardSubtitle);
@@ -395,10 +417,6 @@ async function updateClients()
 		card.onclick =  function(event) {
 			unselectAllClients();
 			clickedClient = this.getAttribute("clientIndex");
-			// console.log("$$ Name: " + this.getAttribute("clientIndex"));
-			// console.log("Selecting client index: " + client.id + ", name: " + client.nickname);
-			// event.stopPropagation();
-			// unselectAllClients();
 			this.classList.add("table-active");
 			selectedClientId = clickedClient;
 			getClientDetails(selectedClientId);
@@ -412,6 +430,6 @@ async function updateClients()
 
 
 // Every 2 seconds...
-setInterval(updateClients, 2000);
+setInterval(updateClients, 5000);
 
 updateClients();
