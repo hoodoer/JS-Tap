@@ -140,9 +140,15 @@ function downloadHtmlCode(fileName)
 
 
 
-function showNoteEditor(notes)
+function showNoteEditor(client, notes)
 {
+	var modal = new bootstrap.Modal(document.getElementById("noteEditorModal"));
+	var noteTitle  = document.getElementById('note-editor-title');
+	var noteEditor = document.getElementById('note-editor');
 
+	noteTitle.innerHTML = '<u>' + client + '</u> notes:';
+	noteEditor.value = notes;
+	modal.show();
 }
 
 
@@ -394,11 +400,11 @@ async function updateClients()
 		//What to do about client notes?
 		if (client.notes.length > 0)
 		{
-			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.notes + `'`+ ')>Edit Notes</button>';
+			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.nickname + `','` + client.notes + `'`+ ')>Edit Notes</button>';
 		}
 		else
 		{
-			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.notes + `'`+ ')>Add Notes</button>';
+			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.nickname + `','` + client.notes + `'`+ ')>Add Notes</button>';
 		}
 
 		cardText.innerHTML += "Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
