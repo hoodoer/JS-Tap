@@ -20,6 +20,7 @@ python-magic
 pyyaml
 ua-parser
 user-agents
+pyopenssl
 
 
 
