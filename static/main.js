@@ -284,7 +284,7 @@ async function getClientDetails(id)
     	urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
     	urlVisitedJson = await urlVisitedReq.json();
 
-    	cardTitle.innerHTML = "<b>URL Visited</b>";
+    	cardTitle.innerHTML = "<u>URL Visited</u>";
     	cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
     	break;
 

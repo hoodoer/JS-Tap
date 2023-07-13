@@ -30,7 +30,9 @@ app.config['SECRET_KEY'] = 'b4CtXzlMp9tsATa3i7jgNiB10eiJbrQG'
 # app.config['SECRET_KEY'] = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=45))
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
-app.view_functions['static'] = login_required(app.send_static_file)
+
+# This breaks the login page, not authenticated yet!
+# app.view_functions['static'] = login_required(app.send_static_file)
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -70,7 +72,8 @@ def printHeader():
                                       ▐█.▪▄█▀▀█  ██▀·  
                                       ▐█▌·▐█ ▪▐▌▐█▪·•  
                                       ▀▀▀  ▀  ▀ .▀   
-                                    by ＠ｈｏｏｄｏｅｒ
+                                       𝚋𝚢 @𝚑𝚘𝚘𝚍𝚘𝚎𝚛
+                               𝚑𝚘𝚘𝚍𝚘𝚎𝚛@𝚋𝚒𝚝𝚠𝚒𝚜𝚎𝚖𝚞𝚗𝚒𝚝𝚒𝚘𝚗𝚜.𝚍𝚎𝚟
         """)
 
 
