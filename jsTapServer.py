@@ -94,7 +94,7 @@ logFileName = "sessionLog.txt"
 class Client(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
     nickname  = db.Column(db.String(100), unique=True, nullable=False)
-    notes     = db.Column(db.Text)
+    notes     = db.Column(db.Text, nullable=True)
     firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
     lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
     ipAddress = db.Column(db.String(20), nullable=True)
@@ -257,7 +257,7 @@ def findLootDirectory(identifier):
         print("New session for client: " + identifier)
 
         # Database Entry
-        newClient = Client(nickname=identifier, notes='testNote')
+        newClient = Client(nickname=identifier, notes="")
         db.session.add(newClient)
         db.session.commit()
 
@@ -826,6 +826,25 @@ def getClientSesssionStorage(key):
     
 
     return jsonify(sessionStorageData)
+
+
+@app.route('/api/updateClientNotes/<key>', methods=['POST'])
+@login_required
+def setClientNotes(key):
+    content = request.json 
+    newNote    = content['note']
+
+    client = Client.query.filter_by(id=key).first()
+    nickname = client.nickname
+
+    print("----- Client note update: " + key);
+    print("----- Nickname: " + nickname)
+    print("---------" + newNote)
+
+    client.notes = newNote;
+    dbCommit()
+
+    return "ok", 200
 
 
 #**************************************************************************
