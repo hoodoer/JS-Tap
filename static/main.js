@@ -319,6 +319,35 @@ async function getClientDetails(id)
     	cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
     	break;
 
+
+    	case 'XHROPEN':
+    		xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
+    		xhrOpenJson = await xhrOpenReq.json();
+
+    		cardTitle.innerHTML = "API - XHR Open";
+    		cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
+      	cardText.innerHTML += "<br>";
+     		cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
+    		break;
+
+    	case 'XHRSETHEADER':
+    		xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
+    		xhrHeaderJson = await xhrHeaderReq.json();
+
+    		cardTitle.innerHTML = "API - XHR Set Header";
+    		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
+      	cardText.innerHTML += "<br>";
+     		cardText.innerHTML += "Method: <b>" + xhrHeaderJson.value + "</b>";
+    		break;
+
+    	case 'XHRCALL':
+    		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
+    		xhrCallJson = await xhrCallReq.json();
+
+    		cardTitle.innerHTML = "API - XHR Call";
+    		cardText.innerHTML  = "Something something";
+    		break;
+
     default:
     	alert('!!!!Switch default-No good');
     }

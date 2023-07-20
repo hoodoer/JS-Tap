@@ -191,6 +191,39 @@ class SessionStorage(db.Model):
         return f'<Client {self.id}>'
 
 
+class XhrOpen(db.Model):
+    id        = db.Column(db.Integer, primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    method    = db.Column(db.String(100), nullable=False)
+    url       = db.Column(db.String(300), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class XhrSetHeader(db.Model):
+    id        = db.Column(db.Integer, primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    header    = db.Column(db.String(100), nullable=False)
+    value     = db.Column(db.String(300), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class XhrCall(db.Model):
+    id           = db.Column(db.Integer, primary_key=True)
+    clientID     = db.Column(db.String(100), nullable=False)
+    requestBody  = db.Column(db.String(100), nullable=False)
+    responseBody = db.Column(db.String(300), nullable=False)
+    timeStamp    = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
 class Event(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
@@ -704,6 +737,86 @@ def recordSessionStorageEntry(identifier):
 
 
 
+
+# Record XHR API Open calls
+@app.route('/loot/xhrOpen/<identifier>', methods=['POST'])
+def recordXhrOpen(identifier):
+    print("## Recording XHR open event")
+    content = request.json 
+    method  = content['method']
+    url     = content['url']
+    logEvent(identifier, "XHR Open: " + method + ", " + url)
+
+    # Put it in the database
+    newXhrOpen = XhrOpen(clientID=identifier, method=method, url=url)
+    db.session.add(newXhrOpen)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db.session.refresh(newXhrOpen)
+    newEvent = Event(clientID=identifier, timeStamp=newXhrOpen.timeStamp, 
+    eventType='XHROPEN', eventID=newXhrOpen.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
+
+
+
+# Record XHR API Header calls
+@app.route('/loot/xhrSetHeader/<identifier>', methods=['POST'])
+def recordXhrHeader(identifier):
+    print("## Recording XHR Header event")
+    content = request.json 
+    header  = content['header']
+    value   = content['value']
+    logEvent(identifier, "XHR Set Header: " + header + ", " + value)
+
+    # Put it in the database
+    newXhrHeader = XhrSetHeader(clientID=identifier, header=header, value=value)
+    db.session.add(newXhrHeader)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db.session.refresh(newXhrHeader)
+    newEvent = Event(clientID=identifier, timeStamp=newXhrHeader.timeStamp, 
+    eventType='XHRSETHEADER', eventID=newXhrHeader.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
+
+
+
+# Record XHR API calls
+@app.route('/loot/xhrCall/<identifier>', methods=['POST'])
+def recordXhrCall(identifier):
+    print("## Recording XHR api call")
+    content      = request.json 
+    requestBody  = content['requestBody']
+    responseBody = content['responseBody']
+    logEvent(identifier, "XHR API Call: " + requestBody + ", " + responseBody)
+
+    # Put it in the database
+    newXhrCall = XhrCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
+    db.session.add(newXhrCall)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db.session.refresh(newXhrCall)
+    newEvent = Event(clientID=identifier, timeStamp=newXhrCall.timeStamp, 
+    eventType='XHRCALL', eventID=newXhrCall.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
+
+
+
+
 #***************************************************************************
 # UI API Endpoints
 
@@ -831,6 +944,41 @@ def getClientSesssionStorage(key):
     return jsonify(sessionStorageData)
 
 
+@app.route('/api/clientXhrOpen/<key>', methods=['GET'])
+@login_required
+def getClientXhrOpen(key):
+    print("**** Fetching client xhr api open call...")
+    xhrOpen = XhrOpen.query.filter_by(id=key).first()
+
+    xhrOpenData = {'method':escape(xhrOpen.method), 'url':escape(xhrOpen.url)}
+
+    return jsonify(xhrOpenData)
+ 
+ 
+@app.route('/api/clientXhrSetHeader/<key>', methods=['GET'])
+@login_required
+def getClientXhrSetHeader(key):
+    print("**** Fetching client xhr api set header call...")
+    xhrSetHeader = XhrSetHeader.query.filter_by(id=key).first()
+
+    xhrHeaderData = {'header':escape(xhrSetHeader.header), 'value':escape(xhrSetHeader.value)}
+
+    return jsonify(xhrHeaderData)
+
+
+
+@app.route('/api/clientXhrCall/<key>', methods=['GET'])
+@login_required
+def getClientXhrCall(key):
+    print("**** Fetching client xhr api call...")
+    xhrCall = XhrCall.query.filter_by(id=key).first()
+
+    xhrCallData = {'requestBody':xhrCall.requestBody, 'responseBody':xhrCall.responseBody}
+
+    return jsonify(xhrCallData)
+
+
+
 @app.route('/api/updateClientNotes/<key>', methods=['POST'])
 @login_required
 def setClientNotes(key):
@@ -913,6 +1061,10 @@ if __name__ == '__main__':
                     Cookie.__table__.drop(db.engine)
                     LocalStorage.__table__.drop(db.engine)
                     SessionStorage.__table__.drop(db.engine)
+                    XhrOpen.__table__.drop(db.engine)
+                    XhrSetHeader.__table__.drop(db.engine)
+                    XhrCall.__table__.drop(db.engine)
+                    Event.__table__.drop(db.engine)
                     dbCommit()
 
                     db.create_all()

