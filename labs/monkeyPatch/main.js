@@ -137,4 +137,49 @@ function monkeyPatch()
 
 
 	// Fetch part
+
+	const originalFetch = window.fetch;
+
+	// Monkey patch all the fetch things
+	window.fetch = function (url, options)
+	{
+		console.log("Intercepted fetch: " + url, options);
+
+
+		console.log("Intercepted fetch request: " + options.method + ", " + url);
+
+		const headers = new Headers(options.headers);
+
+		headers.forEach((value, name) => 
+		{
+			console.log("Intercepted header = " + name + ":" + value);
+		});
+
+		return originalFetch.call(window, url, options).then((response) => 
+		{
+			// console.log("Intercepted fetch response: " + response.text());
+
+			const contentType = response.headers.get('content-type');
+
+
+			if (contentType && contentType.includes('application/json')) 
+			{
+       			// Parse the response as JSON and return the promise
+				return response.json();
+			} 
+			else 
+			{
+        		// Return the response as text
+				return response.text();
+			}
+		}).then((data) => 
+		{
+			console.log("Intercepted fetch response, phase 2: " + data);
+			return data;
+		}).catch((error) => 
+		{
+			console.error("Fetch error:" + error);
+			throw error;
+		});
+	};
 }
