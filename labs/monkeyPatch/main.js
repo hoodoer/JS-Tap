@@ -18,6 +18,8 @@ function xhrGetAnswer()
 	request.onload = function() {
 		var jsonResponse = request.response;
 
+		var status = request.status;
+
 		var answer = jsonResponse.answer;
 
 		// console.log("Get XHR answer: " + answer);
@@ -57,13 +59,17 @@ async function fetchGetAnswer()
 
 
 
-
+// ****************************************************************
 //  Payload simulated code below
-const originalOpen = XMLHttpRequest.prototype.open;
-const originalSend = XMLHttpRequest.prototype.send;
 
 function monkeyPatch()
 {
+
+	// XHR Part
+	const xhrOriginalOpen      = XMLHttpRequest.prototype.open;
+	const xhrOriginalSetHeader = XMLHttpRequest.prototype.setRequestHeader;
+	const xhrOriginalSend      = XMLHttpRequest.prototype.send;
+
 	console.log("!! Throwing monkey wrenches");
 
 
@@ -72,20 +78,63 @@ function monkeyPatch()
 	{
 		var method = arguments[0];
 		var url = arguments[1];
-		uri = url;
 
-		console.log(method);
-		console.log(url);
-		originalOpen.apply(this, arguments);;
+		console.log("Intercepted XHR open: " + method + ", " + url);
+		xhrOriginalOpen.apply(this, arguments);
 	}
 
+
+
+	// Monkey patch setRequestHeader
+	XMLHttpRequest.prototype.setRequestHeader = function (header, value)
+	{
+		var header = arguments[0];
+		var value  = arguments[1];
+
+		console.log("Intercepted Header = " + header + ": " + value);
+
+		xhrOriginalSetHeader.apply(this, arguments);
+	}
 
 
   	// Monkey patch send
 	XMLHttpRequest.prototype.send = function(data) 
 	{
-		console.log(data);
-		originalSend.apply(this, arguments);
+		console.log("Intercepted request body: " + data);
+
+
+		this.onreadystatechange = function()
+		{
+			if (this.readyState === 4)
+			{
+				var data;
+
+				if (!this.responseType || this.responseType === "text") 
+				{
+					data = this.responseText;
+				} 
+				else if (this.responseType === "document") 
+				{
+					data = this.responseXML;
+				} 
+				else if (this.responseType === "json") 
+				{
+					data = JSON.stringify(this.response);
+				} 
+				else 
+				{
+					data = xhr.response;
+				}
+
+				// var response = read_body(this);
+				console.log("Intercepted response: " + data);
+			}
+		};
+
+		xhrOriginalSend.apply(this, arguments);
 	}
 
+
+
+	// Fetch part
 }
