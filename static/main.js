@@ -293,7 +293,7 @@ async function getClientDetails(id)
     	htmlScrapeJson = await htmlScrapeReq.json();
 
 			// Dump it in a variable. So many issues trying to pass this code in generated HTML lol
-    	scrapedHtmlCode = atob(htmlScrapeJson.code);
+    	scrapedHtmlCode = htmlScrapeJson.code;
 
     	cardTitle.innerHTML = "HTML Scraped";
     	cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";

