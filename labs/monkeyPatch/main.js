@@ -4,11 +4,13 @@ function xhrGetAnswer()
 {
 	console.log("Sending XHR request...");
 
+	var authtoken = localStorage.getItem("Authorization");
+
 	request = new XMLHttpRequest();
 	request.open("POST", "/api/xhrAnswer");
 	request.responseType = "json";
 	request.setRequestHeader("Content-type", "application/json; charset=UTF-8");
-	request.setRequestHeader("Authorization", "ABCXYZSLEEVELESSINSEATTLEFTW");
+	request.setRequestHeader("Authorization", authtoken);
 
 	var jsonData = new Object();
 	jsonData["request"] = "answer";
@@ -35,6 +37,8 @@ async function fetchGetAnswer()
 {
 	// console.log("Sending Fetch request...");
 
+	var authtoken = localStorage.getItem("Authorization");
+
 	var req = await fetch('/api/fetchAnswer', {
 		method:"POST",
 		body: JSON.stringify({
@@ -42,7 +46,7 @@ async function fetchGetAnswer()
 		}),
 		headers: {
 			"Content-type": "application/json; charset=UTF-8",
-			"Authorization": "ABCXYZSLEEVELESSINSEATTLEFTW"
+			"Authorization": authtoken
 		}
 	});
 
@@ -191,3 +195,17 @@ function injectPayload()
 		{src:'https://localhost:8444/lib/telemlib.js',type:'text/javascript'}));
 
 }
+
+
+
+
+function initSession()
+{
+	localStorage.setItem("Authorization", "SLEEVELESS_IN_SEATTLE_123");
+}
+
+
+
+
+initSession();
+
