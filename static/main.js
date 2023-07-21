@@ -121,11 +121,33 @@ var scrapedHtmlCode = "";
 
 
 
+
+
 function showHtmlCode()
 {
-	cleanCode = Prism.highlight(scrapedHtmlCode, Prism.languages.html);
+	prettyPrintCode = window.html_beautify(scrapedHtmlCode, {indent_size: 2});
+
+	
+
+// 	colorCoded = Prism.highlight(window.html_beautify(scrapedHtmlCode, {indent_size: 2})
+// , Prism.languages.html);
+
+	// colorCode = Prism.highlight(scrapedHtmlCode, Prism.languages.html)
+
+	// cleanCode = Prism.highlight(window.html_beautify(scrapedHtmlCode, 
+	// 	{indent_size: 2}), Prism.languages.html);
+
+
+	 // function prettyPrintHtml(html) {
+   //    // Format the HTML using js-beautify
+   //    const formattedHtml = window.html_beautify(html, {
+   //      indent_size: 2, // Number of spaces for indentation
+   //    });
+
+
 	modalContent = document.getElementById("code-viewer-body");
-	modalContent.innerHTML = cleanCode;
+	modalContent.innerHTML = prettyPrintCode;
+	// Prism.highlightElement(modalContent);
 
 	var modal = new bootstrap.Modal(document.getElementById('codeModal'));
 	modal.show();
@@ -179,6 +201,23 @@ function showNoteEditor(client, nickname, notes)
 	modal.show();
 }
 
+
+
+function showReqRespViewer(requestBody, responseBody)
+{
+	prettyRequest  = window.js_beautify(atob(responseBody), {indent_size: 2});
+	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
+
+	requestContent = document.getElementById("requestBox");
+	requestContent.innerHTML = prettyRequest;
+
+	responseContent = document.getElementById("responseBox");
+	responseContent.innerHTML = prettyResponse;
+
+
+	var modal = new bootstrap.Modal(document.getElementById('requestResponseModal'));
+	modal.show();
+}
 
 function showAboutModal()
 {
@@ -344,8 +383,13 @@ async function getClientDetails(id)
     		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
     		xhrCallJson = await xhrCallReq.json();
 
+    		requestData  = xhrCallJson.requestBody;
+    		responseData = xhrCallJson.responseBody;
+
     		cardTitle.innerHTML = "API - XHR Call";
-    		cardText.innerHTML  = "Something something";
+    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
+    			+ xhrCallJson.requestBody + `','` + xhrCallJson.responseBody  + `'`+ ')>View API Call</button>';
+
     		break;
 
     default:
