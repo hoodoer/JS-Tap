@@ -205,7 +205,7 @@ function showNoteEditor(client, nickname, notes)
 
 function showReqRespViewer(requestBody, responseBody)
 {
-	prettyRequest  = window.js_beautify(atob(responseBody), {indent_size: 2});
+	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
 	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
 
 	requestContent = document.getElementById("requestBox");
