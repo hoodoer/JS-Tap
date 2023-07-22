@@ -443,6 +443,14 @@ def sendLootFile(path):
         return send_from_directory('loot', path)
 
 
+# Serve up static files
+# that need to be authenticated
+@app.route('/protectedStatic/<path:path>')
+@login_required
+def sendProtectedStaticFile(path):
+    return send_from_directory('protectedStatic', path)
+
+
 
 
 

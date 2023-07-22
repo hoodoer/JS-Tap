@@ -4,17 +4,6 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>JS-Tap</title>
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
-	<link rel="stylesheet" href="static/prism.css" data-noprefix />
-
-<!-- 	<style>
-		[class*="col"] {
-			padding: 1rem;
-			background-color: #505763;
-			border: 2px solid #fff;
-			color: #fff;
-		}
-	</style>
--->
 
 <style>
 	.table-active {
@@ -22,7 +11,7 @@
 	}
 
 	.card-stack {
-		height: 100vh;
+		height: calc(95vh - 130px);
 		overflow-y: auto;
 	}
 
@@ -36,18 +25,16 @@
 
 <body>	
 	<script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
-	<!-- <script src="static/node_modules/bootstrap-table/dist/bootstrap-table.min.js"></script> -->
 	<script src="static/node_modules/js-beautify/js/lib/beautifier.min.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautify-css.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautify-html.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautify.js"></script>
-<script src="static/prism.js"></script>
-	<script src="static/main.js"></script>
+	<script src="protectedStatic/main.js"></script>
 
 
-
+	<!-- Nav Bar -->
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-		<a class="navbar-brand" href="https://github.com/hoodoer/JS-Tap" target="_blank"><img src="static/logo.png" width="140" height="100" class="d-inline-block align-center" alt="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;JS-Tap</a>
+		<a class="navbar-brand" href="https://github.com/hoodoer/JS-Tap" target="_blank"><img src="protectedStatic/logo.png" width="140" height="100" class="d-inline-block align-center" alt="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;JS-Tap</a>
 
 		<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
 			<span class="navbar-toggler-icon"></span>
@@ -122,10 +109,6 @@
 						<h5 class="modal-title" id="htmlCodeModal">HTML Code Viewer</h5>
 						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 					</div>
-<!-- 					<div class="modal-body" id="code-viewer-body">
-						...
-					</div>
- -->
 						<textarea class="form-control" id="code-viewer-body" rows="25" readonly></textarea>
 						 <div class="modal-footer">
 						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

@@ -1,8 +1,3 @@
-let selectedClientId = "";
-
-
-
-
 //  Support functions for nice presentation
 // Copyright (C) 2011 by Will Tomlins
 // 
@@ -117,6 +112,7 @@ function humanized_time_span(date, ref_date, date_formats, time_units) {
 
 var scrapedHtmlCode = "";
 
+let selectedClientId = "";
 
 
 
@@ -127,27 +123,8 @@ function showHtmlCode()
 {
 	prettyPrintCode = window.html_beautify(scrapedHtmlCode, {indent_size: 2});
 
-	
-
-// 	colorCoded = Prism.highlight(window.html_beautify(scrapedHtmlCode, {indent_size: 2})
-// , Prism.languages.html);
-
-	// colorCode = Prism.highlight(scrapedHtmlCode, Prism.languages.html)
-
-	// cleanCode = Prism.highlight(window.html_beautify(scrapedHtmlCode, 
-	// 	{indent_size: 2}), Prism.languages.html);
-
-
-	 // function prettyPrintHtml(html) {
-   //    // Format the HTML using js-beautify
-   //    const formattedHtml = window.html_beautify(html, {
-   //      indent_size: 2, // Number of spaces for indentation
-   //    });
-
-
 	modalContent = document.getElementById("code-viewer-body");
 	modalContent.innerHTML = prettyPrintCode;
-	// Prism.highlightElement(modalContent);
 
 	var modal = new bootstrap.Modal(document.getElementById('codeModal'));
 	modal.show();
@@ -238,7 +215,7 @@ function showGuideModal()
 
 async function getClientDetails(id) 
 {
-	console.log("** Fetching details for client: " + id);
+	// console.log("** Fetching details for client: " + id);
 
 	// Get high level event stack for client
 	var req = await fetch('/api/clientEvents/' + id);
