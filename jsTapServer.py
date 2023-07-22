@@ -991,9 +991,9 @@ def getClientXhrCall(key):
 @login_required
 def setClientNotes(key):
     content = request.json 
-    newNote    = content['note']
+    newNote = content['note']
 
-    client = Client.query.filter_by(id=key).first()
+    client   = Client.query.filter_by(id=key).first()
     nickname = client.nickname
 
     print("----- Client note update: " + key);
@@ -1002,6 +1002,22 @@ def setClientNotes(key):
 
     client.notes = newNote;
     dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/allClientNotes', methods=['GET'])
+@login_required
+def getAllClientNotes():
+    clients = Client.query.all()
+
+    allNotes = ""
+
+    for client in clients:
+        if len(client.notes) > 0:
+            print("Client: " + client.nickname + " has notes!")
+        else:
+            print("Client: " + client.nickname + " doesn't have notes")
 
     return "ok", 200
 

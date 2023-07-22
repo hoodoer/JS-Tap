@@ -139,8 +139,22 @@ function downloadHtmlCode(fileName)
 
 
 
+async function showAllNotesModal()
+{
+	var modal = new bootstrap.Modal(document.getElementById("allNoteViewerModal"));
+
+
+	var req = await fetch('/api/allClientNotes');
+	var response = await req.text();
+
+	modal.show();
+}
+
+
+
 function showNoteEditor(client, nickname, notes)
 {
+	// console.log("STARTING SHOW NOTE EDITOR!!!!");
 	var modal      = new bootstrap.Modal(document.getElementById("noteEditorModal"));
 	var noteTitle  = document.getElementById('note-editor-title');
 	var noteEditor = document.getElementById('note-editor');
@@ -176,6 +190,10 @@ function showNoteEditor(client, nickname, notes)
 	noteTitle.innerHTML = '<u>' + nickname + '</u> notes:';
 	noteEditor.value = atob(notes);
 	modal.show();
+
+
+	// Block resetting of loot card stack
+	//event.stopPropagation();
 }
 
 
@@ -501,6 +519,7 @@ async function updateClients()
     card.appendChild(cardBody);
 
     card.onclick =  function(event) {
+    	// console.log("!!! CLIENT CARD CLICKED!!!");
     	unselectAllClients();
     	clickedClient = this.getAttribute("clientIndex");
     	this.classList.add("table-active");

@@ -44,6 +44,10 @@
 			<ul class="navbar-nav mr-auto">
 
 				<li class="nav-item">
+					<a class="nav-link" href="#allnotes" id="allnotesLink">&nbsp;View All Notes&nbsp;</a>
+				</li>
+
+				<li class="nav-item">
 					<a class="nav-link" href="#guide" id="guideLink">&nbsp;Guide&nbsp;</a>
 				</li>
 
@@ -52,6 +56,13 @@
 				</li>
 
 				<script>
+					navNotesLink = document.getElementById("allnotesLink");
+					navNotesLink.addEventListener("click", function(event) {
+						event.preventDefault();
+						showAllNotesModal();
+					});
+
+
 					navAboutLink = document.getElementById("aboutLink");
 					navAboutLink.addEventListener("click", function(event){
 						event.preventDefault();
@@ -198,6 +209,27 @@
 				</div>
 			</div>
 		</div>
+
+
+
+		<!-- All Notes viewer Modal -->
+		<div id="allNoteViewerModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="note-viewer-title">All Client Notes</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body">
+						<textarea id="all-note-viewer" class="form-control" rows="20" readonly></textarea>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
 
 
 
