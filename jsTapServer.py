@@ -1006,20 +1006,15 @@ def setClientNotes(key):
     return "ok", 200
 
 
+
+
 @app.route('/api/allClientNotes', methods=['GET'])
 @login_required
 def getAllClientNotes():
     clients = Client.query.all()
+    allNoteData = [{'client':str(escape(client.nickname)), 'note':client.notes} for client in clients]
 
-    allNotes = ""
-
-    for client in clients:
-        if len(client.notes) > 0:
-            print("Client: " + client.nickname + " has notes!")
-        else:
-            print("Client: " + client.nickname + " doesn't have notes")
-
-    return "ok", 200
+    return jsonify(allNoteData)
 
 
 #**************************************************************************

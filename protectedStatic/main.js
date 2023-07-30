@@ -139,13 +139,59 @@ function downloadHtmlCode(fileName)
 
 
 
+function saveAllNotesToFile()
+{
+	console.log("** Starting saveAllNotesToFile...");
+	const notesContent = document.getElementById("all-note-viewer").innerHTML;
+
+	const noteBlob = new Blob([notesContent], {type:'text/plain'});
+
+	const anchor = document.getElementById('downloadLink');
+	anchor.href = URL.createObjectURL(noteBlob);
+	anchor.download = 'clientNotes.txt';
+	anchor.click();
+
+    // Release the URL object
+	URL.revokeObjectURL(anchor.href);
+}
+
+
+
+
 async function showAllNotesModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("allNoteViewerModal"));
 
-
 	var req = await fetch('/api/allClientNotes');
-	var response = await req.text();
+	var jsonResponse = await req.json();
+
+	var downloadButton = document.getElementById('note-download-button');
+
+
+	var noteArea = document.getElementById('all-note-viewer');
+
+	noteArea.innerHTML = "";
+
+	noteArea.innerHTML += "*******************************************\n";
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		console.log("Note loop: " + i);
+		console.log("Nickname:" + jsonResponse[i].client);
+		console.log("Notes:" + jsonResponse[i].note);
+
+		noteArea.innerHTML += "Client:\n" + jsonResponse[i].client + "\n";
+		noteArea.innerHTML += "\nNotes:\n";
+		noteArea.innerHTML += atob(jsonResponse[i].note);
+		noteArea.innerHTML += "\n\n";
+		noteArea.innerHTML += "*******************************************\n";
+	}
+
+		// Handle saving modified notes
+	downloadButton.onclick = function(event) {
+		console.log("Gotta download button press...");
+		saveAllNotesToFile();
+	}
 
 	modal.show();
 }
@@ -354,38 +400,38 @@ async function getClientDetails(id)
     	break;
 
 
-    	case 'XHROPEN':
-    		xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
-    		xhrOpenJson = await xhrOpenReq.json();
+    case 'XHROPEN':
+    	xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
+    	xhrOpenJson = await xhrOpenReq.json();
 
-    		cardTitle.innerHTML = "API - XHR Open";
-    		cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
-      	cardText.innerHTML += "<br>";
-     		cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
-    		break;
+    	cardTitle.innerHTML = "API - XHR Open";
+    	cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
+    	cardText.innerHTML += "<br>";
+    	cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
+    	break;
 
-    	case 'XHRSETHEADER':
-    		xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
-    		xhrHeaderJson = await xhrHeaderReq.json();
+    case 'XHRSETHEADER':
+    	xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
+    	xhrHeaderJson = await xhrHeaderReq.json();
 
-    		cardTitle.innerHTML = "API - XHR Set Header";
-    		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
-      	cardText.innerHTML += "<br>";
-     		cardText.innerHTML += "Method: <b>" + xhrHeaderJson.value + "</b>";
-    		break;
+    	cardTitle.innerHTML = "API - XHR Set Header";
+    	cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
+    	cardText.innerHTML += "<br>";
+    	cardText.innerHTML += "Method: <b>" + xhrHeaderJson.value + "</b>";
+    	break;
 
-    	case 'XHRCALL':
-    		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
-    		xhrCallJson = await xhrCallReq.json();
+    case 'XHRCALL':
+    	xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
+    	xhrCallJson = await xhrCallReq.json();
 
-    		requestData  = xhrCallJson.requestBody;
-    		responseData = xhrCallJson.responseBody;
+    	requestData  = xhrCallJson.requestBody;
+    	responseData = xhrCallJson.responseBody;
 
-    		cardTitle.innerHTML = "API - XHR Call";
-    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
-    			+ xhrCallJson.requestBody + `','` + xhrCallJson.responseBody  + `'`+ ')>View API Call</button>';
+    	cardTitle.innerHTML = "API - XHR Call";
+    	cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
+    	+ xhrCallJson.requestBody + `','` + xhrCallJson.responseBody  + `'`+ ')>View API Call</button>';
 
-    		break;
+    	break;
 
     default:
     	alert('!!!!Switch default-No good');
