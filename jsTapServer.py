@@ -1,6 +1,7 @@
 #!usr/bin/env python
-from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for, send_from_directory, escape
+from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for, send_from_directory
 from flask_cors import CORS
+from markupsafe import Markup, escape
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import DateTime, func
 from sqlalchemy_utils import database_exists

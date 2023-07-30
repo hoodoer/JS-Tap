@@ -21,6 +21,7 @@ pyyaml
 ua-parser
 user-agents
 pyopenssl
+MarkupSafe
 
 
 
