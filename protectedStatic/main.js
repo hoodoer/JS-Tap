@@ -198,7 +198,7 @@ async function showAllNotesModal()
 
 
 
-function showNoteEditor(client, nickname, notes)
+function showNoteEditor(event, client, nickname, notes)
 {
 	// console.log("STARTING SHOW NOTE EDITOR!!!!");
 	var modal      = new bootstrap.Modal(document.getElementById("noteEditorModal"));
@@ -239,7 +239,7 @@ function showNoteEditor(client, nickname, notes)
 
 
 	// Block resetting of loot card stack
-	//event.stopPropagation();
+	event.stopPropagation();
 }
 
 
@@ -542,12 +542,12 @@ async function updateClients()
 		//What to do about client notes?
     if (client.notes.length > 0)
     {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` 
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(event,' + `'` 
     	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Edit Notes</button>';
     }
     else
     {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(' + `'` 
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(event,' + `'` 
     	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
     }
 
