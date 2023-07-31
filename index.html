@@ -292,7 +292,7 @@
 					</div>
 					<div class="modal-body" id="clientFilterModalBody">
 
-						<h5>Order clients by date/time they were first seen:</h5>
+						<h5><u>Order clients by date/time they were first seen:</u></h5>
 						<div class="form-check">
 							<input class="form-check-input" type="radio" name="flexRadioDefault" id="firstSeenAscending" checked>
 							<label class="form-check-label" for="flexRadioDefault1">
@@ -306,7 +306,7 @@
 							</label>
 						</div>
 						<br>
-						<h5>Order clients by date/time they were last seen (update):</h5>
+						<h5><u>Order clients by date/time they were last seen (update):</u></h5>
 						<div class="form-check">
 							<input class="form-check-input" type="radio" name="flexRadioDefault" id="lastSeenAscending">
 							<label class="form-check-label" for="flexRadioDefault1">
@@ -319,6 +319,16 @@
 								Last Seen - Most recent to oldest
 							</label>
 						</div>
+						<br>
+						<br>
+						<h5><u>Client Filter Options:</u></h5>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" value="" id="onlyStarredClients">
+							<label class="form-check-label" for="flexCheckChecked">
+								Show Only Starred Clients
+							</label>
+						</div>
+						
 					</div>
 					<div class="modal-footer">
 						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClients()>Close</button>

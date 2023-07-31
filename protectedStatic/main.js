@@ -567,6 +567,24 @@ async function updateClients()
 	{
 		client = jsonResponse[i];
 
+		if (document.getElementById('onlyStarredClients').checked == true)
+		{
+			if (!client.isStarred)
+			{
+				if (client.id == selectedClientId)
+				{
+					// need to unselect the client before we hide it
+					unselectAllClients();
+				}
+				continue;
+			}
+			else
+			{
+				console.log("Filtering stars, client passes check: " + client.nickname);
+			}
+		}
+
+
 		var card = document.createElement('div');
 		card.className = 'card';
 		card.setAttribute("clientIndex", client.id);
