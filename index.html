@@ -339,20 +339,58 @@
 					</div>
 					<div class="modal-body" id="eventFilterModalBody">
 						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="flexCheckDefault">
+							<input class="form-check-input" type="checkbox" value="" id="cookieEvents" checked>
 							<label class="form-check-label" for="flexCheckDefault">
-								Default checkbox
+								Cookies
 							</label>
 						</div>
 						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="flexCheckChecked" checked>
+							<input class="form-check-input" type="checkbox" value="" id="localStorageEvents" checked>
 							<label class="form-check-label" for="flexCheckChecked">
-								Checked checkbox
+								Local Storage
 							</label>
 						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" value="" id="sessionStorageEvents" checked>
+							<label class="form-check-label" for="flexCheckChecked">
+								Session Storage
+							</label>
+						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" value="" id="urlEvents" checked>
+							<label class="form-check-label" for="flexCheckChecked">
+								URLs Visited
+							</label>
+						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" value="" id="htmlScrapeEvents" checked>
+							<label class="form-check-label" for="flexCheckChecked">
+								HTML Scraped
+							</label>
+						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" value="" id="screenshotEvents" checked>
+							<label class="form-check-label" for="flexCheckChecked">
+								Screenshots
+							</label>
+						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" value="" id="userInputEvents" checked>
+							<label class="form-check-label" for="flexCheckChecked">
+								User Inputs
+							</label>
+						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" value="" id="apiEvents" checked>
+							<label class="form-check-label" for="flexCheckChecked">
+								API Events
+							</label>
+						</div>
+
+
 					</div>
 					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateEvents()>Close</button>
 					</div>
 				</div>
 			</div>

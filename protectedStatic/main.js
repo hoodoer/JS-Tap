@@ -131,6 +131,21 @@ function showEventFilterModal()
 }
 
 
+function updateEvents()
+{
+	console.log("----Close Loot Filter Event");
+	
+	// Remove detail cards
+	detailCardStack = document.getElementById('detail-stack');
+	while (detailCardStack.firstChild)
+	{
+		detailCardStack.firstChild.remove();
+	}
+
+	getClientDetails(selectedClientId);
+}
+
+
 
 function showHtmlCode()
 {
@@ -335,130 +350,176 @@ async function getClientDetails(id)
     var cardText = document.createElement('p');
     cardText.className = 'card-text';
 
+    var activeEvent = false;
 
 
 		// Handle event specific details and formatting
     switch(event.eventType)
     {
     case 'COOKIE':
-    	cookieReq  = await fetch('/api/clientCookie/' + eventKey);
-    	cookieJson = await cookieReq.json();
+    	if (document.getElementById('cookieEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		cookieReq  = await fetch('/api/clientCookie/' + eventKey);
+    		cookieJson = await cookieReq.json();
 
-    	cardTitle.innerHTML = "Cookie";
-    	cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
-    	cardText.innerHTML += "<br>";
-    	cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
+    		cardTitle.innerHTML = "Cookie";
+    		cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
+    	}
     	break;
 
     case 'LOCALSTORAGE':
-    	localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
-    	localStorageJson = await localStorageReq.json();
+    	if (document.getElementById('localStorageEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
+    		localStorageJson = await localStorageReq.json();
 
 			// console.log("*** Local storage api call received: ");
 			// console.log(JSON.stringify(localStorageJson));
 
-    	cardTitle.innerHTML = "Local Storage";
-    	cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
-    	cardText.innerHTML += "<br>";
-    	cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
+    		cardTitle.innerHTML = "Local Storage";
+    		cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
+    	}
     	break;
 
     case 'SESSIONSTORAGE':
-    	sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
-    	sessiontorageJson  = await sessionStorageReq.json();
+    	if (document.getElementById('sessionStorageEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
+    		sessiontorageJson  = await sessionStorageReq.json();
 
-    	cardTitle.innerHTML = "Session Storage";
-    	cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
-    	cardText.innerHTML += "<br>";
-    	cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
+    		cardTitle.innerHTML = "Session Storage";
+    		cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
+    	}
     	break;
 
     case 'URLVISITED':
-    	urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
-    	urlVisitedJson = await urlVisitedReq.json();
+    	if (document.getElementById('urlEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
+    		urlVisitedJson = await urlVisitedReq.json();
 
-    	cardTitle.innerHTML = "<u>URL Visited</u>";
-    	cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
+    		cardTitle.innerHTML = "<u>URL Visited</u>";
+    		cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
+    	}
     	break;
 
     case 'HTML':
-    	htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
-    	htmlScrapeJson = await htmlScrapeReq.json();
+    	if (document.getElementById('htmlScrapeEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
+    		htmlScrapeJson = await htmlScrapeReq.json();
 
 			// Dump it in a variable. So many issues trying to pass this code in generated HTML lol
-    	scrapedHtmlCode = htmlScrapeJson.code;
+    		scrapedHtmlCode = htmlScrapeJson.code;
 
-    	cardTitle.innerHTML = "HTML Scraped";
-    	cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
-    	cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
+    		cardTitle.innerHTML = "HTML Scraped";
+    		cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
+    		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
+    		cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
+    	}
     	break;
 
     case 'SCREENSHOT':
-    	screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
-    	screenshotJson = await screenshotReq.json();
+    	if (document.getElementById('screenshotEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
+    		screenshotJson = await screenshotReq.json();
 
-    	cardTitle.innerHTML = "Screenshot Captured";
-    	cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
+    		cardTitle.innerHTML = "Screenshot Captured";
+    		cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
+    	}
     	break;
 
     case 'USERINPUT':
-    	userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
-    	userInputJson = await userInputReq.json();
+    	if (document.getElementById('userInputEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
+    		userInputJson = await userInputReq.json();
 
-    	cardTitle.innerHTML = "User Input";
-    	cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
-    	cardText.innerHTML += "<br>";
-    	cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
+    		cardTitle.innerHTML = "User Input";
+    		cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
+    	}
     	break;
 
 
     case 'XHROPEN':
-    	xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
-    	xhrOpenJson = await xhrOpenReq.json();
+    	if (document.getElementById('apiEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
+    		xhrOpenJson = await xhrOpenReq.json();
 
-    	cardTitle.innerHTML = "API - XHR Open";
-    	cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
-    	cardText.innerHTML += "<br>";
-    	cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
+    		cardTitle.innerHTML = "API - XHR Open";
+    		cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
+    	}
     	break;
 
     case 'XHRSETHEADER':
-    	xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
-    	xhrHeaderJson = await xhrHeaderReq.json();
+    	if (document.getElementById('apiEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
+    		xhrHeaderJson = await xhrHeaderReq.json();
 
-    	cardTitle.innerHTML = "API - XHR Set Header";
-    	cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
-    	cardText.innerHTML += "<br>";
-    	cardText.innerHTML += "Method: <b>" + xhrHeaderJson.value + "</b>";
+    		cardTitle.innerHTML = "API - XHR Set Header";
+    		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Method: <b>" + xhrHeaderJson.value + "</b>";
+    	}
     	break;
 
     case 'XHRCALL':
-    	xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
-    	xhrCallJson = await xhrCallReq.json();
+    	if (document.getElementById('apiEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
+    		xhrCallJson = await xhrCallReq.json();
 
-    	requestData  = xhrCallJson.requestBody;
-    	responseData = xhrCallJson.responseBody;
+    		requestData  = xhrCallJson.requestBody;
+    		responseData = xhrCallJson.responseBody;
 
-    	cardTitle.innerHTML = "API - XHR Call";
-    	cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
-    	+ xhrCallJson.requestBody + `','` + xhrCallJson.responseBody  + `'`+ ')>View API Call</button>';
-
+    		cardTitle.innerHTML = "API - XHR Call";
+    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
+    		+ xhrCallJson.requestBody + `','` + xhrCallJson.responseBody  + `'`+ ')>View API Call</button>';
+    	}
     	break;
 
     default:
     	alert('!!!!Switch default-No good');
     }
 
-    cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
 
-    cardBody.appendChild(cardTitle);
-    cardBody.appendChild(cardSubtitle);
-    cardBody.appendChild(cardText);
+    // Only need the bottom part of the card
+    // if the event in the loop is active
+    if (activeEvent)
+    {
+    	cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
 
-    card.appendChild(cardBody);
+    	cardBody.appendChild(cardTitle);
+    	cardBody.appendChild(cardSubtitle);
+    	cardBody.appendChild(cardText);
 
-    cardStack.appendChild(card);
+    	card.appendChild(cardBody);
+
+    	cardStack.appendChild(card);    	
+    }
   }
 }
 
@@ -509,13 +570,13 @@ function sortClients(clientsJson)
 
 	if (firstSeenAscending == true)
 	{
-		console.log("** First Seen Ascending");
+		// console.log("** First Seen Ascending");
 		// Default database ordering
 		return clientsJson;
 	}
 	else if (firstSeenDescending == true)
 	{
-		console.log("** First Seen Descending");
+		// console.log("** First Seen Descending");
 
 		// Reverse database ordering
 		const reversedClients = clientsJson.reverse();
@@ -523,26 +584,26 @@ function sortClients(clientsJson)
 	}
 	else if (lastSeenAscending == true)
 	{
-		console.log("** Last Seen Ascending");
+		// console.log("** Last Seen Ascending");
 
 		const sortedClients = clientsJson.sort((a, b) => parseDate(a.lastSeen) - parseDate(b.lastSeen));
 
-		for (let i = 0; i < sortedClients.length; i++)
-		{
-			console.log("i: " + i + ", last seen: " + sortedClients[i].lastSeen + ", converted: " + humanized_time_span(sortedClients[i].lastSeen));
-		}
+		// for (let i = 0; i < sortedClients.length; i++)
+		// {
+		// 	console.log("i: " + i + ", last seen: " + sortedClients[i].lastSeen + ", converted: " + humanized_time_span(sortedClients[i].lastSeen));
+		// }
 		return sortedClients;
 	}
 	else if (lastSeenDescending == true)
 	{
-		console.log("** Last Seen Descending");
+		// console.log("** Last Seen Descending");
 
 		const sortedClients = clientsJson.sort((a, b) => parseDate(a.lastSeen) - parseDate(b.lastSeen));
 
-		for (let i = 0; i < sortedClients.length; i++)
-		{
-			console.log("i: " + i + ", last seen: " + sortedClients[i].lastSeen + ", converted: " + humanized_time_span(sortedClients[i].lastSeen));
-		}
+		// for (let i = 0; i < sortedClients.length; i++)
+		// {
+		// 	console.log("i: " + i + ", last seen: " + sortedClients[i].lastSeen + ", converted: " + humanized_time_span(sortedClients[i].lastSeen));
+		// }
 
 		sortedClients.reverse();
 		return sortedClients;
@@ -551,13 +612,6 @@ function sortClients(clientsJson)
 	{
 		console.log("!!!!! Error, shouldn't be here in sortClients...");
 	}
-
-
-
-
-	// return clientsJson;
-
-
 }
 
 
