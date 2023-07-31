@@ -1096,7 +1096,8 @@ if __name__ == '__main__':
                     dbCommit()
 
                     db.create_all()
-                    shutil.rmtree("./loot")
+                    if os.path.exists("./loot"):
+                        shutil.rmtree("./loot")
                 elif val == 1:
                     print("Keeping existing client data.")
                 else:
@@ -1110,7 +1111,8 @@ if __name__ == '__main__':
         with app.app_context():
             db.drop_all()
             db.create_all()
-            shutil.rmtree("./loot")
+            if os.path.exists("./loot"):
+                shutil.rmtree("./loot")
             addAdminUser()
 
 
