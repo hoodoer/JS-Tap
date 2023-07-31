@@ -101,13 +101,15 @@ class Client(db.Model):
     nickname  = db.Column(db.String(100), unique=True, nullable=False)
     notes     = db.Column(db.Text, nullable=True)
     firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
-    lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
+    # lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
+    lastSeen  = db.Column(db.DateTime(timezone=True), server_default=func.now())
     ipAddress = db.Column(db.String(20), nullable=True)
     platform  = db.Column(db.String(100), nullable=True)
     browser   = db.Column(db.String(100), nullable=True)
 
 
     def update(self):
+        print("$$ Client Update func")
         self.lastSeen = func.now()
 
     def __repr__(self):
