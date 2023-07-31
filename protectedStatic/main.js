@@ -121,10 +121,14 @@ function showClientFilterModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("clientFilterModal"));
 	modal.show();
-	
 }
 
 
+function showEventFilterModal()
+{
+	var modal = new bootstrap.Modal(document.getElementById("eventFilterModal"));
+	modal.show();
+}
 
 
 
@@ -482,12 +486,78 @@ function unselectAllClients()
 
 
 
+function parseDate(dateString)
+{
+	return new Date(dateString);
+}
 
+
+
+// Sort client json based on current sorting config
 function sortClients(clientsJson)
 {
-
 	console.log("Top of clients sort...");
-	return clientsJson;
+
+	// We need to get the sorting settings
+
+	var button = document.getElementById("firstSeenAscending");
+
+	var firstSeenAscending  = document.getElementById("firstSeenAscending").checked;
+	var firstSeenDescending = document.getElementById("firstSeenDescending").checked;
+	var lastSeenAscending   = document.getElementById("lastSeenAscending").checked;
+	var lastSeenDescending  = document.getElementById("lastSeenDescending").checked;
+
+	if (firstSeenAscending == true)
+	{
+		console.log("** First Seen Ascending");
+		// Default database ordering
+		return clientsJson;
+	}
+	else if (firstSeenDescending == true)
+	{
+		console.log("** First Seen Descending");
+
+		// Reverse database ordering
+		const reversedClients = clientsJson.reverse();
+		return reversedClients;
+	}
+	else if (lastSeenAscending == true)
+	{
+		console.log("** Last Seen Ascending");
+
+		const sortedClients = clientsJson.sort((a, b) => parseDate(a.lastSeen) - parseDate(b.lastSeen));
+
+		for (let i = 0; i < sortedClients.length; i++)
+		{
+			console.log("i: " + i + ", last seen: " + sortedClients[i].lastSeen + ", converted: " + humanized_time_span(sortedClients[i].lastSeen));
+		}
+		return sortedClients;
+	}
+	else if (lastSeenDescending == true)
+	{
+		console.log("** Last Seen Descending");
+
+		const sortedClients = clientsJson.sort((a, b) => parseDate(a.lastSeen) - parseDate(b.lastSeen));
+
+		for (let i = 0; i < sortedClients.length; i++)
+		{
+			console.log("i: " + i + ", last seen: " + sortedClients[i].lastSeen + ", converted: " + humanized_time_span(sortedClients[i].lastSeen));
+		}
+
+		sortedClients.reverse();
+		return sortedClients;
+	}
+	else
+	{
+		console.log("!!!!! Error, shouldn't be here in sortClients...");
+	}
+
+
+
+
+	// return clientsJson;
+
+
 }
 
 
