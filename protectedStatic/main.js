@@ -12,6 +12,32 @@ function showClientFilterModal()
 }
 
 
+
+function toggleStar(imgObject, event, client, nickname)
+{
+	// var icon = document.getElementsByTagName('clientStar')
+
+	// console.log("Img src: " + imgObject.src)
+	// console.log("Trimmed src: " + imgObject.src.lastIndexOf('/'));
+
+	console.log("Top of toggleStar");
+	if (imgObject.src.includes('star.svg'))
+	{
+		imgObject.src = '/protectedStatic/star-fill.svg';
+		console.log("Filling star...");
+	}
+	else
+	{
+		imgObject.src = '/protectedStatic/star.svg';
+		console.log("Emptying star...");
+	}
+
+	// Block resetting of loot card stack
+	event.stopPropagation();
+}
+
+
+
 function showEventFilterModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("eventFilterModal"));
@@ -445,7 +471,7 @@ function parseDate(dateString)
 // Sort client json based on current sorting config
 function sortClients(clientsJson)
 {
-	console.log("Top of clients sort...");
+	// console.log("Top of clients sort...");
 
 	// We need to get the sorting settings
 
@@ -569,6 +595,7 @@ async function updateClients()
     cardText.className = 'card-text';
 
     cardTitle.innerHTML = "<u>" + client.nickname + "</u>";
+    cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
 
 
 
