@@ -1,5 +1,6 @@
 #!usr/bin/env python
 from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for, send_from_directory
+from werkzeug.serving import WSGIRequestHandler
 from flask_cors import CORS
 from markupsafe import Markup, escape
 from flask_sqlalchemy import SQLAlchemy
@@ -995,11 +996,11 @@ def setClientNotes(key):
     newNote = content['note']
 
     client   = Client.query.filter_by(id=key).first()
-    nickname = client.nickname
+    # nickname = client.nickname
 
-    print("----- Client note update: " + key);
-    print("----- Nickname: " + nickname)
-    print("---------" + newNote)
+    # print("----- Client note update: " + key);
+    # print("----- Nickname: " + nickname)
+    # print("---------" + newNote)
 
     client.notes = newNote;
     dbCommit()
@@ -1114,4 +1115,5 @@ if __name__ == '__main__':
     if not os.path.exists("./loot"):
         os.mkdir("./loot")
 
+    WSGIRequestHandler.protocol_version = "HTTP/1.1"
     app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')

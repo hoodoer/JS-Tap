@@ -117,6 +117,15 @@ let selectedClientId = "";
 
 
 
+function showClientFilterModal()
+{
+	var modal = new bootstrap.Modal(document.getElementById("clientFilterModal"));
+	modal.show();
+	
+}
+
+
+
 
 
 function showHtmlCode()
@@ -474,11 +483,21 @@ function unselectAllClients()
 
 
 
+function sortClients(clientsJson)
+{
+
+	console.log("Top of clients sort...");
+	return clientsJson;
+}
+
+
+
+
 async function updateClients()
 {
 	// Get client info
 	var req = await fetch('/api/getClients');
-	var jsonResponse = await req.json();
+	var clientsJson = await req.json();
 
 	// Start setting up the client cards
 	var cardStack = document.getElementById('client-stack');
@@ -488,6 +507,9 @@ async function updateClients()
 	{
 		cardStack.firstChild.remove();
 	}
+
+
+	var jsonResponse = await sortClients(clientsJson);
 
 
 	// let's layout our clients

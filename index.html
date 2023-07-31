@@ -5,22 +5,22 @@
 	<title>JS-Tap</title>
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
 
-<style>
-	.table-active {
-		background-color: #f8f9fa; /* Set your desired highlight color */
-	}
+	<style>
+		.table-active {
+			background-color: #f8f9fa; /* Set your desired highlight color */
+		}
 
-	.card-stack {
-		height: calc(95vh - 130px);
-		overflow-y: auto;
-	}
+		.card-stack {
+			height: calc(95vh - 130px);
+			overflow-y: auto;
+		}
 
-	body {
-		padding-top: 130px;
-		overflow: hidden;
-	}
+		body {
+			padding-top: 130px;
+			overflow: hidden;
+		}
 
-</style>
+	</style>
 </head>
 
 <body>	
@@ -85,30 +85,35 @@
 	</nav>
 
 
+	<!-- Dynamic UI Stuff below -->
 
 	<div class="container-fluid border">
 		<div class="row"> 
 
 			<!-- Client Card Stack -->
 			<div class="col-4">
-				<div class="label">
-					<h4><b>&nbsp;&nbsp;Clients</b></h4>
+				<div class="d-flex justify-content-between align-items-center">
+					<label><h4><b>&nbsp;&nbsp;Clients</b></h4></label>
+					<button type="button" class="btn btn-primary" onclick=showClientFilterModal()><img src="/protectedStatic/filter.svg"></button>
+
 				</div>
-				<div class="card-stack" id="client-stack">
-				</div>
+				<div class="card-stack" id="client-stack"></div>
 			</div>
 
 			<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
 			<div class="col-8">
-				<div class="label">
-					<h4><b>&nbsp;&nbsp;Loot</b></h4>
+
+				<div class="d-flex justify-content-between align-items-center">
+					<label><h4><b>&nbsp;&nbsp;Loot</b></h4></label>
+					<button type="button" class="btn btn-primary"><img src="/protectedStatic/filter.svg"></button>
+
 				</div>
 				<div class="card-stack" id="detail-stack">
 				</div>
 			</div>
-
-
 		</div>
+
+
 
 		<!-- Modals below -->
 
@@ -120,8 +125,8 @@
 						<h5 class="modal-title" id="htmlCodeModal">HTML Code Viewer</h5>
 						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 					</div>
-						<textarea class="form-control" id="code-viewer-body" rows="25" readonly></textarea>
-						 <div class="modal-footer">
+					<textarea class="form-control" id="code-viewer-body" rows="25" readonly></textarea>
+					<div class="modal-footer">
 						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 					</div>
 				</div>
@@ -225,8 +230,8 @@
 					</div>
 					<div class="modal-footer">
 						<button id="note-download-button" class="btn btn-primary">Download Notes</button>
-						  <!-- Hidden anchor element for downloading -->
-     					 <a id="downloadLink" style="display: none;"></a>
+						<!-- Hidden anchor element for downloading -->
+						<a id="downloadLink" style="display: none;"></a>
 						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 					</div>
 				</div>
@@ -270,7 +275,34 @@
 					<!-- Modal Footer -->
 					<div class="modal-footer">
 						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-					</div>		
+					</div>	
+				</div>	
+			</div>
+		</div>
 
-				</body>
-				</html>
+
+		<!-- Client Filter/Sort Modal -->
+		<div id="clientFilterModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title">Client Filter/Sort:</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body" id="clientFilterModalBody">
+						<textarea id="note-editor" class="form-control" rows="20"></textarea>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+
+
+
+
+	</div>
+</body>
+</html>
