@@ -15,25 +15,39 @@ function showClientFilterModal()
 
 function toggleStar(imgObject, event, client, nickname)
 {
-	// var icon = document.getElementsByTagName('clientStar')
+	// console.log("Top of toggleStar");
+	var starred = "";
 
-	// console.log("Img src: " + imgObject.src)
-	// console.log("Trimmed src: " + imgObject.src.lastIndexOf('/'));
-
-	console.log("Top of toggleStar");
 	if (imgObject.src.includes('star.svg'))
 	{
 		imgObject.src = '/protectedStatic/star-fill.svg';
-		console.log("Filling star...");
+		// console.log("Filling star...");
+
+		starred = true;
 	}
 	else
 	{
 		imgObject.src = '/protectedStatic/star.svg';
-		console.log("Emptying star...");
+		// console.log("Emptying star...");
+
+		starred = false;
 	}
 
 	// Block resetting of loot card stack
 	event.stopPropagation();
+
+
+
+	// Send star to server for database
+	fetch('/api/updateClientStar/' + client, {
+		method:"POST",
+		body: JSON.stringify({
+			isStarred: starred
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
 }
 
 
@@ -46,9 +60,7 @@ function showEventFilterModal()
 
 
 function updateEvents()
-{
-	console.log("----Close Loot Filter Event");
-	
+{	
 	// Remove detail cards
 	detailCardStack = document.getElementById('detail-stack');
 	while (detailCardStack.firstChild)
@@ -595,7 +607,15 @@ async function updateClients()
     cardText.className = 'card-text';
 
     cardTitle.innerHTML = "<u>" + client.nickname + "</u>";
-    cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+
+    if (client.isStarred)
+    {
+    	cardTitle.innerHTML += '<img src="/protectedStatic/star-fill.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+    }
+    else
+    {
+    	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+    }
 
 
 

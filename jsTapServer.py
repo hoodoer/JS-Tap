@@ -101,11 +101,11 @@ class Client(db.Model):
     nickname  = db.Column(db.String(100), unique=True, nullable=False)
     notes     = db.Column(db.Text, nullable=True)
     firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
-    # lastSeen  = db.Column(db.DateTime(timezone=True), onupdate=func.now())
     lastSeen  = db.Column(db.DateTime(timezone=True), server_default=func.now())
     ipAddress = db.Column(db.String(20), nullable=True)
     platform  = db.Column(db.String(100), nullable=True)
     browser   = db.Column(db.String(100), nullable=True)
+    isStarred = db.Column(db.Boolean, nullable=False, default=False)
 
 
     def update(self):
@@ -120,7 +120,6 @@ class Client(db.Model):
 class Screenshot(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
     clientID  = db.Column(db.String(100), nullable=False)
-    # url       = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
     fileName  = db.Column(db.String(100), nullable=False)
   
@@ -841,7 +840,7 @@ def getClients():
 
     allClients = [{'id':escape(client.id), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
         'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen, 'ip':escape(client.ipAddress),
-        'platform':escape(client.platform), 'browser':escape(client.browser)} for client in clients]
+        'platform':escape(client.platform), 'browser':escape(client.browser), 'isStarred':client.isStarred} for client in clients]
 
     return jsonify(allClients)
 
@@ -996,19 +995,12 @@ def getClientXhrCall(key):
 def setClientNotes(key):
     content = request.json 
     newNote = content['note']
-
-    client   = Client.query.filter_by(id=key).first()
-    # nickname = client.nickname
-
-    # print("----- Client note update: " + key);
-    # print("----- Nickname: " + nickname)
-    # print("---------" + newNote)
-
-    client.notes = newNote;
+    client  = Client.query.filter_by(id=key).first()
+   
+    client.notes = newNote
     dbCommit()
 
     return "ok", 200
-
 
 
 
@@ -1019,6 +1011,19 @@ def getAllClientNotes():
     allNoteData = [{'client':str(escape(client.nickname)), 'note':client.notes} for client in clients]
 
     return jsonify(allNoteData)
+
+
+@app.route('/api/updateClientStar/<key>', methods=['POST'])
+@login_required
+def setClientStar(key):
+    content   = request.json
+    isStarred = content['isStarred']
+    client    = Client.query.filter_by(id=key).first()
+  
+    client.isStarred = isStarred 
+    dbCommit()
+
+    return "ok", 200
 
 
 #**************************************************************************
