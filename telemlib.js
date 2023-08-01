@@ -29,8 +29,8 @@ function initGlobals()
 	// load the page the user was on in the iframe
 	// when they reloaded the page. Otherwise,
 	// they'll start here
-	window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-	//window.taperstartingPage = "https://localhost:8443/";
+	//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+	window.taperstartingPage = "https://localhost:8443/";
 
 
 
@@ -42,7 +42,7 @@ function initGlobals()
 
 	
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = false;
+	window.monkeyPatchAPIs = true;
 
 
 	// Helpful variables
@@ -551,6 +551,35 @@ function runUpdate()
 
 
 
+
+
+// Fetch API wrapper for monkey patching
+function customFetch(url, options)
+{
+	console.log("** Cloned Fetch API call**");
+	console.log("Fetch url: " + url);
+	console.log("Fetch method: " + options.method);
+	console.log("Fetch headers: " + JSON.stringify(options.headers));
+
+	// Clone request
+	return fetch(url, options).then((response) => {
+		// clone response
+		return response.clone().text().then((body) => {
+     		console.log('Response Status:', response.status);
+      		console.log('Response Headers:', response.headers);
+        	console.log('Response Body:', body);
+
+        	return response;
+		});
+	})
+	.catch((error) => {
+		console.error('Error:', error);
+		throw error;
+	});
+}
+
+
+
 // Monkey patch API prototypes to intercept API calls
 function monkeyPatch()
 {
@@ -665,6 +694,14 @@ function monkeyPatch()
 		xhrOriginalSend.apply(this, arguments);
 	}
 
+
+	console.log("## Starting fetch monkey patching");
+	// Fetch API monkey patching
+	const originalFetch = window.fetch;
+
+
+	document.getElementById("iframe_a").contentWindow.fetch = customFetch;
+	// window.fetch = customFetch;
 }
 
 
