@@ -28,9 +28,12 @@ CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
 app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'jsTap.db')
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 app.config['SECRET_KEY'] = 'b4CtXzlMp9tsATa3i7jgNiB10eiJbrQG'
 # app.config['SECRET_KEY'] = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=45))
-app.config['SESSION_COOKIE_SECURE'] = True
+
+app.config['SESSION_COOKIE_SECURE']   = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
 
 # This breaks the login page, not authenticated yet!
@@ -281,6 +284,8 @@ def logEvent(identifier, logString):
     threadLock.release()
     # print("-- End logEvent")
 
+
+
 # Need function to check session, return download directory
 def findLootDirectory(identifier):
     # Check if we know of this session and what it's 
@@ -391,6 +396,20 @@ def addAdminUser():
 
 
 #***************************************************************************
+# Response header handling
+@app.after_request
+def afterRequestHeaders(response):
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['X-Content-Type-Options']    = 'nosniff'
+    response.headers['X-Frame-Options']           = 'SAMEORIGIN'
+
+    # Server header is set in main function
+ 
+    return response
+
+
+
+
 # Page Endpoints
 
 # Send a copy of the payload
@@ -1124,5 +1143,8 @@ if __name__ == '__main__':
     if not os.path.exists("./loot"):
         os.mkdir("./loot")
 
+    # Response configuration
     WSGIRequestHandler.protocol_version = "HTTP/1.1"
+    WSGIRequestHandler.server_version   = "nginx"
+    WSGIRequestHandler.sys_version      = ""
     app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
