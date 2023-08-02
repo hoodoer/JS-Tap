@@ -427,6 +427,50 @@ async function getClientDetails(id)
     	}
     	break;
 
+    case 'FETCHSETUP':
+   	if (document.getElementById('apiEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		fetchSetupReq  = await fetch('/api/clientFetchSetup/' + eventKey);
+    		fetchSetupJson = await fetchSetupReq.json();
+
+    		cardTitle.innerHTML = "API - Fetch Setup";
+    		cardText.innerHTML  = "URL: <b>" + fetchSetupJson.url + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Method: <b>" + fetchSetupJson.method + "</b>";
+    	}
+    	break;
+
+  case 'FETCHHEADER':
+    	if (document.getElementById('apiEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		fetchHeaderReq  = await fetch('/api/clientFetchHeader/' + eventKey);
+    		fetchHeaderJson = await fetchHeaderReq.json();
+
+    		cardTitle.innerHTML = "API - Fetch Header";
+    		cardText.innerHTML  = "Header: <b>" + fetchHeaderJson.header + "</b>";
+    		cardText.innerHTML += "<br>";
+    		cardText.innerHTML += "Method: <b>" + fetchHeaderJson.value + "</b>";
+    	}
+    	break;
+
+    case 'FETCHCALL':
+    	if (document.getElementById('apiEvents').checked == true)
+    	{
+    		activeEvent = true;
+    		fetchCallReq  = await fetch('/api/clientFetchCall/' + eventKey);
+    		fetchCallJson = await fetchCallReq.json();
+
+    		requestData  = fetchCallJson.requestBody;
+    		responseData = fetchCallJson.responseBody;
+
+    		cardTitle.innerHTML = "API - Fetch Call";
+    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
+    		+ fetchCallJson.requestBody + `','` + fetchCallJson.responseBody  + `'`+ ')>View API Call</button>';
+    	}
+    	break;
+
     default:
     	alert('!!!!Switch default-No good');
     }

