@@ -1,10 +1,14 @@
 #!usr/bin/env python
-
 import json
 import threading
 import time
 import random
+import requests
 
+
+# Script to simulate clients sending in loot
+# To stress test the system, see how well it
+# holds up
 
 
 numClients = 10
@@ -12,6 +16,11 @@ numClients = 10
 
 randStartRange = 1
 randEndRange   = 10
+
+
+apiServer = "https://127.0.0.1"
+victimApp = "https://vulnerableapp.com"
+
 
 
 AdjectiveList = {
@@ -113,6 +122,18 @@ class Client(threading.Thread):
 	def run(self):
 		while self._running:
 			print("Client " + str(self.client_id) + " run loop")
+
+
+			# Need a pattern of behavior here
+			# URL change
+			# Storage/cookie change
+			# Screenshot
+			# HTML Scrape
+			# User Inputs
+			# API Calls
+
+
+
 
 
 			sleepAmount = random.randint(randStartRange, randEndRange)
