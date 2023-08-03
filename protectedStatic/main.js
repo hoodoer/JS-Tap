@@ -203,6 +203,9 @@ function showReqRespViewer(requestBody, responseBody)
 	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
 	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
 
+	// console.log("!!!! Request: " + prettyRequest);
+	// console.log("!!!! Response: " + prettyResponse);
+
 	requestContent = document.getElementById("requestBox");
 	requestContent.innerHTML = prettyRequest;
 
