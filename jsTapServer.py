@@ -576,6 +576,8 @@ def recordScreenshot(identifier):
     # what we're expecting. Definitely don't want SVGs
     if file_type != 'image/png':
         # Shenanigans from the 'client' are afoot
+        print("!!!! Wrong screenshot filetype!")
+        print("---- Type: " + file_type)
         return "No.", 401
 
     if identifier in SessionImages.keys():
