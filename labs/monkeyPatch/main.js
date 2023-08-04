@@ -35,7 +35,7 @@ function xhrGetAnswer()
 
 async function fetchGetAnswer()
 {
-	// console.log("Sending Fetch request...");
+	console.log("Sending Fetch request...");
 
 	var authtoken = localStorage.getItem("Authorization");
 
@@ -60,6 +60,42 @@ async function fetchGetAnswer()
 }
 
 
+
+async function jqueryGetAnswer()
+{
+	console.log("Sending jQuery request...");
+
+	var authtoken = localStorage.getItem("Authorization");
+
+	$(document).ready(function() {
+    // Data to be sent in the POST request
+		var requestData = {
+			request: "answer"
+		};
+
+		$.ajax({
+			type: "POST",
+			url: "/api/jqueryAnswer",
+			data: JSON.stringify(requestData),
+			contentType: "application/json; charset=utf-8",
+			headers: {
+				"Authorization": authtoken
+			},
+			dataType: "json",
+			success: function(responseData) {
+            // Handle the successful response here
+				// console.log("Response received:", responseData);
+				var answer = responseData.answer;
+				var answerSpot = document.getElementById("answerHeader");
+				answerSpot.innerHTML = "Answer: <i>" + answer + "</i>";
+			},
+			error: function(error) {
+            // Handle errors here
+				console.error("Error:", error);
+			}
+		});
+	});
+}
 
 
 

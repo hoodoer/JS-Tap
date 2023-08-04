@@ -40,12 +40,18 @@ def sendXhrAnswer():
 
 @app.route('/api/fetchAnswer', methods=['POST'])
 def sendFetchAnswer():
-	print("Starting fetch response...")
 	requestContent = request.json
-	print("Got request json: ")
-	print(requestContent)
 
 	responseData = {'answer':'Definitely vegemite.'}
+
+	return jsonify(responseData)
+
+
+@app.route('/api/jqueryAnswer', methods=['POST'])
+def sendjQueryAnswer():
+	requestContent = request.json
+
+	responseData = {'answer':'Blue. No..wait-AHHHHHHH'}
 
 	return jsonify(responseData)
 
