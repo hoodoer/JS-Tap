@@ -1,5 +1,3 @@
-var scrapedHtmlCode = "";
-
 let selectedClientId = "";
 
 
@@ -73,8 +71,14 @@ function updateEvents()
 
 
 
-function showHtmlCode()
+async function showHtmlCode(eventKey)
 {
+  htmlScrapeReq   = await fetch('/api/clientHtml/' + eventKey);
+  htmlScrapeJson  = await htmlScrapeReq.json();
+  scrapedHtmlCode = htmlScrapeJson.code;
+
+
+
 	prettyPrintCode = window.html_beautify(scrapedHtmlCode, {indent_size: 2});
 
 	modalContent = document.getElementById("code-viewer-body");
@@ -198,8 +202,29 @@ function showNoteEditor(event, client, nickname, notes)
 
 
 
-function showReqRespViewer(requestBody, responseBody)
+async function showReqRespViewer(eventKey, type)
 {
+	if (type == "XHR")
+	{
+		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
+	  xhrCallJson = await xhrCallReq.json();
+
+	  requestBody  = xhrCallJson.requestBody;
+	  responseBody = xhrCallJson.responseBody;
+	}
+	else if (type == "FETCH")
+	{
+		fetchCallReq  = await fetch('/api/clientFetchCall/' + eventKey);
+    fetchCallJson = await fetchCallReq.json();
+
+    requestBody  = fetchCallJson.requestBody;
+    responseBody = fetchCallJson.responseBody;
+	}
+	else
+	{
+		console.log("Invalid type in showReqRespViewer");
+	}
+
 	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
 	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
 
@@ -211,6 +236,7 @@ function showReqRespViewer(requestBody, responseBody)
 
 	responseContent = document.getElementById("responseBox");
 	responseContent.innerHTML = prettyResponse;
+
 
 
 	var modal = new bootstrap.Modal(document.getElementById('requestResponseModal'));
@@ -349,12 +375,9 @@ async function getClientDetails(id)
     		htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
     		htmlScrapeJson = await htmlScrapeReq.json();
 
-			// Dump it in a variable. So many issues trying to pass this code in generated HTML lol
-    		scrapedHtmlCode = htmlScrapeJson.code;
-
     		cardTitle.innerHTML = "HTML Scraped";
     		cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
-    		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode()">View Code</button>';
+    		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode(' + eventKey + ')">View Code</button>';
     		cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
     	}
     	break;
@@ -418,15 +441,10 @@ async function getClientDetails(id)
     	if (document.getElementById('apiEvents').checked == true)
     	{
     		activeEvent = true;
-    		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
-    		xhrCallJson = await xhrCallReq.json();
-
-    		requestData  = xhrCallJson.requestBody;
-    		responseData = xhrCallJson.responseBody;
 
     		cardTitle.innerHTML = "API - XHR Call";
-    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
-    		+ xhrCallJson.requestBody + `','` + xhrCallJson.responseBody  + `'`+ ')>View API Call</button>';
+    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
+    		+ eventKey + ',"XHR")>View API Call</button>';
     	}
     	break;
 
@@ -462,15 +480,10 @@ async function getClientDetails(id)
     	if (document.getElementById('apiEvents').checked == true)
     	{
     		activeEvent = true;
-    		fetchCallReq  = await fetch('/api/clientFetchCall/' + eventKey);
-    		fetchCallJson = await fetchCallReq.json();
-
-    		requestData  = fetchCallJson.requestBody;
-    		responseData = fetchCallJson.responseBody;
 
     		cardTitle.innerHTML = "API - Fetch Call";
-    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' + `'` 
-    		+ fetchCallJson.requestBody + `','` + fetchCallJson.responseBody  + `'`+ ')>View API Call</button>';
+    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
+    		+ eventKey + ',"FETCH")>View API Call</button>';
     	}
     	break;
 
