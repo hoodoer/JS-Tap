@@ -191,6 +191,7 @@ MurderCritter = {
 class Client(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
     nickname  = db.Column(db.String(100), unique=True, nullable=False)
+    uuid      = db.Column(db.String(40), unique=True, nullable=False)
     notes     = db.Column(db.Text, nullable=True)
     firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
     lastSeen  = db.Column(db.DateTime(timezone=True), server_default=func.now())
@@ -409,51 +410,6 @@ def logEvent(identifier, logString):
 
 # Need function to check session, return download directory
 def findLootDirectory(identifier):
-    # Check if we know of this session and what it's 
-    # loot directory is. 
-    # If it's a new session we haven't seen before, create a new loot directory 
-    # and return it to the caller. 
-
-    global lootDirCounter
-
-    threadLock.acquire()
-    if identifier not in SessionDirectories.keys():
-
-        print("New session for client: " + identifier)
-
-        # Database Entry
-        newClient = Client(nickname=identifier, notes="")
-        db.session.add(newClient)
-        db.session.commit()
-
-        # Initialize our storage
-        SessionDirectories[identifier] = lootDirCounter
-        lootDirCounter = lootDirCounter + 1
-        lootPath = './loot/client_' + str(SessionDirectories[identifier])
-        #print("Checking if loot dir exists: " + lootPath)
-
-        if not os.path.exists(lootPath):
-            #print("Creating directory...")
-            os.mkdir(lootPath)
-            sessionFile = open(lootPath + "/" + logFileName, "w")
-            sessionFile.write("Session identifier: ")
-            sessionFile.write(identifier + "\n")
-            sessionFile.close()
-
-            # Record the client index
-            clientFile = open("./loot/clients.txt", "a")
-            clientFile.write(str(time.time()) + ", " + identifier + ": " + lootPath + "\n")
-            clientFile.close()
-        # else:
-        #     print("Loot directory already exists")
-
-        # Initialize our number trackers
-        SessionImages[identifier] = 1;
-        SessionHTML[identifier] = 1;
-    
-    threadLock.release()
-
-
     lootDir = "client_" + str(SessionDirectories[identifier])
     #print("Loot directory is: " + lootDir)
     return lootDir
@@ -478,7 +434,7 @@ def clientSeen(identifier, ip, userAgent):
 
 
     # DB commit is handled by caller to clientSeen() method, don't do it here
-    client = Client.query.filter_by(nickname=identifier).first()
+    client = Client.query.filter_by(uuid=identifier).first()
     client.ipAddress = ip
     client.platform  = parsedUserAgent.os.family
     client.browser   = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
@@ -657,7 +613,7 @@ def login():
                 print("Auth: Password didn't match")
                 response = make_response("No.", 401)
                 return response
-                rint("Password didn't match :(")
+                print("Password didn't match :(")
         else:
             # Make sure equal processing time, avoiding time based user enum
             hash = bcrypt.generate_password_hash(password)
@@ -680,12 +636,50 @@ def logout():
 # Get UUID for client token
 @app.route('/client/getToken', methods=['GET'])
 def returnUUID():
-    token = uuid.uuid4()
+    token = str(uuid.uuid4())
+
+    # Setup new client
+    global lootDirCounter
+
+    threadLock.acquire()
+    print("New session for client: " + token)
+
+
+    # Database Entry
+    newNickname = generateNickname()
+    newClient   = Client(uuid=str(token), nickname=newNickname, notes="")
+    db.session.add(newClient)
+    db.session.commit()
+
+    # Initialize our storage
+    SessionDirectories[token] = lootDirCounter
+    lootDirCounter = lootDirCounter + 1
+    lootPath = './loot/client_' + str(SessionDirectories[token])
+    #print("Checking if loot dir exists: " + lootPath)
+
+    if not os.path.exists(lootPath):
+        #print("Creating directory...")
+        os.mkdir(lootPath)
+        sessionFile = open(lootPath + "/" + logFileName, "w")
+        sessionFile.write("Session identifier: ")
+        sessionFile.write(token + "\n")
+        sessionFile.close()
+
+        # Record the client index
+        clientFile = open("./loot/clients.txt", "a")
+        clientFile.write(str(time.time()) + ", " + token + ": " + lootPath + "\n")
+        clientFile.close()
+    # else:
+    #     print("Loot directory already exists")
+
+    # Initialize our number trackers
+    SessionImages[token] = 1;
+    SessionHTML[token]   = 1;
+    
+    threadLock.release()
+
 
     uuidData = {'clientToken':token}
-
-
-    print("Nickname generated: " + generateNickname())
 
     return jsonify(uuidData)
 
@@ -1110,9 +1104,9 @@ def getClients():
 def getClientEvents(id):
     print("Retrieving events table for client: " + id)
     client = Client.query.filter_by(id=id).first()
-    clientName = client.nickname;
+    clientUUID = client.uuid;
 
-    events = Event.query.filter_by(clientID=clientName)
+    events = Event.query.filter_by(clientID=clientUUID)
 
     eventData = [{'id':escape(event.id), 'timeStamp':event.timeStamp, 
         'eventType':escape(event.eventType), 'eventID':escape(event.eventID)} for event in events]
