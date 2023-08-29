@@ -189,11 +189,11 @@ function updateClientSessions()
 
 		if (checkBox.checked == true)
 		{
-			fetch('/api/app/setAllowNewClientConnections/1')
+			fetch('/api/app/setAllowNewClientSessions/1')
 		}
 		else
 		{
-			fetch('/api/app/setAllowNewClientConnections/0')
+			fetch('/api/app/setAllowNewClientSessions/0')
 		}
 }
 

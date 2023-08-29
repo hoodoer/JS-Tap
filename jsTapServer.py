@@ -677,6 +677,15 @@ def logout():
 # Get UUID for client token
 @app.route('/client/getToken', methods=['GET'])
 def returnUUID():
+    # Check to see if we're still allowing new client connections
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    print("In UUID, app setting is: " + str(appSettings.allowNewSesssions))
+    if (appSettings.allowNewSesssions == False):
+        return "No.", 401
+
+    # We're still allowing new connections, 
+    # setup a new client
     token = str(uuid.uuid4())
 
     # Setup new client
@@ -1361,17 +1370,13 @@ def setClientStar(key):
 def getAllowNewClientSessions():
     appSettngs = AppSettings.query.filter_by(id=1).first()
 
-    # if (appSettngs.allowNewSesssions):
-    #     print("New Sessions allowed!")
-    # else:
-    #     print("New Sessions not allowed")
-
     newSessionData = {'newSessionsAllowed':appSettngs.allowNewSesssions}
 
     return jsonify(newSessionData)
 
 
-@app.route('/api/app/setAllowNewClientConnections/<setting>', methods=['GET'])
+
+@app.route('/api/app/setAllowNewClientSessions/<setting>', methods=['GET'])
 @login_required
 def setAllowNewClientSessions(setting):
     appSettngs = AppSettings.query.filter_by(id=1).first()

