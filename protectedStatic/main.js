@@ -156,6 +156,48 @@ async function showAllNotesModal()
 
 
 
+async function showSessionModal()
+{
+		var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
+
+		// Let's figure out if new sessions are allowed right now
+		var req = await fetch('/api/app/allowNewClientSessions');
+		var jsonResponse = await req.json()
+
+		var checkBox = document.getElementById('allowNewClientSessions');
+
+		if (jsonResponse.newSessionsAllowed == '1')
+		{
+			// console.log("Server says sessions are allowed!");
+			checkBox.checked == true;
+		}
+		else
+		{
+			// console.log("Server says no more client sessions!");
+			checkBox.checked == false;
+		}
+
+
+		modal.show();
+}
+
+
+
+function updateClientSessions()
+{
+		var checkBox = document.getElementById('allowNewClientSessions');
+
+		if (checkBox.checked == true)
+		{
+			fetch('/api/app/setAllowNewClientConnections/1')
+		}
+		else
+		{
+			fetch('/api/app/setAllowNewClientConnections/0')
+		}
+}
+
+
 function showNoteEditor(event, client, nickname, notes)
 {
 	// console.log("STARTING SHOW NOTE EDITOR!!!!");

