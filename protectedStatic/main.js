@@ -53,12 +53,15 @@ function toggleStar(imgObject, event, client, nickname)
 function blockClient(imgObject, event, client, nickname)
 {
 	console.log("Blocking client: " + nickname);
+	console.log("Client id: " + client);
 
-	var userConfirmed = window.confirm('Do you want to block ' + nickname + ' from uploading additional events?\n\nThis will invalidate their "session"');
+	var userConfirmed = window.confirm('Do you want to block ' + nickname 
+		+ ' from uploading additional events?\n\nThis will invalidate their "session"');
 
 	if (userConfirmed)
 	{
 		console.log("Yeah, screw that asshole");
+		fetch('/api/blockClientSession/' + client);
 	}
 	else
 	{
@@ -168,7 +171,7 @@ async function showAllNotesModal()
 	}
 
 		// Handle saving modified notes
-	downloadButton.onclick = function(event) {
+		downloadButton.onclick = function(event) {
 		console.log("Gotta download button press...");
 		saveAllNotesToFile();
 	}

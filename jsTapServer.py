@@ -1398,6 +1398,19 @@ def setAllowNewClientSessions(setting):
 
 
 
+
+
+@app.route('/api/blockClientSession/<key>', methods=['GET'])
+@login_required
+def blockClientSession(key):
+    client = Client.query.filter_by(id=key).first()
+    print("Got a command to block client: " + client.nickname)
+    client.sessionValid = False;
+    dbCommit()
+
+    return "ok", 200
+
+
 #**************************************************************************
 
 
