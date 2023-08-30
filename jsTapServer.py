@@ -363,6 +363,17 @@ class Event(db.Model):
 
     def __repr__(self):
         return f'<Event {self.id}>'
+
+
+# Application settings
+class AppSettings(db.Model):
+    id                = db.Column(db.Integer, primary_key=True)
+    allowNewSesssions = db.Column(db.Boolean, default=True)
+
+    def __repr__(self):
+        return f'<AppSettings {self.id}>'
+
+
    
 
 # User C2 UI session
@@ -389,13 +400,6 @@ class User(UserMixin, db.Model):
 
 
 
-# Application settings
-class AppSettings(db.Model):
-    id                = db.Column(db.Integer, primary_key=True)
-    allowNewSesssions = db.Column(db.Boolean, default=True)
-
-    def __repr__(self):
-        return f'<AppSettings {self.id}>'
 
 
 #***************************************************************************
@@ -1464,6 +1468,7 @@ if __name__ == '__main__':
                     FetchHeader.__table__.drop(db.engine)
                     FetchCall.__table__.drop(db.engine)
                     Event.__table__.drop(db.engine)
+                    AppSettings.__table__.drop(db.engine)
                     dbCommit()
 
                     db.create_all()

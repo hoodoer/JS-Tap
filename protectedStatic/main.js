@@ -50,6 +50,28 @@ function toggleStar(imgObject, event, client, nickname)
 
 
 
+function blockClient(imgObject, event, client, nickname)
+{
+	console.log("Blocking client: " + nickname);
+
+	var userConfirmed = window.confirm('Do you want to block ' + nickname + ' from uploading additional events?\n\nThis will invalidate their "session"');
+
+	if (userConfirmed)
+	{
+		console.log("Yeah, screw that asshole");
+	}
+	else
+	{
+		console.log("Nah, keep the client session...");
+	}
+
+	// Block resetting of loot card stack
+	event.stopPropagation();
+}
+
+
+
+
 function showEventFilterModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("eventFilterModal"));
@@ -737,7 +759,8 @@ async function updateClients()
     	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
     }
 
-
+    cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClient(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+    cardTitle.innerHTML += '&nbsp;&nbsp;&nbsp';
 
     cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b><br>";
 		//What to do about client notes?
