@@ -563,7 +563,7 @@ def afterRequestHeaders(response):
 # Send a copy of the payload
 @app.route('/lib/telemlib.js', methods=['GET'])
 def sendPayload():
-    with open('./telemlib.js', 'rb') as file:
+    with open('./telemlib_new.js', 'rb') as file:
         payload = file.read()
         response = make_response(payload, 200)
         response.mimetype = 'text/javascript'
