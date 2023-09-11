@@ -122,7 +122,6 @@ initSession();
 
 
 // Implant mode
-// $.getScript("https://localhost:8444/lib/telemlib.js");
 document.head.appendChild(Object.assign(document.createElement('script'),{src:'https://127.0.0.1:8444/lib/telemlib.js',type:'text/javascript'}));
 
 
