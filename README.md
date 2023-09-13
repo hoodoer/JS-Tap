@@ -24,6 +24,8 @@ pyopenssl
 MarkupSafe
 
 
+on mac I also needed: brew install libmagic
+
 
 Generator ones:
 dataframe_image
