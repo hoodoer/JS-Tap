@@ -1281,7 +1281,7 @@ def getClientCookies(key):
 @app.route('/api/clientLocalStorage/<key>', methods=['GET'])
 @login_required
 def getClientLocalStorage(key):
-    print("**** Fetching client local storage...")
+    # print("**** Fetching client local storage...")
     localStorage = LocalStorage.query.filter_by(id=key).first()
     print("Sending back: " + localStorage.key + ":" + localStorage.value)
     
@@ -1307,7 +1307,7 @@ def getClientSesssionStorage(key):
 @app.route('/api/clientXhrOpen/<key>', methods=['GET'])
 @login_required
 def getClientXhrOpen(key):
-    print("**** Fetching client xhr api open call...")
+    # print("**** Fetching client xhr api open call...")
     xhrOpen = XhrOpen.query.filter_by(id=key).first()
 
     xhrOpenData = {'method':escape(xhrOpen.method), 'url':escape(xhrOpen.url)}
@@ -1318,7 +1318,7 @@ def getClientXhrOpen(key):
 @app.route('/api/clientXhrSetHeader/<key>', methods=['GET'])
 @login_required
 def getClientXhrSetHeader(key):
-    print("**** Fetching client xhr api set header call...")
+    # print("**** Fetching client xhr api set header call...")
     xhrSetHeader = XhrSetHeader.query.filter_by(id=key).first()
 
     xhrHeaderData = {'header':escape(xhrSetHeader.header), 'value':escape(xhrSetHeader.value)}
@@ -1330,7 +1330,7 @@ def getClientXhrSetHeader(key):
 @app.route('/api/clientXhrCall/<key>', methods=['GET'])
 @login_required
 def getClientXhrCall(key):
-    print("**** Fetching client xhr api call...")
+    # print("**** Fetching client xhr api call...")
     xhrCall = XhrCall.query.filter_by(id=key).first()
 
     xhrCallData = {'requestBody':xhrCall.requestBody, 'responseBody':xhrCall.responseBody}
@@ -1342,7 +1342,7 @@ def getClientXhrCall(key):
 @app.route('/api/clientFetchSetup/<key>', methods=['GET'])
 @login_required
 def getClientFetchSetup(key):
-    print("**** Fetching client fetch setup call...")
+    # print("**** Fetching client fetch setup call...")
     fetchSetup = FetchSetup.query.filter_by(id=key).first()
 
     fetchSetupData = {'method':escape(fetchSetup.method), 'url':escape(fetchSetup.url)}
@@ -1354,7 +1354,7 @@ def getClientFetchSetup(key):
 @app.route('/api/clientFetchHeader/<key>', methods=['GET'])
 @login_required
 def getClientFetchHeader(key):
-    print("**** Fetching client fetch api header call...")
+    # print("**** Fetching client fetch api header call...")
     fetchHeader = FetchHeader.query.filter_by(id=key).first()
 
     fetchHeaderData = {'header':escape(fetchHeader.header), 'value':escape(fetchHeader.value)}
@@ -1366,7 +1366,7 @@ def getClientFetchHeader(key):
 @app.route('/api/clientFetchCall/<key>', methods=['GET'])
 @login_required
 def getClientFetchCall(key):
-    print("**** Fetching client xhr api call...")
+    # print("**** Fetching client xhr api call...")
     fetchCall = FetchCall.query.filter_by(id=key).first()
 
     fetchCallData = {'requestBody':fetchCall.requestBody, 'responseBody':fetchCall.responseBody}

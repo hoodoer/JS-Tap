@@ -20,11 +20,13 @@ function xhrGetAnswer()
 	request.onload = function() {
 		var jsonResponse = request.response;
 
+		// console.log("MAIN.JS jsonResponse: " + jsonResponse);
+
 		var status = request.status;
 
 		var answer = jsonResponse.answer;
 
-		// console.log("Get XHR answer: " + answer);
+		// console.log("MAIN.JS: Get XHR answer: " + answer);
 
 		var answerSpot = document.getElementById("answerHeader");
 		answerSpot.innerHTML = "Answer: <i>" + answer + "</i>";

