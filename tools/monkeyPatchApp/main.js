@@ -114,7 +114,7 @@ function injectPayload()
 
 function initSession()
 {
-	localStorage.setItem("Authorization", "SLEEVELESS_IN_SEATTLE_123");
+	localStorage.setItem("Authorization", "SECRET_API_KEY_FALL_2023!");
 }
 
 
