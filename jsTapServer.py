@@ -571,17 +571,6 @@ def sendPayload():
         return response
 
 
-# Baked into main payload now
-# Send copy of html2canvas library
-# @app.route('/lib/telemhelperlib.js', methods=['GET'])
-# def sendHtml2Canvas():
-#     with open('./html2canvas.min.js', 'rb') as file:
-#         payload = file.read()
-#         response = make_response(payload, 200)
-#         response.mimetype = 'text/javascript'
-
-#         return response
-
 
 # Send c2 UI index page
 @app.route('/', methods=['GET'])

