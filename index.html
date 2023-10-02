@@ -189,18 +189,10 @@
 						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 					</div>
 					<div class="modal-body" id="guide-body">
-						There are a few settings in the JS-Tap payload that need to be set prior<br>
+						There are a quite a few settings in the JS-Tap payload that need to be set prior<br>
 						to your engagement. The primary JavaScript payload is contained in <b>telemlib.js.</b><br><br>
-						JS-Tap has two modes of operation, Trap mode and Implant mode.<br>
-						Trap mode is what you use as an XSS payload, and it uses<br>
-						an iFrame trap as a method of persisting the execution of the payload.<br><br>
-						Implant mode does not use this persistence method, and assumes the <br>
-						payload has been directly added to the JavaScript files of the application<br>
-						by the red team. <br><br>	
-						In the <b>initGlobals()</b> function you need to set the start page of the iFrame trap<br>
-						and the jsTapServer hostname/port. 
-
-
+						See the project README file for instructions:<br>
+						<a href="https://github.com/hoodoer/JS-Tap" target="_blank">JS-Tap README</a><br>
 					</div>
 					<div class="modal-footer">
 						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
