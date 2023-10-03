@@ -1,15 +1,17 @@
 # JS-Tap
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
+
+## Introduction
 JS-Tap is a generic JavaScript payload and supporting software to help red teamers attack webapps. The JS-Tap payload can be used as an XSS payload or as a post exploitation implant. 
 
-The payload does not require the user running the payload to be authenticated to the application being attacked, and it does not require any prior knowledge of the application beyond finding a way to get the JavaScript into the application. 
+The payload does not require the targeted user running the payload to be authenticated to the application being attacked, and it does not require any prior knowledge of the application beyond finding a way to get the JavaScript into the application. 
 
 Instead of attacking the application server itself, JS-Tap focuses on the client-side of the application and heavily instruments the client-side code. 
 
 The JS-Tap payload is contained in the **telemlib.js** file. This file has _not_ been obfuscated. Prior to using in an engagement strongly consider changing the naming of endpoints, stripping comments, and highly obfuscating the payload. 
 
-Make sure you review the configuration section carefully before using on a publicly exposed server. If you don't change the secret key you're going to have a bad time. 
+Make sure you review the configuration section below carefully before using on a publicly exposed server. If you don't change the secret key you're going to have a bad time. 
 
 ## Data Collected
 * Client IP address, OS, Browser
@@ -43,12 +45,12 @@ Trap mode combats this by establishing persistence using an [iFrame trap techniq
 Note that the application targeted must allow iFraming from same-origin or self if it's setting CSP or X-Frame-Options headers. JavaScript based framebusters can also prevent iFrame traps from working. 
 
 #### Implant Mode
-Implant mode would typically be used if you're directly adding the payload into the targetted application. Perhaps you have a shell on the server that hosts the JavaScript files for the application. Add the payload to a JavaScript file that's used throughout the application (jQuery, main.js, etc.). Which file would be ideal really depends on the app in question and how it's using JavaScript files. Implant mode does not require starting page to be configured, and does not use the iFrame trap technique. 
+Implant mode would typically be used if you're directly adding the payload into the targetted application. Perhaps you have a shell on the server that hosts the JavaScript files for the application. Add the payload to a JavaScript file that's used throughout the application (jQuery, main.js, etc.). Which file would be ideal really depends on the app in question and how it's using JavaScript files. Implant mode does not require a starting page to be configured, and does not use the iFrame trap technique. 
 
 
 
 ## Installation and Start
-Requires python3. A large number of dependencies are required for the jsTapServer, you are **highly** encouraged to use python virtual environments to isolate the libraries for the server software. 
+Requires python3. A large number of dependencies are required for the jsTapServer, you are **highly** encouraged to use python virtual environments to isolate the libraries for the server software (or whatever your preferred isolation method is). 
 
 Example:
 ```
@@ -71,7 +73,7 @@ Note that on Mac I also had to install libmagic outside of python.
 ```
 brew install libmagic
 ```
-Playing with JS-Tap locally is fine, but to use in a proper engagment you'll need to be running JS-Tap on VPS and configure Flask with a proper certificate. 
+Playing with JS-Tap locally is fine, but to use in a proper engagment you'll need to be running JS-Tap on publicly accessible VPS and configure Flask with a valid certificate. 
 
 
 ## Configuration (VERY VERY IMPORTANT!)
@@ -98,7 +100,7 @@ app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
 These configuration variables are in the **initGlobals()** function. 
 
 #### JS-Tap Server Location
-You need to configure the payload with the URL of the JS-Tap server
+You need to configure the payload with the URL of the JS-Tap server it will connect back to. 
 ```
 window.taperexfilServer = "https://127.0.0.1:8444";
 ```
@@ -120,14 +122,14 @@ window.taperstartingPage = "http://targetapp.com/somestartpage";
 ```
 
 #### Exfiltrate HTML
-true/false setting on whether a copy of the HTML code of each page viewed is exfiltrated. 
+true/false setting on whether a copy of the HTML code of each page viewed is exfiltrated. This is the largest sized item stored in the database (screenshots are not stored in the database). 
 
 ```
 window.taperexfilHTML = true;
 ```
 
 #### MonkeyPatch APIs
-Enable monkeypatching of XHR and Fetch APIs. This works in trap mode. In implant mode, only Fetch APIs are monkeypatched. Monkeypatching allows JavaScript to be rewritten at runtime. Enabling this feature will re-write the XHR and Fetch networking APIs used by JavaScript code in order to tap the contents of those network calls. 
+Enable monkeypatching of XHR and Fetch APIs. This works in trap mode. In implant mode, only Fetch APIs are monkeypatched. Monkeypatching allows JavaScript to be rewritten at runtime. Enabling this feature will re-write the XHR and Fetch networking APIs used by JavaScript code in order to tap the contents of those network calls. Not that jQuery based network calls will be captured in the XHR API, which jQuery uses under the hood for network calls. 
 
 ```
 window.monkeyPatchAPIs = true;
@@ -148,13 +150,13 @@ Clients show up on the left, selecting one will show a time series of their even
 
 The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. 
 
-Each client has an 'x' button. This allows you to delete the session for that client, if they're sending junk or useless data, you can prevent that client from submitting future data. 
+Each client has an 'x' button (near the star button). This allows you to delete the session for that client, if they're sending junk or useless data, you can prevent that client from submitting future data. 
 
-When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop new client sessions from being issues, select **App Settings** at the top and you can disable new client sessions. 
+When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop all new client sessions from being issues, select **App Settings** at the top and you can disable new client sessions. 
 
 Each client has a "notes" feature. If you find juicy information for that particular client (credentials, API tokens, etc) you can add it to the client notes. After you've reviewed all your clients and made you notes, the **View All Notes** feature at the top allows you to export all notes from all clients at once. 
 
-The events list can be filtered by event type if you're trying to focus on something specific, like screenshots. Note that the events/loot list does _not_ automatically update (the clients list does). If you want to load the latest events for the client you need to select them again. 
+The events list can be filtered by event type if you're trying to focus on something specific, like screenshots. Note that the events/loot list does _not_ automatically update (the clients list does). If you want to load the latest events for the client you need to select the client again on the left. 
 
 
 ## Tools
@@ -163,20 +165,20 @@ A few tools are included in the tools subdirectory.
 ### clientSimulator.py
 A script to stress test the jsTapServer. Good for determining roughly how many clients your server can handle. Note that running the clientSimulator script is probably more resource intensive than the actual jsTapServer, so you may wish to run it on a separate machine. 
 
-At the top of the script is a **numClients** variable, set to how many clients you want to simulator. The script will spawn a thread for each and send data in. 
+At the top of the script is a **numClients** variable, set to how many clients you want to simulator. The script will spawn a thread for each, retrieve a client session, and send data in simulating a client. 
 
 ```
 numClients = 50
 ```
 Hopefully a future blog will show how to configure JS-Tap to use a proper database instead of sqlite (it's using sqlalchemy, so not a hard switch) and a better server configuration to scale better. 
 
-You'll also need to configure where you're running the jsTapServer:
+You'll also need to configure where you're running the jsTapServer for the clientSimulator to connect to:
 ```
 apiServer = "https://127.0.0.1:8444"
 ```
 
 ### MonkeyPatchApp
-A simple app used for testing XHR/Fetch monkeypatching, but can give you a simple app to test the payload against. 
+A simple app used for testing XHR/Fetch monkeypatching, but can give you a simple app to test the payload against in general. 
 
 Run with:
 ```
@@ -188,7 +190,7 @@ By default this will start the application running on:
 https://127.0.0.1:8443
 ```
 
-Pressing the "Inject JS-Tap payload" button will run the JS-Tap payload. This works for either implant or trap mode. You may need to point the monkeyPatchLab application at a new JS-Tap server location, you can find this set in the **injectPayload()** function in **main.js**
+Pressing the "Inject JS-Tap payload" button will run the JS-Tap payload. This works for either implant or trap mode. You may need to point the monkeyPatchLab application at a new JS-Tap server location for loading the payload file, you can find this set in the **injectPayload()** function in **main.js**
 
 ```
 function injectPayload()
