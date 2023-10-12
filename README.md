@@ -2,6 +2,10 @@
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 
+## Demo
+WWHF talk/blog links coming soon. Readme will be updated when these are available publicly. 
+
+
 ## Introduction
 JS-Tap is a generic JavaScript payload and supporting software to help red teamers attack webapps. The JS-Tap payload can be used as an XSS payload or as a post exploitation implant. 
 
@@ -211,9 +215,6 @@ You should be able to run it on exfiltrated HTML files. Again, this is currently
 ### generateIntelReport.py
 Not even sure if this works anymore. Prior to the web UI for JS-Tap, the generateIntelReport script would comb through the gathered loot and generate a PDF report. 
 
-
-## Demo
-Blog and video demos coming soon. Readme will be updated when these are available publicly. 
 
 
 
