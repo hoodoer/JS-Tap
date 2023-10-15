@@ -500,7 +500,7 @@ async function getClientDetails(id)
     		cardTitle.innerHTML = "API - XHR Set Header";
     		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
     		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Method: <b>" + xhrHeaderJson.value + "</b>";
+    		cardText.innerHTML += "Value: <b>" + xhrHeaderJson.value + "</b>";
     	}
     	break;
 
@@ -539,7 +539,7 @@ async function getClientDetails(id)
     		cardTitle.innerHTML = "API - Fetch Header";
     		cardText.innerHTML  = "Header: <b>" + fetchHeaderJson.header + "</b>";
     		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Method: <b>" + fetchHeaderJson.value + "</b>";
+    		cardText.innerHTML += "Value: <b>" + fetchHeaderJson.value + "</b>";
     	}
     	break;
 
