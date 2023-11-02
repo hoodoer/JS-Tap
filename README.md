@@ -3,10 +3,10 @@
 
 
 ## Demo
-You can read the blog post about JS-Tap here:
+You can read the blog post about JS-Tap here:<br>
 <https://trustedsec.com/blog/js-tap-weaponizing-javascript-for-red-teams>
 
-A demo can also be seen in this webinar:
+A demo can also be seen in this webinar:<br>
 <https://youtu.be/-c3b5debhME?si=CtJRqpklov2xv7Um>
 
 
