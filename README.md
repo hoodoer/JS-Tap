@@ -3,7 +3,11 @@
 
 
 ## Demo
-WWHF talk/blog links coming soon. Readme will be updated when these are available publicly. 
+You can read the blog post about JS-Tap here:
+<https://trustedsec.com/blog/js-tap-weaponizing-javascript-for-red-teams>
+
+A demo can also be seen in this webinar:
+<https://youtu.be/-c3b5debhME?si=CtJRqpklov2xv7Um>
 
 
 ## Introduction
