@@ -9,6 +9,9 @@ You can read the blog post about JS-Tap here:<br>
 A demo can also be seen in this webinar:<br>
 <https://youtu.be/-c3b5debhME?si=CtJRqpklov2xv7Um>
 
+Better/shorter demo at ShmooCon:<br>
+<https://youtu.be/IDLMMiqV6ss?si=XunvnVarqSIjx_x0&t=19814>
+
 
 ## Introduction
 JS-Tap is a generic JavaScript payload and supporting software to help red teamers attack webapps. The JS-Tap payload can be used as an XSS payload or as a post exploitation implant. 
