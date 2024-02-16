@@ -1,4 +1,5 @@
 # JS-Tap
+### v1.01
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 
@@ -91,7 +92,9 @@ Playing with JS-Tap locally is fine, but to use in a proper engagment you'll nee
 
 ## Configuration (VERY VERY IMPORTANT!)
 ### jsTapServer.py Configuration
-#### Secret Key <------
+#### Secret Key <------ (deprecated)
+**Note: Latest version of JS-Tap randomly generates this secret key each start. If you're running an old copy make sure you're not using a static key.** The old notes are below:
+
 The most important change to make is in the **SECRET_KEY** used by the jsTapServer. This is the secret used to sign authentication cookies. Even if you regenerate a new admin user and password on startup, if you don't change the secret key someone could generate a valid cookie and access your server. 
 
 Change this value from it's default. I left it static because it has made development significantly easier. 
@@ -101,6 +104,16 @@ app.config['SECRET_KEY'] = 'YOUR_NEW_SECRET_KEY'
 ```
 Or just switch to the commented out line below it that dynamically generates a new key on startup. 
 
+#### Proxy Mode
+For production use JS-Tap should be hosted on a publicly available server with a proper SSL certificate from someone like letsencrypt. The easiest way to deploy this is to allow nginx to act as a front-end to JS-Tap and handle the letsencrypt cert, and then forward the decrypted traffic to JS-Tap as HTTP traffic locally (i.e. nginx and JS-Tap run on the same VPS). 
+
+If you set **proxyMode** to true, JS-Tap server will run in HTTP mode, and take the client IP address from the **X-Forwarded-For** header, which nginx needs to be configured to set. 
+
+When **proxyMode** is set to false, JS-Tap will run with a self-signed certificate, which is useful for testing. The client IP will be taken from the source IP of the client. 
+
+
+#### Data Directory
+The **dataDirectory** parameter tells JS-Tap where the directory is to use for the SQLite database and loot directory. Not all "loot" is stored in the database, screenshots and scraped HTML files in particular are not. 
 
 #### Server Port
 To change the server port configuration see the last line of **jsTapServer.py**

