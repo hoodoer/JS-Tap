@@ -207,6 +207,14 @@ async function showSessionModal()
 }
 
 
+async function showCustomPayloadModal()
+{
+	console.log("Custom Payload times!");
+	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
+	modal.show();
+}
+
+
 
 function updateClientSessions()
 {
