@@ -399,6 +399,16 @@ class AppSettings(db.Model):
         return f'<AppSettings {self.id}>'
 
 
+
+class CustomPayload(db.Model):
+    id   = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    code = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f'<CustomPayload {self.id}>'
+
+
    
 
 # User C2 UI session
@@ -1538,8 +1548,6 @@ def setAllowNewClientSessions(setting):
 
 
 
-
-
 @app.route('/api/blockClientSession/<key>', methods=['GET'])
 @login_required
 def blockClientSession(key):
@@ -1548,6 +1556,45 @@ def blockClientSession(key):
     dbCommit()
 
     return "ok", 200
+
+
+
+@app.route('/api/getSavedPayloads', methods=['GET'])
+@login_required
+def getSavedCustomPayloads():
+    savedPayloads = CustomPayload.query.all()
+
+    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name)} for payload in savedPayloads]
+
+    return jsonify(allSavedPayloads)
+
+
+@app.route('/api/getSavedPayloadCode/<key>', methods=['GET'])
+@login_required
+def getSavedPayloadCode(key):
+    # print("!!! Getting saved code for key: " + key)
+    payload = CustomPayload.query.filter_by(id=key).first()
+
+
+    codeData = {'name':escape(payload.name), 'code':escape(payload.code)}
+
+    return jsonify(codeData)
+
+
+
+@app.route('/api/savePayload', methods=['POST'])
+@login_required
+def saveCustomPayload():
+    content = request.json 
+    newName = content['name']
+    newCode = content['code']
+
+    newPayload = CustomPayload(name=newName, code=newCode)
+    db.session.add(newPayload)
+    dbCommit()
+
+    return "ok", 200
+
 
 
 #**************************************************************************
@@ -1620,6 +1667,7 @@ if __name__ == '__main__':
                     FetchHeader.__table__.drop(db.engine)
                     FetchCall.__table__.drop(db.engine)
                     Event.__table__.drop(db.engine)
+                    CustomPayload.__table__.drop(db.engine)
                     dbCommit()
 
                     db.create_all()

@@ -207,6 +207,65 @@ async function showSessionModal()
 }
 
 
+
+async function selectPayload(payload)
+{
+	codeResponse = await fetch('/api/getSavedPayloadCode/' + payload.id);
+	codeJson     = await codeResponse.json();
+	code         = atob(codeJson.code);
+
+	var payloadNameInput = document.getElementById('payloadName');
+	var payloadCode      = document.getElementById('payload-editor');
+
+	payloadNameInput.value = payload.name;
+	payloadCode.value      = code;
+}
+
+
+async function refreshSavedPayloadList()
+{
+	var savedPayloadsList = document.getElementById('savedPayloadsList');
+
+	savedPayloadsList.innerHTML = '';
+
+	// Let's get our saved payloads from the database
+	var req = await fetch('/api/getSavedPayloads');
+	var jsonResponse = await req.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		id   = jsonResponse[i].id;
+		name = jsonResponse[i].name;
+		// code = atob(jsonResponse[i].code);
+
+		var payload = document.createElement('li');
+		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
+		payload.textContent = name;
+		payload.name        = name;
+		payload.id          = id;
+
+		payload.addEventListener('click', function() {
+			selectPayload(this)
+			// console.log('Clicked payload name: ' + this.name + ', id: ' + this.id);
+
+		});
+
+		var deletePayloadButton = document.createElement('button');
+		deletePayloadButton.className = 'btn btn-sm';
+		deletePayloadButton.textContent = 'Delete';
+
+		deletePayloadButton.addEventListener('click', function() {
+			// delete from database
+
+			savedPayloadsList.removeChild(payload);
+		})
+
+		payload.appendChild(deletePayloadButton);
+		savedPayloadsList.appendChild(payload);
+	}
+}
+
+
 async function showCustomPayloadModal()
 {
 	console.log("Custom Payload times!");
@@ -223,22 +282,53 @@ async function showCustomPayloadModal()
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
 
 
-	// test code:
-	var payload = document.createElement('li');
-	payload.className = 'list-group-item d-flex justify-content-between align-items-center';
-	payload.textContent = "troll-a";
-	var deletePayloadButton = document.createElement('button');
-	deletePayloadButton.className = 'btn btn-sm';
-	deletePayloadButton.textContent = 'Delete';
+	refreshSavedPayloadList();
+	// savedPayloadsList.innerHTML = '';
 
-	deletePayloadButton.addEventListener('click', function() {
-		// delete from database
+	// // Let's get our saved payloads from the database
+	// var req = await fetch('/api/getSavedPayloads');
+	// var jsonResponse = await req.json();
 
-		savedPayloadsList.removeChild(payload);
-	})
+	// for (let i = 0; i < jsonResponse.length; i++)
+	// {
+	// 	name = jsonResponse[i].name;
+	// 	code = atob(jsonResponse[i].code);
 
-	payload.appendChild(deletePayloadButton);
-	savedPayloadsList.appendChild(payload);
+	// 	var payload = document.createElement('li');
+	// 	payload.className = 'list-group-item d-flex justify-content-between align-items-center';
+	// 	payload.textContent = name;
+
+	// 	var deletePayloadButton = document.createElement('button');
+	// 	deletePayloadButton.className = 'btn btn-sm';
+	// 	deletePayloadButton.textContent = 'Delete';
+
+	// 	deletePayloadButton.addEventListener('click', function() {
+	// 		// delete from database
+
+	// 		savedPayloadsList.removeChild(payload);
+	// 	})
+
+	// 	payload.appendChild(deletePayloadButton);
+	// 	savedPayloadsList.appendChild(payload);
+	// }
+
+
+	// test code
+	// var payload = document.createElement('li');
+	// payload.className = 'list-group-item d-flex justify-content-between align-items-center';
+	// payload.textContent = "troll-a";
+	// var deletePayloadButton = document.createElement('button');
+	// deletePayloadButton.className = 'btn btn-sm';
+	// deletePayloadButton.textContent = 'Delete';
+
+	// deletePayloadButton.addEventListener('click', function() {
+	// 	// delete from database
+
+	// 	savedPayloadsList.removeChild(payload);
+	// })
+
+	// payload.appendChild(deletePayloadButton);
+	// savedPayloadsList.appendChild(payload);
 
 
 	// Detect unsaved changes
@@ -310,7 +400,19 @@ async function showCustomPayloadModal()
 				unsavedChanges = false;
 
 				// send payload to server
+				fetch('/api/savePayload', {
+					method:"POST",
+					body: JSON.stringify({
+						name: payloadNameInput.value,
+						code: btoa(payloadCode.value)
+					}),
+					headers: {
+						"Content-type": "application/json; charset=UTF-8"
+					}
+				});
+
 				alert('Saved!');
+				refreshSavedPayloadList();
 			}
 		}
 	}
