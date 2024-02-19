@@ -222,6 +222,13 @@ async function selectPayload(payload)
 }
 
 
+async function deletePayload(payload)
+{
+		await fetch('/api/deletePayload/' + payload.id);
+		refreshSavedPayloadList();
+}
+
+
 async function refreshSavedPayloadList()
 {
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
@@ -245,19 +252,17 @@ async function refreshSavedPayloadList()
 		payload.id          = id;
 
 		payload.addEventListener('click', function() {
-			selectPayload(this)
-			// console.log('Clicked payload name: ' + this.name + ', id: ' + this.id);
-
+			selectPayload(this);
 		});
 
-		var deletePayloadButton = document.createElement('button');
-		deletePayloadButton.className = 'btn btn-sm';
+		var deletePayloadButton         = document.createElement('button');
+		deletePayloadButton.id          = id;
+		deletePayloadButton.className   = 'btn btn-sm';
 		deletePayloadButton.textContent = 'Delete';
 
 		deletePayloadButton.addEventListener('click', function() {
 			// delete from database
-
-			savedPayloadsList.removeChild(payload);
+			deletePayload(this);
 		})
 
 		payload.appendChild(deletePayloadButton);
@@ -281,55 +286,10 @@ async function showCustomPayloadModal()
 
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
 
+	payloadNameInput.value = "";
+	payloadCode.value      = "";
 
 	refreshSavedPayloadList();
-	// savedPayloadsList.innerHTML = '';
-
-	// // Let's get our saved payloads from the database
-	// var req = await fetch('/api/getSavedPayloads');
-	// var jsonResponse = await req.json();
-
-	// for (let i = 0; i < jsonResponse.length; i++)
-	// {
-	// 	name = jsonResponse[i].name;
-	// 	code = atob(jsonResponse[i].code);
-
-	// 	var payload = document.createElement('li');
-	// 	payload.className = 'list-group-item d-flex justify-content-between align-items-center';
-	// 	payload.textContent = name;
-
-	// 	var deletePayloadButton = document.createElement('button');
-	// 	deletePayloadButton.className = 'btn btn-sm';
-	// 	deletePayloadButton.textContent = 'Delete';
-
-	// 	deletePayloadButton.addEventListener('click', function() {
-	// 		// delete from database
-
-	// 		savedPayloadsList.removeChild(payload);
-	// 	})
-
-	// 	payload.appendChild(deletePayloadButton);
-	// 	savedPayloadsList.appendChild(payload);
-	// }
-
-
-	// test code
-	// var payload = document.createElement('li');
-	// payload.className = 'list-group-item d-flex justify-content-between align-items-center';
-	// payload.textContent = "troll-a";
-	// var deletePayloadButton = document.createElement('button');
-	// deletePayloadButton.className = 'btn btn-sm';
-	// deletePayloadButton.textContent = 'Delete';
-
-	// deletePayloadButton.addEventListener('click', function() {
-	// 	// delete from database
-
-	// 	savedPayloadsList.removeChild(payload);
-	// })
-
-	// payload.appendChild(deletePayloadButton);
-	// savedPayloadsList.appendChild(payload);
-
 
 	// Detect unsaved changes
 	var unsavedChanges = false;
@@ -411,7 +371,6 @@ async function showCustomPayloadModal()
 					}
 				});
 
-				alert('Saved!');
 				refreshSavedPayloadList();
 			}
 		}

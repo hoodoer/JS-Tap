@@ -1569,10 +1569,11 @@ def getSavedCustomPayloads():
     return jsonify(allSavedPayloads)
 
 
+
+
 @app.route('/api/getSavedPayloadCode/<key>', methods=['GET'])
 @login_required
 def getSavedPayloadCode(key):
-    # print("!!! Getting saved code for key: " + key)
     payload = CustomPayload.query.filter_by(id=key).first()
 
 
@@ -1586,16 +1587,32 @@ def getSavedPayloadCode(key):
 @login_required
 def saveCustomPayload():
     content = request.json 
-    newName = content['name']
+    name    = content['name']
     newCode = content['code']
 
-    newPayload = CustomPayload(name=newName, code=newCode)
-    db.session.add(newPayload)
+    # Check if this is an existing payload we're just updating
+    payload = CustomPayload.query.filter_by(name=name).first()
+
+    if payload is not None:
+        payload.code = newCode;
+    else:
+        newPayload = CustomPayload(name=name, code=newCode)
+        db.session.add(newPayload)
+
     dbCommit()
 
     return "ok", 200
 
 
+
+@app.route('/api/deletePayload/<key>', methods=['GET'])
+@login_required
+def deleteCustomPayload(key):
+    payload = CustomPayload.query.filter_by(id=key).first()
+    db.session.delete(payload)
+    dbCommit()
+
+    return "ok", 200
 
 #**************************************************************************
 
