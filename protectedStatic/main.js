@@ -98,9 +98,9 @@ function updateEvents()
 
 async function showHtmlCode(eventKey)
 {
-  htmlScrapeReq   = await fetch('/api/clientHtml/' + eventKey);
-  htmlScrapeJson  = await htmlScrapeReq.json();
-  scrapedHtmlCode = htmlScrapeJson.code;
+	htmlScrapeReq   = await fetch('/api/clientHtml/' + eventKey);
+	htmlScrapeJson  = await htmlScrapeReq.json();
+	scrapedHtmlCode = htmlScrapeJson.code;
 
 
 
@@ -171,7 +171,7 @@ async function showAllNotesModal()
 	}
 
 		// Handle saving modified notes
-		downloadButton.onclick = function(event) {
+	downloadButton.onclick = function(event) {
 		console.log("Gotta download button press...");
 		saveAllNotesToFile();
 	}
@@ -183,27 +183,27 @@ async function showAllNotesModal()
 
 async function showSessionModal()
 {
-		var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
+	var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
 
 		// Let's figure out if new sessions are allowed right now
-		var req = await fetch('/api/app/allowNewClientSessions');
-		var jsonResponse = await req.json()
+	var req = await fetch('/api/app/allowNewClientSessions');
+	var jsonResponse = await req.json()
 
-		var checkBox = document.getElementById('allowNewClientSessions');
+	var checkBox = document.getElementById('allowNewClientSessions');
 
-		if (jsonResponse.newSessionsAllowed == '1')
-		{
+	if (jsonResponse.newSessionsAllowed == '1')
+	{
 			// console.log("Server says sessions are allowed!");
-			checkBox.checked == true;
-		}
-		else
-		{
+		checkBox.checked == true;
+	}
+	else
+	{
 			// console.log("Server says no more client sessions!");
-			checkBox.checked == false;
-		}
+		checkBox.checked == false;
+	}
 
 
-		modal.show();
+	modal.show();
 }
 
 
@@ -211,6 +211,120 @@ async function showCustomPayloadModal()
 {
 	console.log("Custom Payload times!");
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
+
+	var saveButton   = document.getElementById('payload-save-button');
+	var importButton = document.getElementById('payload-import-button');
+	var exportButton = document.getElementById('payload-export-button');
+	var closeButton  = document.getElementById('payload-close-button');
+
+	var payloadNameInput = document.getElementById('payloadName');
+	var payloadCode      = document.getElementById('payload-editor');
+
+	var savedPayloadsList = document.getElementById('savedPayloadsList');
+
+
+	// test code:
+	var payload = document.createElement('li');
+	payload.className = 'list-group-item d-flex justify-content-between align-items-center';
+	payload.textContent = "troll-a";
+	var deletePayloadButton = document.createElement('button');
+	deletePayloadButton.className = 'btn btn-sm';
+	deletePayloadButton.textContent = 'Delete';
+
+	deletePayloadButton.addEventListener('click', function() {
+		// delete from database
+
+		savedPayloadsList.removeChild(payload);
+	})
+
+	payload.appendChild(deletePayloadButton);
+	savedPayloadsList.appendChild(payload);
+
+
+	// Detect unsaved changes
+	var unsavedChanges = false;
+
+	payloadNameInput.addEventListener('input', function() {
+		unsavedChanges = true;
+		console.log("Unsaved changes!");
+	});
+
+	payloadCode.addEventListener('input', function() {
+		unsavedChanges = true;
+		console.log("Unsaved changes!");
+	});
+
+
+	closeButton.onclick = function(event) {
+		if (unsavedChanges)
+		{
+			console.log("Oh no! unsaved changes on close!");
+
+			var userConfirmed = window.confirm('You have unsaved changes, close anyway?');
+
+			if (userConfirmed)
+			{
+				console.log("Don't care, lose my changes");
+				modal.hide();
+			}
+			else
+			{
+				event.stopPropagation();
+				console.log("NO! I need to SAVE!");
+			}
+		}
+		else
+		{
+			console.log("No unsaved changes, close away..");
+			modal.hide();
+		}
+	}
+
+
+		// Handle saving modified notes
+	saveButton.onclick = function(event) {
+		console.log("Gotta save payload button..");
+		if (payloadNameInput.value === "")
+		{
+			console.log("Oh no, failed to set a name!");
+			event.preventDefault();
+			payloadNameInput.classList.add('is-invalid');
+		}
+		else
+		{
+			payloadNameInput.classList.remove('is-invalid');
+			console.log("Payload name is: " + payloadNameInput.value);
+
+			// Ok, now make sure we actually have some code...
+			if (payloadCode.value === "")
+			{
+				console.log("Forget the code?");
+				event.preventDefault();
+				payloadCode.classList.add('is-invalid');
+			}
+			else
+			{
+				payloadCode.classList.remove('is-invalid');
+				console.log("Got code: " + payloadCode.value);
+
+				unsavedChanges = false;
+
+				// send payload to server
+				alert('Saved!');
+			}
+		}
+	}
+
+
+	importButton.onclick = function(event) {
+		console.log("Import button pressed");
+	}
+
+	exportButton.onclick = function(event) {
+		console.log("Export button pressed");
+	}
+
+
 	modal.show();
 }
 
@@ -218,16 +332,16 @@ async function showCustomPayloadModal()
 
 function updateClientSessions()
 {
-		var checkBox = document.getElementById('allowNewClientSessions');
+	var checkBox = document.getElementById('allowNewClientSessions');
 
-		if (checkBox.checked == true)
-		{
-			fetch('/api/app/setAllowNewClientSessions/1')
-		}
-		else
-		{
-			fetch('/api/app/setAllowNewClientSessions/0')
-		}
+	if (checkBox.checked == true)
+	{
+		fetch('/api/app/setAllowNewClientSessions/1')
+	}
+	else
+	{
+		fetch('/api/app/setAllowNewClientSessions/0')
+	}
 }
 
 
@@ -282,18 +396,18 @@ async function showReqRespViewer(eventKey, type)
 	if (type == "XHR")
 	{
 		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
-	  xhrCallJson = await xhrCallReq.json();
+		xhrCallJson = await xhrCallReq.json();
 
-	  requestBody  = xhrCallJson.requestBody;
-	  responseBody = xhrCallJson.responseBody;
+		requestBody  = xhrCallJson.requestBody;
+		responseBody = xhrCallJson.responseBody;
 	}
 	else if (type == "FETCH")
 	{
 		fetchCallReq  = await fetch('/api/clientFetchCall/' + eventKey);
-    fetchCallJson = await fetchCallReq.json();
+		fetchCallJson = await fetchCallReq.json();
 
-    requestBody  = fetchCallJson.requestBody;
-    responseBody = fetchCallJson.responseBody;
+		requestBody  = fetchCallJson.requestBody;
+		responseBody = fetchCallJson.responseBody;
 	}
 	else
 	{
@@ -524,7 +638,7 @@ async function getClientDetails(id)
     	break;
 
     case 'FETCHSETUP':
-   	if (document.getElementById('apiEvents').checked == true)
+    	if (document.getElementById('apiEvents').checked == true)
     	{
     		activeEvent = true;
     		fetchSetupReq  = await fetch('/api/clientFetchSetup/' + eventKey);
@@ -537,7 +651,7 @@ async function getClientDetails(id)
     	}
     	break;
 
-  case 'FETCHHEADER':
+    case 'FETCHHEADER':
     	if (document.getElementById('apiEvents').checked == true)
     	{
     		activeEvent = true;

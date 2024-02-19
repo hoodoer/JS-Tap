@@ -465,27 +465,38 @@
 				<div class="modal-content">
 					<div class="modal-header">
 						<h5 class="modal-title" id="custom-payload-title">Custom JavaScript Payloads</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="lCose"></button>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 					</div>
 					<div>						
 						<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Custom JavaScript payloads can be entered in this tool and executed on clients.</p>
 					</div>
+    
+    				<!-- List of Saved Payloads -->
+            		<div class="modal-body">
+                		<h6>Saved Payloads:</h6>
+                		<ul id="savedPayloadsList" class="list-group">
+                		</ul>
+            		</div>
+      
+
 					<div class="modal-body">
-    					<label for="payloadName" class="form-label">Payload Name:</label>
-    					<input type="text" class="form-control input-width" id="payloadName" name="name">
+    					<label for="payloadName" class="form-label">New Payload Name:</label>
+    					<input type="text" class="form-control input-width" id="payloadName" name="name" required>
 					</div>
+					
 					<div class="modal-body">
-	    				<label for="payload-editor" class="form-label">JavaScript:</label>
+	    				<label for="payload-editor" class="form-label">JavaScript Code:</label>
 						<textarea id="payload-editor" class="form-control" rows="15"></textarea>
 					</div>
+					
 					<div class="modal-footer">
 					   <div class="ms-0">
-    					    <button class="btn btn-secondary">Import</button>
-        					<button class="btn btn-secondary">Export</button>
+    					    <button id="payload-import-button" class="btn btn-secondary">Import</button>
+        					<button id="payload-export-button" class="btn btn-secondary">Export</button>
     					</div>
 						<div class="ms-auto">
 							<button id="payload-save-button" class="btn btn-primary">Save</button>
-							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+							<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
 						</div>
 					</div>
 				</div>
