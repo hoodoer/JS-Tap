@@ -477,28 +477,32 @@
                 		<ul id="savedPayloadsList" class="list-group">
                 		</ul>
             		</div>
-      
-
-					<div class="modal-body">
-    					<label for="payloadName" class="form-label">Payload Name:</label>
-    					<input type="text" class="form-control input-width" id="payloadName" name="name" required>
-					</div>
-					
-					<div class="modal-body">
-	    				<label for="payload-editor" class="form-label">JavaScript Code:</label>
-						<textarea id="payload-editor" class="form-control" rows="10"></textarea>
-					</div>
-					
+      					
 					<div class="modal-footer">
 					   <div class="ms-0">
-    					    <button id="payload-import-button" class="btn btn-secondary">Import</button>
-        					<button id="payload-export-button" class="btn btn-secondary">Export</button>
+    					    <button id="payload-import-button" class="btn btn-secondary me-2" data-toggle="tooltip" title="Import Custom Payloads">Import</button>
+        					<button id="payload-export-button" class="btn btn-secondary me-4"data-toggle="tooltip" title="Export Custom Payloads">Export</button>
+        					<button id="payload-editor-button" class="btn btn-secondary">Show Editor</button>
     					</div>
 						<div class="ms-auto">
-							<button id="payload-save-button" class="btn btn-primary">Save</button>
+							<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
 							<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
 						</div>
 					</div>
+
+
+					<div id="payloadEditor">
+						<div class="modal-body">
+	    					<label for="payloadName" class="form-label">Payload Name:</label>
+	    					<input type="text" class="form-control input-width" id="payloadName" name="name" required>
+						</div>
+						
+						<div class="modal-body">
+		    				<label for="payload-editor" class="form-label">JavaScript Code:</label>
+							<textarea id="payload-editor" class="form-control" rows="10"></textarea>
+						</div>
+					</div>
+
 				</div>
 			</div>
 		</div>

@@ -221,12 +221,44 @@ async function selectPayload(payload)
 	payloadCode.value      = code;
 }
 
+async function autorunPayload(autorunToggle)
+{
+    // Toggle button functionality
+			if (autorunToggle.classList.contains('active'))
+			{
+        // If the button is active, deactivate it
+				autorunToggle.classList.remove('active');
+				autorunToggle.style.borderWidth = '';
+				autorunToggle.style.borderColor = '';
+			} 
+			else 
+			{
+        // If the button is inactive, activate it
+				autorunToggle.classList.add('active');
+				autorunToggle.style.borderWidth = '2px';
+				autorunToggle.style.borderColor = 'green';
+			}
+
+
+}
+
+
+
+async function runPayload(payload)
+{
+
+}
+
+
 
 async function deletePayload(payload)
 {
-		await fetch('/api/deletePayload/' + payload.id);
-		refreshSavedPayloadList();
+	await fetch('/api/deletePayload/' + payload.id);
+	refreshSavedPayloadList();
 }
+
+
+
 
 
 async function refreshSavedPayloadList()
@@ -251,20 +283,60 @@ async function refreshSavedPayloadList()
 		payload.name        = name;
 		payload.id          = id;
 
-		payload.addEventListener('click', function() {
+		payload.addEventListener('click', function() 
+		{
 			selectPayload(this);
 		});
+
+
+		var autorunToggle         = document.createElement('button');
+		autorunToggle.type        = 'button';
+		autorunToggle.className   = 'btn btn-sm btn-toggle me-2';
+		autorunToggle.textContent = 'Autorun';	
+		autorunToggle.setAttribute('data-toggle', 'tooltip');
+		autorunToggle.setAttribute('title', 'Automatically Run Payload on All New Clients');
+
+
+		autorunToggle.addEventListener('click', function() 
+		{
+			autorunPayload(this);
+		});
+
+		var executePayloadButton         = document.createElement('button');
+		executePayloadButton.id          = id;
+		executePayloadButton.className   = 'btn btn-sm me-2';
+		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.setAttribute('data-toggle', 'tooltip');
+		executePayloadButton.setAttribute('title', 'Run Payload on All Clients');
+
+
+		executePayloadButton.addEventListener('click', function()
+		{
+			// Run on all clients
+			console.log("Running payload on all clients");
+			runPayload(this);
+		})
+
 
 		var deletePayloadButton         = document.createElement('button');
 		deletePayloadButton.id          = id;
 		deletePayloadButton.className   = 'btn btn-sm';
 		deletePayloadButton.textContent = 'Delete';
+		deletePayloadButton.setAttribute('data-toggle', 'tooltip');
+		deletePayloadButton.setAttribute('title', 'Delete This Payload');
 
-		deletePayloadButton.addEventListener('click', function() {
+		deletePayloadButton.addEventListener('click', function()
+		{
 			// delete from database
 			deletePayload(this);
 		})
 
+		var spacer = document.createElement('div');
+		spacer.className = 'flex-grow-1';
+
+		payload.appendChild(spacer);
+		payload.appendChild(autorunToggle);
+		payload.appendChild(executePayloadButton);
 		payload.appendChild(deletePayloadButton);
 		savedPayloadsList.appendChild(payload);
 	}
@@ -280,6 +352,8 @@ async function showCustomPayloadModal()
 	var importButton = document.getElementById('payload-import-button');
 	var exportButton = document.getElementById('payload-export-button');
 	var closeButton  = document.getElementById('payload-close-button');
+	var editorButton = document.getElementById('payload-editor-button');
+
 
 	var payloadNameInput = document.getElementById('payloadName');
 	var payloadCode      = document.getElementById('payload-editor');
@@ -289,23 +363,53 @@ async function showCustomPayloadModal()
 	payloadNameInput.value = "";
 	payloadCode.value      = "";
 
+
+// Editor toggle stuff
+	var codeEditor = document.getElementById('payloadEditor');
+	codeEditor.style.display = 'none';
+	saveButton.disabled      = true;
+	editorButton.innerText   = "Show Editor";
+
+
+	editorButton.onclick = function(event) 
+	{
+		if (codeEditor.style.display === 'none')
+		{
+			codeEditor.style.display = 'block';
+			saveButton.disabled      = false;
+			editorButton.innerText   = "Hide Editor";
+			editorButton.blur();
+		}
+		else
+		{
+			codeEditor.style.display = 'none';
+			saveButton.disabled      = true;
+			editorButton.innerText   = "Show Editor";
+			editorButton.blur();
+		}
+	};
+
+
 	refreshSavedPayloadList();
 
 	// Detect unsaved changes
 	var unsavedChanges = false;
 
-	payloadNameInput.addEventListener('input', function() {
+	payloadNameInput.addEventListener('input', function() 
+	{
 		unsavedChanges = true;
 		console.log("Unsaved changes!");
 	});
 
-	payloadCode.addEventListener('input', function() {
+	payloadCode.addEventListener('input', function() 
+	{
 		unsavedChanges = true;
 		console.log("Unsaved changes!");
 	});
 
 
-	closeButton.onclick = function(event) {
+	closeButton.onclick = function(event) 
+	{
 		if (unsavedChanges)
 		{
 			console.log("Oh no! unsaved changes on close!");
@@ -332,7 +436,8 @@ async function showCustomPayloadModal()
 
 
 		// Handle saving modified notes
-	saveButton.onclick = function(event) {
+	saveButton.onclick = function(event) 
+	{
 		console.log("Gotta save payload button..");
 		if (payloadNameInput.value === "")
 		{
@@ -377,17 +482,20 @@ async function showCustomPayloadModal()
 	}
 
 
-	importButton.onclick = function(event) {
+	importButton.onclick = function(event) 
+	{
 		console.log("Import button pressed");
 	}
 
-	exportButton.onclick = function(event) {
+	exportButton.onclick = function(event) 
+	{
 		console.log("Export button pressed");
 	}
 
-
 	modal.show();
 }
+
+
 
 
 
