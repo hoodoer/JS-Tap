@@ -401,9 +401,11 @@ class AppSettings(db.Model):
 
 
 class CustomPayload(db.Model):
-    id   = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    code = db.Column(db.Text, nullable=False)
+    id          = db.Column(db.Integer, primary_key=True)
+    name        = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    code        = db.Column(db.Text, nullable=False)
+    autorun     = db.Column(db.Boolean, nullable=False, default=False)
 
     def __repr__(self):
         return f'<CustomPayload {self.id}>'
@@ -1564,7 +1566,7 @@ def blockClientSession(key):
 def getSavedCustomPayloads():
     savedPayloads = CustomPayload.query.all()
 
-    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name)} for payload in savedPayloads]
+    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name), 'autorun':payload.autorun} for payload in savedPayloads]
 
     return jsonify(allSavedPayloads)
 
@@ -1576,27 +1578,52 @@ def getSavedCustomPayloads():
 def getSavedPayloadCode(key):
     payload = CustomPayload.query.filter_by(id=key).first()
 
+    payloadData = {'name':escape(payload.name), 'description':escape(payload.description),'code':escape(payload.code)}
 
-    codeData = {'name':escape(payload.name), 'code':escape(payload.code)}
+    return jsonify(payloadData)
 
-    return jsonify(codeData)
 
+@app.route('/api/setPayloadAutorun', methods=['POST'])
+@login_required
+def setPayloadAutorun():
+    content = request.json
+    name    = content['name']
+    autorun = content['autorun']
+
+    payload = CustomPayload.query.filter_by(name=name).first()
+    
+    payload.autorun = autorun
+
+    dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/runPayloadAllClients/<key>', methods=['GET'])
+@login_required
+def runPayloadAllClients(key):
+    payload = CustomPayload.query.filter_by(id=key).first()
+
+
+    return "ok", 200
 
 
 @app.route('/api/savePayload', methods=['POST'])
 @login_required
 def saveCustomPayload():
-    content = request.json 
-    name    = content['name']
-    newCode = content['code']
+    content        = request.json 
+    name           = content['name']
+    newDescription = content['description']
+    newCode        = content['code']
 
     # Check if this is an existing payload we're just updating
     payload = CustomPayload.query.filter_by(name=name).first()
 
     if payload is not None:
-        payload.code = newCode;
+        payload.description = newDescription
+        payload.code        = newCode
     else:
-        newPayload = CustomPayload(name=name, code=newCode)
+        newPayload = CustomPayload(name=name, description=newDescription, code=newCode)
         db.session.add(newPayload)
 
     dbCommit()

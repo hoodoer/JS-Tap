@@ -212,39 +212,57 @@ async function selectPayload(payload)
 {
 	codeResponse = await fetch('/api/getSavedPayloadCode/' + payload.id);
 	codeJson     = await codeResponse.json();
+	description  = atob(codeJson.description);
 	code         = atob(codeJson.code);
 
-	var payloadNameInput = document.getElementById('payloadName');
-	var payloadCode      = document.getElementById('payload-editor');
+	var payloadNameInput   = document.getElementById('payloadName');
+	var payloadDescription = document.getElementById('payloadDescription');
+	var payloadCode        = document.getElementById('payload-editor');
 
-	payloadNameInput.value = payload.name;
-	payloadCode.value      = code;
+	payloadNameInput.value   = payload.name;
+	payloadDescription.value = description;
+	payloadCode.value        = code;
 }
+
 
 async function autorunPayload(autorunToggle)
 {
+	var autorun = false;
+
     // Toggle button functionality
-			if (autorunToggle.classList.contains('active'))
-			{
+	if (autorunToggle.classList.contains('active'))
+	{
         // If the button is active, deactivate it
-				autorunToggle.classList.remove('active');
-				autorunToggle.style.borderWidth = '';
-				autorunToggle.style.borderColor = '';
-			} 
-			else 
-			{
+		autorunToggle.classList.remove('active');
+		autorunToggle.style.borderWidth = '';
+		autorunToggle.style.borderColor = '';
+		autorun = false;
+	} 
+	else 
+	{
         // If the button is inactive, activate it
-				autorunToggle.classList.add('active');
-				autorunToggle.style.borderWidth = '2px';
-				autorunToggle.style.borderColor = 'green';
-			}
+		autorunToggle.classList.add('active');
+		autorunToggle.style.borderWidth = '2px';
+		autorunToggle.style.borderColor = 'green';
+		autorun = true;
+	}
 
-
+	// Update autorun status server side
+	fetch('/api/setPayloadAutorun', {
+		method:"POST",
+		body: JSON.stringify({
+			name: autorunToggle.name,
+			autorun: autorun
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
 }
 
 
 
-async function runPayload(payload)
+async function runPayloadAllClient(payload)
 {
 
 }
@@ -273,8 +291,9 @@ async function refreshSavedPayloadList()
 
 	for (let i = 0; i < jsonResponse.length; i++)
 	{
-		id   = jsonResponse[i].id;
-		name = jsonResponse[i].name;
+		id          = jsonResponse[i].id;
+		name        = jsonResponse[i].name;
+		autorun     = jsonResponse[i].autorun;
 		// code = atob(jsonResponse[i].code);
 
 		var payload = document.createElement('li');
@@ -292,7 +311,8 @@ async function refreshSavedPayloadList()
 		var autorunToggle         = document.createElement('button');
 		autorunToggle.type        = 'button';
 		autorunToggle.className   = 'btn btn-sm btn-toggle me-2';
-		autorunToggle.textContent = 'Autorun';	
+		autorunToggle.textContent = 'Autorun';
+		autorunToggle.name        = name;
 		autorunToggle.setAttribute('data-toggle', 'tooltip');
 		autorunToggle.setAttribute('title', 'Automatically Run Payload on All New Clients');
 
@@ -301,6 +321,16 @@ async function refreshSavedPayloadList()
 		{
 			autorunPayload(this);
 		});
+
+		// If it was already toggled on in the database, make sure we reflect that here
+		if (autorun)
+		{
+			console.log("On payload load: " + autorunToggle.name + " should be toggled on autorun");
+			autorunToggle.classList.add('active');
+			autorunToggle.style.borderWidth = '2px';
+			autorunToggle.style.borderColor = 'green';
+
+		}
 
 		var executePayloadButton         = document.createElement('button');
 		executePayloadButton.id          = id;
@@ -314,7 +344,7 @@ async function refreshSavedPayloadList()
 		{
 			// Run on all clients
 			console.log("Running payload on all clients");
-			runPayload(this);
+			runPayloadAllClient(this);
 		})
 
 
@@ -355,8 +385,9 @@ async function showCustomPayloadModal()
 	var editorButton = document.getElementById('payload-editor-button');
 
 
-	var payloadNameInput = document.getElementById('payloadName');
-	var payloadCode      = document.getElementById('payload-editor');
+	var payloadNameInput   = document.getElementById('payloadName');
+	var payloadDescription = document.getElementById('payloadDescription');
+	var payloadCode        = document.getElementById('payload-editor');
 
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
 
@@ -400,6 +431,13 @@ async function showCustomPayloadModal()
 		unsavedChanges = true;
 		console.log("Unsaved changes!");
 	});
+
+	payloadDescription.addEventListener('input', function() 
+	{
+		unsavedChanges = true;
+		console.log("Unsaved changes!");
+	});
+
 
 	payloadCode.addEventListener('input', function() 
 	{
@@ -469,6 +507,7 @@ async function showCustomPayloadModal()
 					method:"POST",
 					body: JSON.stringify({
 						name: payloadNameInput.value,
+						description: btoa(payloadDescription.value),
 						code: btoa(payloadCode.value)
 					}),
 					headers: {
@@ -486,6 +525,7 @@ async function showCustomPayloadModal()
 	{
 		console.log("Import button pressed");
 	}
+
 
 	exportButton.onclick = function(event) 
 	{
