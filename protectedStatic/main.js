@@ -391,8 +391,9 @@ async function showCustomPayloadModal()
 
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
 
-	payloadNameInput.value = "";
-	payloadCode.value      = "";
+	payloadNameInput.value   = "";
+	payloadDescription.value = "";
+	payloadCode.value        = "";
 
 
 // Editor toggle stuff

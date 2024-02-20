@@ -411,7 +411,24 @@ class CustomPayload(db.Model):
         return f'<CustomPayload {self.id}>'
 
 
-   
+
+class ClientPayloadJob(db.Model):   
+    id          = db.Column(db.Integer, primary_key=True)
+    clientKey   = db.Column(db.Integer, nullable=False)
+    code        = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f'<ClientPayloadJob {self.id}>'
+
+
+
+class AutoRunPayloadJob(db.Model):
+    id          = db.Column(db.Integer, primary_key=True)
+    code        = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f'<AutoRunPayloadJob {self.id}>'
+
 
 # User C2 UI session
 class User(UserMixin, db.Model):
