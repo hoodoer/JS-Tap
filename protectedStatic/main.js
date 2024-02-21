@@ -262,9 +262,17 @@ async function autorunPayload(autorunToggle)
 
 
 
-async function runPayloadAllClient(payload)
+async function runPayloadAllClient(button)
 {
+	await fetch('/api/runPayloadAllClients/' + button.id);
+		button.style.borderWidth = '2px';
+		button.style.borderColor = 'green';
 
+		setTimeout(function()
+		{
+			button.style.borderWidth = '';
+			button.style.borderColor = '';
+		}, 750);
 }
 
 
@@ -343,7 +351,6 @@ async function refreshSavedPayloadList()
 		executePayloadButton.addEventListener('click', function()
 		{
 			// Run on all clients
-			console.log("Running payload on all clients");
 			runPayloadAllClient(this);
 		})
 

