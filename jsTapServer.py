@@ -1620,6 +1620,19 @@ def getSavedPayloadCode(key):
     return jsonify(payloadData)
 
 
+
+@app.route('/api/getAllPayloads', methods=['GET'])
+@login_required
+def getAllSavedPayloads():
+    payloads = CustomPayload.query.all()
+
+    allPayloadsDump = [{'name':payload.name, 'description':payload.description, 'code':payload.code} for payload in payloads]
+
+    return jsonify(allPayloadsDump)
+
+
+
+
 @app.route('/api/setPayloadAutorun', methods=['POST'])
 @login_required
 def setPayloadAutorun():
@@ -1644,8 +1657,9 @@ def runPayloadAllClients(key):
     clients = Client.query.all()
 
     for client in clients:
-        newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
-        db.session.add(newJob)
+        if client.sessionValid:
+            newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+            db.session.add(newJob)
 
     dbCommit()
 
@@ -1656,6 +1670,7 @@ def runPayloadAllClients(key):
 @login_required
 def saveCustomPayload():
     content        = request.json 
+
     name           = content['name']
     newDescription = content['description']
     newCode        = content['code']

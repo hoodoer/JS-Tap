@@ -202,8 +202,83 @@ async function showSessionModal()
 		checkBox.checked == false;
 	}
 
-
 	modal.show();
+}
+
+
+
+
+function importPayloads(event)
+{
+	const file   = event.target.files[0];
+	const reader = new FileReader();
+
+	reader.onload = function(event)
+	{
+		const fileContent = event.target.result;
+		
+		try 
+		{
+			const jsonData = JSON.parse(fileContent);
+
+			for (let i = 0; i < jsonData.length; i++)
+			{
+				var name        = jsonData[i].name;
+				var description = jsonData[i].description;
+				var code        = jsonData[i].code;
+
+					// send payload to server
+				fetch('/api/savePayload', {
+					method:"POST",
+					body: JSON.stringify({
+						name: name,
+						description: description,
+						code: code
+					}),
+					headers: {
+						"Content-type": "application/json; charset=UTF-8"
+					}
+				})
+				.then(response => {
+					if (i === jsonData.length - 1)
+					{
+						refreshSavedPayloadList();
+					}
+				});		
+			}
+		}
+		catch (error)
+		{
+			alert("Error parsing payloads file. See README for formatting.");
+			console.error('An error occurred:', error);
+			console.log('Error name:', error.name);
+			console.log('Error message:', error.message);
+			console.log('Stack trace:', error.stack);
+		}
+	}
+	reader.readAsText(file);
+	document.getElementById('payload-import-button').blur();
+	event.target.value = "";
+}
+
+
+
+async function exportAllPayloads(button)
+{
+	payloadResponse = await fetch('/api/getAllPayloads');
+	payloadJson     = await payloadResponse.json();
+
+	const payloadString = JSON.stringify(payloadJson);
+	const payloadBlob = new Blob([payloadString], {type:'text/plain'});
+
+	const anchor = document.getElementById('exportLink');
+	anchor.href  = URL.createObjectURL(payloadBlob);
+	anchor.download = 'customPayloadExport.json';
+	anchor.click();
+
+	URL.revokeObjectURL(anchor.href);
+
+	button.blur();
 }
 
 
@@ -265,19 +340,19 @@ async function autorunPayload(autorunToggle)
 async function runPayloadAllClient(button)
 {
 	await fetch('/api/runPayloadAllClients/' + button.id);
-		button.style.borderWidth = '2px';
-		button.style.borderColor = 'green';
+	button.style.borderWidth = '2px';
+	button.style.borderColor = 'green';
 
-		setTimeout(function()
-		{
-			button.style.borderWidth = '';
-			button.style.borderColor = '';
-		}, 750);
+	setTimeout(function()
+	{
+		button.style.borderWidth = '';
+		button.style.borderColor = '';
+	}, 750);
 }
 
 
 
-async function deletePayload(payload)
+async function deletePayload(event, payload)
 {
 	await fetch('/api/deletePayload/' + payload.id);
 	refreshSavedPayloadList();
@@ -365,7 +440,9 @@ async function refreshSavedPayloadList()
 		deletePayloadButton.addEventListener('click', function()
 		{
 			// delete from database
-			deletePayload(this);
+			deletePayload(event, this);
+			event.stopPropagation();
+			event.preventDefault();
 		})
 
 		var spacer = document.createElement('div');
@@ -378,6 +455,8 @@ async function refreshSavedPayloadList()
 		savedPayloadsList.appendChild(payload);
 	}
 }
+
+
 
 
 async function showCustomPayloadModal()
@@ -529,15 +608,23 @@ async function showCustomPayloadModal()
 	}
 
 
+
+
+
+	var importInput = document.getElementById('importInput');
+	importInput.removeEventListener('change', importPayloads);
+	importInput.addEventListener('change', importPayloads, false);
+
 	importButton.onclick = function(event) 
 	{
-		console.log("Import button pressed");
+		importInput.click();
 	}
 
 
 	exportButton.onclick = function(event) 
 	{
 		console.log("Export button pressed");
+		exportAllPayloads(this);
 	}
 
 	modal.show();

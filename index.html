@@ -481,7 +481,13 @@
 					<div class="modal-footer">
 					   <div class="ms-0">
     					    <button id="payload-import-button" class="btn btn-secondary me-2" data-toggle="tooltip" title="Import Custom Payloads">Import</button>
+    					    <!-- input for importing -->
+    					    <input type="file" id="importInput" accept=".json" style="display: none;">
+        		
         					<button id="payload-export-button" class="btn btn-secondary me-4"data-toggle="tooltip" title="Export Custom Payloads">Export</button>
+							<!-- Hidden anchor element for exporting -->
+							<a id="exportLink" style="display: none;"></a>
+        		
         					<button id="payload-editor-button" class="btn btn-secondary">Show Editor</button>
     					</div>
 						<div class="ms-auto">
@@ -506,6 +512,7 @@
 		    				<label for="payload-editor" class="form-label">JavaScript Code:</label>
 							<textarea id="payload-editor" class="form-control" rows="10"></textarea>
 						</div>
+
 					</div>
 
 				</div>
