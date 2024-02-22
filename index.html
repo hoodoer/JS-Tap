@@ -16,7 +16,7 @@
 		}
 
 		.input-width {
- 		   width: 50%;
+			width: 50%;
 		}
 
 		body {
@@ -470,26 +470,26 @@
 					<div>						
 						<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Custom JavaScript payloads can be entered in this tool and executed on clients.</p>
 					</div>
-    
-    				<!-- List of Saved Payloads -->
-            		<div class="modal-body">
-                		<h6>Saved Payloads (select to load for editing):</h6>
-                		<ul id="savedPayloadsList" class="list-group">
-                		</ul>
-            		</div>
-      					
+
+					<!-- List of Saved Payloads -->
+					<div class="modal-body">
+						<h6>Saved Payloads (select to load for editing):</h6>
+						<ul id="savedPayloadsList" class="list-group">
+						</ul>
+					</div>
+
 					<div class="modal-footer">
-					   <div class="ms-0">
-    					    <button id="payload-import-button" class="btn btn-secondary me-2" data-toggle="tooltip" title="Import Custom Payloads">Import</button>
-    					    <!-- input for importing -->
-    					    <input type="file" id="importInput" accept=".json" style="display: none;">
-        		
-        					<button id="payload-export-button" class="btn btn-secondary me-4"data-toggle="tooltip" title="Export Custom Payloads">Export</button>
+						<div class="ms-0">
+							<button id="payload-import-button" class="btn btn-secondary me-2" data-toggle="tooltip" title="Import Custom Payloads">Import</button>
+							<!-- input for importing -->
+							<input type="file" id="importInput" accept=".json" style="display: none;">
+
+							<button id="payload-export-button" class="btn btn-secondary me-4"data-toggle="tooltip" title="Export Custom Payloads">Export</button>
 							<!-- Hidden anchor element for exporting -->
 							<a id="exportLink" style="display: none;"></a>
-        		
-        					<button id="payload-editor-button" class="btn btn-secondary">Show Editor</button>
-    					</div>
+
+							<button id="payload-editor-button" class="btn btn-secondary">Show Editor</button>
+						</div>
 						<div class="ms-auto">
 							<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
 							<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
@@ -499,22 +499,52 @@
 
 					<div id="payloadEditor">
 						<div class="modal-body">
-	    					<label for="payloadName" class="form-label">Payload Name:</label>
-	    					<input type="text" class="form-control input-width" id="payloadName" name="name" required>
+							<label for="payloadName" class="form-label">Payload Name:</label>
+							<input type="text" class="form-control input-width" id="payloadName" name="name" required>
 						</div>
 						
 						<div class="modal-body">
-	    					<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
-	    					<textarea id="payloadDescription" class="form-control"  rows="2"></textarea>
+							<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
+							<textarea id="payloadDescription" class="form-control"  rows="2"></textarea>
 						</div>
 						
 						<div class="modal-body">
-		    				<label for="payload-editor" class="form-label">JavaScript Code:</label>
+							<label for="payload-editor" class="form-label">JavaScript Code:</label>
 							<textarea id="payload-editor" class="form-control" rows="10"></textarea>
 						</div>
 
 					</div>
 
+				</div>
+			</div>
+		</div>
+
+
+
+		<!-- Custom Payload Modal - Single Client -->
+		<div id="singleClientPayloadModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="single-client-payload-title">Custom JavaScript Payloads</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div>						
+						<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Payloads can be run on this client.</p>
+					</div>
+
+					<!-- List of Saved Payloads -->
+					<div class="modal-body">
+						<h6>Saved Payloads:</h6>
+						<ul id="singleClientPayloadList" class="list-group">
+						</ul>
+					</div>
+
+					<div class="modal-footer">
+						<div class="ms-auto">
+							<button id="payload-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>

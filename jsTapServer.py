@@ -1666,6 +1666,30 @@ def runPayloadAllClients(key):
     return "ok", 200
 
 
+
+
+
+@app.route('/api/runPayloadSingleClient', methods=['POST'])
+@login_required
+def runPayloadSingleClient():
+    content = request.json 
+
+    payloadKey = content['payloadKey']
+    clientKey  = content['clientKey']
+
+    payload = CustomPayload.query.filter_by(id=payloadKey).first()
+
+    newJob = ClientPayloadJob(clientKey=clientKey, code=payload.code)
+    db.session.add(newJob)
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+
+
 @app.route('/api/savePayload', methods=['POST'])
 @login_required
 def saveCustomPayload():

