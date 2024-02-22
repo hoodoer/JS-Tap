@@ -58,9 +58,21 @@ In trap mode JS-Tap monitors the location of the user in the iframe trap and it 
 
 Note that the application targeted must allow iFraming from same-origin or self if it's setting CSP or X-Frame-Options headers. JavaScript based framebusters can also prevent iFrame traps from working. 
 
+Also Note, I've had good luck using Trap Mode for an implant in very specific locations of an application. 
+
 #### Implant Mode
 Implant mode would typically be used if you're directly adding the payload into the targeted application. Perhaps you have a shell on the server that hosts the JavaScript files for the application. Add the payload to a JavaScript file that's used throughout the application (jQuery, main.js, etc.). Which file would be ideal really depends on the app in question and how it's using JavaScript files. Implant mode does not require a starting page to be configured, and does not use the iFrame trap technique. 
 
+## Custom Payloads
+Starting in version 1.02 there is a custom payload feature. Multiple JavaScript payloads can be added in the JS-Tap portal and executed on a single client, all current clients, or set to autorun on all future clients. Payloads can be written/edited within the JS-Tap portal, or imported from a file. Payloads can also be exported. The format for importing payloads is simple JSON. The JavaScript code and description are simply base64 encoded. 
+```
+[{"code":"YWxlcnQoJ1BheWxvYWQgMSBmaXJpbmcnKTs=","description":"VGhlIGZpcnN0IHBheWxvYWQ=","name":"Payload 1"},{"code":"YWxlcnQoJ1BheWxvYWQgMiBmaXJpbmcnKTs=","description":"VGhlIHNlY29uZCBwYXlsb2Fk","name":"Payload 2"}]
+```
+The main user interface for custom payloads is from the top menu bar. Select **Custom Payloads** to open the interface. Any existing payloads will be shown in a list. The bottom button bar allows you to import and export the list. A **Show Editor** button allows you to create and edit payloads. To load an existing payload for editing, open the editor and select the payload by clicking on it in the **Saved Payloads** list. Once you have payloads defined and saved, you can execute them on clients. <br>
+
+In the main **Custom Payloads** view you can launch a payload against all current clients (the **Run Payload** button). You can also toggle on the **Autorun** attribute of a payload, which means that all new clients will run the payload. Note that existing clients will not run a payload based on the Autorun setting. <br>
+
+To run a payload on a single client user the **Run Payload** button on the specific client you wish to run it on, and then hit the run button for the specific payload you wish to use. 
 
 
 ## Installation and Start
@@ -145,6 +157,13 @@ Only needed for trap mode. See explanation in **Operating Modes** section above.
 Sets the page the user starts on when the iFrame trap is set.  
 ```
 window.taperstartingPage = "http://targetapp.com/somestartpage";
+```
+
+#### Custom Payload Tasks
+Used to set if clients are checking for **Custom Payload** tasks, and how often they're checking. 
+```
+window.taperTaskCheck      = true;
+window.taperTaskCheckDelay = 5000;
 ```
 
 #### Exfiltrate HTML

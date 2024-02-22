@@ -1679,6 +1679,13 @@ def runPayloadSingleClient():
 
     payload = CustomPayload.query.filter_by(id=payloadKey).first()
 
+    # testing just for the print
+    client = Client.query.filter_by(id=clientKey).first()
+
+    print("Running single client payload:")
+    print("Client: " + client.nickname)
+    print("Code: " + payload.code)
+
     newJob = ClientPayloadJob(clientKey=clientKey, code=payload.code)
     db.session.add(newJob)
     dbCommit()

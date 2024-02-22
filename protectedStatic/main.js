@@ -395,9 +395,9 @@ function showSingleClientPayloadModal(event, client)
 
 
 
-async function deletePayload(button)
+async function deletePayload(event, button)
 {
-	await fetch('/api/deletePayload/' + payload.id);
+	await fetch('/api/deletePayload/' + button.id);
 	refreshSavedPayloadList();
 }
 
