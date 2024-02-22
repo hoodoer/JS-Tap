@@ -98,9 +98,9 @@ function updateEvents()
 
 async function showHtmlCode(eventKey)
 {
-  htmlScrapeReq   = await fetch('/api/clientHtml/' + eventKey);
-  htmlScrapeJson  = await htmlScrapeReq.json();
-  scrapedHtmlCode = htmlScrapeJson.code;
+	htmlScrapeReq   = await fetch('/api/clientHtml/' + eventKey);
+	htmlScrapeJson  = await htmlScrapeReq.json();
+	scrapedHtmlCode = htmlScrapeJson.code;
 
 
 
@@ -171,7 +171,7 @@ async function showAllNotesModal()
 	}
 
 		// Handle saving modified notes
-		downloadButton.onclick = function(event) {
+	downloadButton.onclick = function(event) {
 		console.log("Gotta download button press...");
 		saveAllNotesToFile();
 	}
@@ -183,43 +183,554 @@ async function showAllNotesModal()
 
 async function showSessionModal()
 {
-		var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
+	var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
 
 		// Let's figure out if new sessions are allowed right now
-		var req = await fetch('/api/app/allowNewClientSessions');
-		var jsonResponse = await req.json()
+	var req = await fetch('/api/app/allowNewClientSessions');
+	var jsonResponse = await req.json()
 
-		var checkBox = document.getElementById('allowNewClientSessions');
+	var checkBox = document.getElementById('allowNewClientSessions');
 
-		if (jsonResponse.newSessionsAllowed == '1')
-		{
+	if (jsonResponse.newSessionsAllowed == '1')
+	{
 			// console.log("Server says sessions are allowed!");
-			checkBox.checked == true;
+		checkBox.checked == true;
+	}
+	else
+	{
+			// console.log("Server says no more client sessions!");
+		checkBox.checked == false;
+	}
+
+	modal.show();
+}
+
+
+
+
+function importPayloads(event)
+{
+	const file   = event.target.files[0];
+	const reader = new FileReader();
+
+	reader.onload = function(event)
+	{
+		const fileContent = event.target.result;
+
+		try 
+		{
+			const jsonData = JSON.parse(fileContent);
+
+			for (let i = 0; i < jsonData.length; i++)
+			{
+				var name        = jsonData[i].name;
+				var description = jsonData[i].description;
+				var code        = jsonData[i].code;
+
+					// send payload to server
+				fetch('/api/savePayload', {
+					method:"POST",
+					body: JSON.stringify({
+						name: name,
+						description: description,
+						code: code
+					}),
+					headers: {
+						"Content-type": "application/json; charset=UTF-8"
+					}
+				})
+				.then(response => {
+					if (i === jsonData.length - 1)
+					{
+						refreshSavedPayloadList();
+					}
+				});		
+			}
+		}
+		catch (error)
+		{
+			alert("Error parsing payloads file. See README for formatting.");
+			console.error('An error occurred:', error);
+			console.log('Error name:', error.name);
+			console.log('Error message:', error.message);
+			console.log('Stack trace:', error.stack);
+		}
+	}
+	reader.readAsText(file);
+	document.getElementById('payload-import-button').blur();
+	event.target.value = "";
+}
+
+
+
+async function exportAllPayloads(button)
+{
+	payloadResponse = await fetch('/api/getAllPayloads');
+	payloadJson     = await payloadResponse.json();
+
+	const payloadString = JSON.stringify(payloadJson);
+	const payloadBlob = new Blob([payloadString], {type:'text/plain'});
+
+	const anchor = document.getElementById('exportLink');
+	anchor.href  = URL.createObjectURL(payloadBlob);
+	anchor.download = 'customPayloadExport.json';
+	anchor.click();
+
+	URL.revokeObjectURL(anchor.href);
+
+	button.blur();
+}
+
+
+
+async function selectPayload(payload)
+{
+	codeResponse = await fetch('/api/getSavedPayloadCode/' + payload.id);
+	codeJson     = await codeResponse.json();
+	description  = atob(codeJson.description);
+	code         = atob(codeJson.code);
+
+	var payloadNameInput   = document.getElementById('payloadName');
+	var payloadDescription = document.getElementById('payloadDescription');
+	var payloadCode        = document.getElementById('payload-editor');
+
+	payloadNameInput.value   = payload.name;
+	payloadDescription.value = description;
+	payloadCode.value        = code;
+}
+
+
+async function autorunPayload(autorunToggle)
+{
+	var autorun = false;
+
+    // Toggle button functionality
+	if (autorunToggle.classList.contains('active'))
+	{
+        // If the button is active, deactivate it
+		autorunToggle.classList.remove('active');
+		autorunToggle.style.borderWidth = '';
+		autorunToggle.style.borderColor = '';
+		autorun = false;
+	} 
+	else 
+	{
+        // If the button is inactive, activate it
+		autorunToggle.classList.add('active');
+		autorunToggle.style.borderWidth = '2px';
+		autorunToggle.style.borderColor = 'green';
+		autorun = true;
+	}
+
+	// Update autorun status server side
+	fetch('/api/setPayloadAutorun', {
+		method:"POST",
+		body: JSON.stringify({
+			name: autorunToggle.name,
+			autorun: autorun
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+}
+
+
+
+async function runPayloadAllClient(button)
+{
+	await fetch('/api/runPayloadAllClients/' + button.id);
+	button.style.borderWidth = '2px';
+	button.style.borderColor = 'green';
+
+	setTimeout(function()
+	{
+		button.style.borderWidth = '';
+		button.style.borderColor = '';
+	}, 750);
+}
+
+
+
+
+async function runPayloadSingleClient(button, modal)
+{
+	var payloadId = button.id;
+	var clientId  = button.client;
+
+	fetch('/api/runPayloadSingleClient', {
+		method:"POST",
+		body: JSON.stringify({
+			payloadKey: payloadId,
+			clientKey: clientId
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+
+	button.style.borderWidth = '2px';
+	button.style.borderColor = 'green';
+
+	setTimeout(function()
+	{
+		button.style.borderWidth = '';
+		button.style.borderColor = '';
+		modal.hide();
+	}, 750);
+}
+
+
+
+function showSingleClientPayloadModal(event, client)
+{
+	var modal = new bootstrap.Modal(document.getElementById('singleClientPayloadModal'));
+	var savedPayloadsList = document.getElementById('singleClientPayloadList');
+
+	refreshSingleClientPayloadList(client, modal);
+	modal.show();
+	// Block resetting of loot card stack
+	event.stopPropagation();
+}
+
+
+
+async function deletePayload(event, button)
+{
+	await fetch('/api/deletePayload/' + button.id);
+	refreshSavedPayloadList();
+}
+
+
+async function refreshSingleClientPayloadList(client, modal)
+{
+	var savedPayloadsList = document.getElementById('singleClientPayloadList');
+
+	savedPayloadsList.innerHTML = '';
+
+	// Let's get our saved payloads from the database
+	var req = await fetch('/api/getSavedPayloads');
+	var jsonResponse = await req.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		id   = jsonResponse[i].id;
+		name = jsonResponse[i].name;
+
+		var payload = document.createElement('li');
+		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
+		payload.textContent = name;
+		payload.name        = name;
+		payload.id          = id;
+
+		var executePayloadButton         = document.createElement('button');
+		executePayloadButton.id          = id;
+		executePayloadButton.client      = client;
+		executePayloadButton.className   = 'btn btn-sm me-2';
+		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.setAttribute('data-toggle', 'tooltip');
+		executePayloadButton.setAttribute('title', 'Run Payload on this Client');
+
+
+		executePayloadButton.addEventListener('click', function()
+		{
+			// Run on this clients
+			runPayloadSingleClient(this, modal);
+		})
+
+		payload.appendChild(executePayloadButton);
+		savedPayloadsList.appendChild(payload);
+	}
+}
+
+
+
+
+
+async function refreshSavedPayloadList()
+{
+	var savedPayloadsList = document.getElementById('savedPayloadsList');
+
+	savedPayloadsList.innerHTML = '';
+
+	// Let's get our saved payloads from the database
+	var req = await fetch('/api/getSavedPayloads');
+	var jsonResponse = await req.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		id          = jsonResponse[i].id;
+		name        = jsonResponse[i].name;
+		autorun     = jsonResponse[i].autorun;
+		// code = atob(jsonResponse[i].code);
+
+		var payload = document.createElement('li');
+		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
+		payload.textContent = name;
+		payload.name        = name;
+		payload.id          = id;
+
+		payload.addEventListener('click', function() 
+		{
+			selectPayload(this);
+		});
+
+
+		var autorunToggle         = document.createElement('button');
+		autorunToggle.type        = 'button';
+		autorunToggle.className   = 'btn btn-sm btn-toggle me-2';
+		autorunToggle.textContent = 'Autorun';
+		autorunToggle.name        = name;
+		autorunToggle.setAttribute('data-toggle', 'tooltip');
+		autorunToggle.setAttribute('title', 'Automatically Run Payload on All New Clients');
+
+
+		autorunToggle.addEventListener('click', function() 
+		{
+			autorunPayload(this);
+		});
+
+		// If it was already toggled on in the database, make sure we reflect that here
+		if (autorun)
+		{
+			console.log("On payload load: " + autorunToggle.name + " should be toggled on autorun");
+			autorunToggle.classList.add('active');
+			autorunToggle.style.borderWidth = '2px';
+			autorunToggle.style.borderColor = 'green';
+
+		}
+
+		var executePayloadButton         = document.createElement('button');
+		executePayloadButton.id          = id;
+		executePayloadButton.className   = 'btn btn-sm me-2';
+		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.setAttribute('data-toggle', 'tooltip');
+		executePayloadButton.setAttribute('title', 'Run Payload on All Clients');
+
+
+		executePayloadButton.addEventListener('click', function()
+		{
+			// Run on all clients
+			runPayloadAllClient(this);
+		})
+
+
+		var deletePayloadButton         = document.createElement('button');
+		deletePayloadButton.id          = id;
+		deletePayloadButton.className   = 'btn btn-sm';
+		deletePayloadButton.textContent = 'Delete';
+		deletePayloadButton.setAttribute('data-toggle', 'tooltip');
+		deletePayloadButton.setAttribute('title', 'Delete This Payload');
+
+		deletePayloadButton.addEventListener('click', function()
+		{
+			// delete from database
+			deletePayload(event, this);
+			event.stopPropagation();
+			event.preventDefault();
+		})
+
+		var spacer = document.createElement('div');
+		spacer.className = 'flex-grow-1';
+
+		payload.appendChild(spacer);
+		payload.appendChild(autorunToggle);
+		payload.appendChild(executePayloadButton);
+		payload.appendChild(deletePayloadButton);
+		savedPayloadsList.appendChild(payload);
+	}
+}
+
+
+
+
+async function showCustomPayloadModal()
+{
+	console.log("Custom Payload times!");
+	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
+
+	var saveButton   = document.getElementById('payload-save-button');
+	var importButton = document.getElementById('payload-import-button');
+	var exportButton = document.getElementById('payload-export-button');
+	var closeButton  = document.getElementById('payload-close-button');
+	var editorButton = document.getElementById('payload-editor-button');
+
+
+	var payloadNameInput   = document.getElementById('payloadName');
+	var payloadDescription = document.getElementById('payloadDescription');
+	var payloadCode        = document.getElementById('payload-editor');
+
+	var savedPayloadsList = document.getElementById('savedPayloadsList');
+
+	payloadNameInput.value   = "";
+	payloadDescription.value = "";
+	payloadCode.value        = "";
+
+
+// Editor toggle stuff
+	var codeEditor = document.getElementById('payloadEditor');
+	codeEditor.style.display = 'none';
+	saveButton.disabled      = true;
+	editorButton.innerText   = "Show Editor";
+
+
+	editorButton.onclick = function(event) 
+	{
+		if (codeEditor.style.display === 'none')
+		{
+			codeEditor.style.display = 'block';
+			saveButton.disabled      = false;
+			editorButton.innerText   = "Hide Editor";
+			editorButton.blur();
 		}
 		else
 		{
-			// console.log("Server says no more client sessions!");
-			checkBox.checked == false;
+			codeEditor.style.display = 'none';
+			saveButton.disabled      = true;
+			editorButton.innerText   = "Show Editor";
+			editorButton.blur();
 		}
+	};
 
 
-		modal.show();
+	refreshSavedPayloadList();
+
+	// Detect unsaved changes
+	var unsavedChanges = false;
+
+	payloadNameInput.addEventListener('input', function() 
+	{
+		unsavedChanges = true;
+		console.log("Unsaved changes!");
+	});
+
+	payloadDescription.addEventListener('input', function() 
+	{
+		unsavedChanges = true;
+		console.log("Unsaved changes!");
+	});
+
+
+	payloadCode.addEventListener('input', function() 
+	{
+		unsavedChanges = true;
+		console.log("Unsaved changes!");
+	});
+
+
+	closeButton.onclick = function(event) 
+	{
+		if (unsavedChanges)
+		{
+			console.log("Oh no! unsaved changes on close!");
+
+			var userConfirmed = window.confirm('You have unsaved changes, close anyway?');
+
+			if (userConfirmed)
+			{
+				console.log("Don't care, lose my changes");
+				modal.hide();
+			}
+			else
+			{
+				event.stopPropagation();
+				console.log("NO! I need to SAVE!");
+			}
+		}
+		else
+		{
+			console.log("No unsaved changes, close away..");
+			modal.hide();
+		}
+	}
+
+
+		// Handle saving modified notes
+	saveButton.onclick = function(event) 
+	{
+		console.log("Gotta save payload button..");
+		if (payloadNameInput.value === "")
+		{
+			console.log("Oh no, failed to set a name!");
+			event.preventDefault();
+			payloadNameInput.classList.add('is-invalid');
+		}
+		else
+		{
+			payloadNameInput.classList.remove('is-invalid');
+			console.log("Payload name is: " + payloadNameInput.value);
+
+			// Ok, now make sure we actually have some code...
+			if (payloadCode.value === "")
+			{
+				console.log("Forget the code?");
+				event.preventDefault();
+				payloadCode.classList.add('is-invalid');
+			}
+			else
+			{
+				payloadCode.classList.remove('is-invalid');
+				console.log("Got code: " + payloadCode.value);
+
+				unsavedChanges = false;
+
+				// send payload to server
+				fetch('/api/savePayload', {
+					method:"POST",
+					body: JSON.stringify({
+						name: payloadNameInput.value,
+						description: btoa(payloadDescription.value),
+						code: btoa(payloadCode.value)
+					}),
+					headers: {
+						"Content-type": "application/json; charset=UTF-8"
+					}
+				});
+
+				refreshSavedPayloadList();
+			}
+		}
+	}
+
+
+
+
+
+	var importInput = document.getElementById('importInput');
+	importInput.removeEventListener('change', importPayloads);
+	importInput.addEventListener('change', importPayloads, false);
+
+	importButton.onclick = function(event) 
+	{
+		importInput.click();
+	}
+
+
+	exportButton.onclick = function(event) 
+	{
+		console.log("Export button pressed");
+		exportAllPayloads(this);
+	}
+
+	modal.show();
 }
+
+
 
 
 
 function updateClientSessions()
 {
-		var checkBox = document.getElementById('allowNewClientSessions');
+	var checkBox = document.getElementById('allowNewClientSessions');
 
-		if (checkBox.checked == true)
-		{
-			fetch('/api/app/setAllowNewClientSessions/1')
-		}
-		else
-		{
-			fetch('/api/app/setAllowNewClientSessions/0')
-		}
+	if (checkBox.checked == true)
+	{
+		fetch('/api/app/setAllowNewClientSessions/1')
+	}
+	else
+	{
+		fetch('/api/app/setAllowNewClientSessions/0')
+	}
 }
 
 
@@ -274,18 +785,18 @@ async function showReqRespViewer(eventKey, type)
 	if (type == "XHR")
 	{
 		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
-	  xhrCallJson = await xhrCallReq.json();
+		xhrCallJson = await xhrCallReq.json();
 
-	  requestBody  = xhrCallJson.requestBody;
-	  responseBody = xhrCallJson.responseBody;
+		requestBody  = xhrCallJson.requestBody;
+		responseBody = xhrCallJson.responseBody;
 	}
 	else if (type == "FETCH")
 	{
 		fetchCallReq  = await fetch('/api/clientFetchCall/' + eventKey);
-    fetchCallJson = await fetchCallReq.json();
+		fetchCallJson = await fetchCallReq.json();
 
-    requestBody  = fetchCallJson.requestBody;
-    responseBody = fetchCallJson.responseBody;
+		requestBody  = fetchCallJson.requestBody;
+		responseBody = fetchCallJson.responseBody;
 	}
 	else
 	{
@@ -516,7 +1027,7 @@ async function getClientDetails(id)
     	break;
 
     case 'FETCHSETUP':
-   	if (document.getElementById('apiEvents').checked == true)
+    	if (document.getElementById('apiEvents').checked == true)
     	{
     		activeEvent = true;
     		fetchSetupReq  = await fetch('/api/clientFetchSetup/' + eventKey);
@@ -529,7 +1040,7 @@ async function getClientDetails(id)
     	}
     	break;
 
-  case 'FETCHHEADER':
+    case 'FETCHHEADER':
     	if (document.getElementById('apiEvents').checked == true)
     	{
     		activeEvent = true;
@@ -762,24 +1273,30 @@ async function updateClients()
     	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
     }
 
+
     cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClient(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
     cardTitle.innerHTML += '&nbsp;&nbsp;&nbsp';
 
-    cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b><br>";
+    cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
+
 		//What to do about client notes?
     if (client.notes.length > 0)
     {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(event,' + `'` 
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
     	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Edit Notes</button>';
     }
     else
     {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary" style="float: right;" onclick=showNoteEditor(event,' + `'` 
+    	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
     	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
     }
 
-    cardText.innerHTML += "Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
+    cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
     cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
+
+    cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
+    	+ client.id + `'`+ ')>Run Payload</button>';
+
 
     cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
     cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
