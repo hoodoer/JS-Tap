@@ -216,6 +216,7 @@ MurderCritter = {
 class Client(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     nickname     = db.Column(db.String(100), unique=True, nullable=False)
+    tag          = db.Column(db.String(40), unique=False, nullable=True)
     uuid         = db.Column(db.String(40), unique=True, nullable=False)
     sessionValid = db.Column(db.Boolean, nullable=False, default=True)
     notes        = db.Column(db.Text, nullable=True)
@@ -716,7 +717,8 @@ def logout():
 
 # Get UUID for client token
 @app.route('/client/getToken', methods=['GET'])
-def returnUUID():
+@app.route('/client/getToken/<tag>', methods=['GET'])
+def returnUUID(tag=''):
     # Check to see if we're still allowing new client connections
     appSettings = AppSettings.query.filter_by(id=1).first()
 
@@ -737,7 +739,7 @@ def returnUUID():
 
     # Database Entry
     newNickname = generateNickname()
-    newClient   = Client(uuid=str(token), nickname=newNickname, notes="")
+    newClient   = Client(uuid=str(token), nickname=newNickname, tag=tag, notes="")
     db.session.add(newClient)
     db.session.commit()
 
@@ -1333,7 +1335,7 @@ def recordFetchCall(identifier):
 def getClients():
     clients = Client.query.all()
 
-    allClients = [{'id':escape(client.id), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
+    allClients = [{'id':escape(client.id), 'tag':escape(client.tag), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
         'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen, 'ip':escape(client.ipAddress),
         'platform':escape(client.platform), 'browser':escape(client.browser), 'isStarred':client.isStarred} for client in clients]
 

