@@ -423,6 +423,15 @@ class ClientPayloadJob(db.Model):
 
 
 
+class BlockedIP(db.Model):
+    id  = db.Column(db.Integer, primary_key=True)
+    ip  = db.Column(db.String(20), nullable=False)
+  
+    def __repr__(self):
+        return f'<BlockedIP {self.id}>'
+
+
+
 # User C2 UI session
 class User(UserMixin, db.Model):
     __table_name__ = 'user'
@@ -725,6 +734,16 @@ def returnUUID(tag=''):
     print("In UUID, app setting is: " + str(appSettings.allowNewSesssions))
     if (appSettings.allowNewSesssions == False):
         return "No.", 401
+
+    # Is this IP blocked?
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+    blockedIP = BlockedIP.query.filter_by(ip=ip).first()
+    if blockedIP is not None:
+        return "No.", 401
+
 
     # We're still allowing new connections, 
     # setup a new client
@@ -1594,6 +1613,44 @@ def setAllowNewClientSessions(setting):
 def blockClientSession(key):
     client = Client.query.filter_by(id=key).first()
     client.sessionValid = False;
+    dbCommit()
+
+    return "ok", 200
+
+
+
+@app.route('/api/getBlockedIPs', methods=['GET'])
+@login_required
+def getBlockedIPs():
+    blockedIPs = BlockedIP.query.all()
+
+    allBlockedIPs = [{'id':escape(blockedIP.id), 'ip':escape(blockedIP.ip)} for blockedIP in blockedIPs]
+
+    return jsonify(allBlockedIPs)
+
+
+
+@app.route('/api/blockIP', methods=['POST'])
+@login_required
+def blockIP(): 
+    content = request.json
+    ip      = content['ip']
+
+    blockedIP = BlockedIP(ip=ip)
+    db.session.add(blockedIP)
+    dbCommit()
+
+    return "ok", 200
+
+
+
+@app.route('/api/deleteBlockedIP/<key>', methods=['GET'])
+@login_required
+def deleteBlockedIP(key):
+    print("&&& Deleting blocked ip key: " + key)
+    blockedIP = BlockedIP.query.filter_by(id=key).first()
+
+    db.session.delete(blockedIP)
     dbCommit()
 
     return "ok", 200

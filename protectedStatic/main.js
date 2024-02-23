@@ -50,6 +50,37 @@ function toggleStar(imgObject, event, client, nickname)
 
 
 
+function blockIP()
+{
+	var inputField = document.getElementById('ipInput');
+	var ipAddress  = inputField.value;
+
+
+	const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+
+	if (ipv4Regex.test(ipAddress)) 
+	{
+		fetch('/api/blockIP', {
+			method:"POST",
+			body: JSON.stringify({
+				ip: ipAddress
+			}),
+			headers: {
+				"Content-type": "application/json; charset=UTF-8"
+			}
+		});
+	} 
+	else 
+	{
+		alert('Invalid IPv4 address. Please enter a valid IPv4 address.');
+	}
+
+	inputField.value = "";
+	refreshBlockedIPList();
+}
+
+
+
 function blockClient(imgObject, event, client, nickname)
 {
 	console.log("Blocking client: " + nickname);
@@ -180,6 +211,53 @@ async function showAllNotesModal()
 }
 
 
+async function refreshBlockedIPList()
+{
+	var blockedIPList = document.getElementById('blockedIPList');
+
+	blockedIPList.innerHTML = '';
+
+	// Handle the blocked IPs now
+	var req = await fetch('/api/getBlockedIPs');
+	var jsonResponse = await req.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		id = jsonResponse[i].id;
+		ip = jsonResponse[i].ip;
+
+		var blockedIP = document.createElement('li');
+		blockedIP.className   = 'list-group-item d-flex justify-content-between align-items-center';
+		blockedIP.textContent = ip;
+		blockedIP.id          = id;
+
+		var deleteButton = document.createElement('button');
+		deleteButton.id          = id;
+		deleteButton.ip          = ip;
+		deleteButton.className   = 'btn btn-sm me-2';
+		deleteButton.textContent = 'Delete';
+
+
+		deleteButton.addEventListener('click', function()
+		{
+			// Run on this clients
+			deleteBlockedIP(this);
+		})
+
+		blockedIP.appendChild(deleteButton);
+		blockedIPList.appendChild(blockedIP);
+	}
+}
+
+
+async function deleteBlockedIP(button)
+{
+	await fetch('/api/deleteBlockedIP/' + button.id);
+
+	refreshBlockedIPList();
+}
+
+
 
 async function showSessionModal()
 {
@@ -201,6 +279,9 @@ async function showSessionModal()
 			// console.log("Server says no more client sessions!");
 		checkBox.checked == false;
 	}
+
+	refreshBlockedIPList();
+
 
 	modal.show();
 }
@@ -876,215 +957,215 @@ async function getClientDetails(id)
     	animation: true, // Optional: Enable tooltip animation
       delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
       container: cardSubtitle // Optional: Specify a container for the tooltip
-    };
-    new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
+  };
+  new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
 
 
-    var cardText = document.createElement('p');
-    cardText.className = 'card-text';
+  var cardText = document.createElement('p');
+  cardText.className = 'card-text';
 
-    var activeEvent = false;
+  var activeEvent = false;
 
 
 		// Handle event specific details and formatting
-    switch(event.eventType)
-    {
-    case 'COOKIE':
-    	if (document.getElementById('cookieEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		cookieReq  = await fetch('/api/clientCookie/' + eventKey);
-    		cookieJson = await cookieReq.json();
+  switch(event.eventType)
+  {
+  case 'COOKIE':
+  	if (document.getElementById('cookieEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		cookieReq  = await fetch('/api/clientCookie/' + eventKey);
+  		cookieJson = await cookieReq.json();
 
-    		cardTitle.innerHTML = "Cookie";
-    		cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "Cookie";
+  		cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
+  	}
+  	break;
 
-    case 'LOCALSTORAGE':
-    	if (document.getElementById('localStorageEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
-    		localStorageJson = await localStorageReq.json();
+  case 'LOCALSTORAGE':
+  	if (document.getElementById('localStorageEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
+  		localStorageJson = await localStorageReq.json();
 
 			// console.log("*** Local storage api call received: ");
 			// console.log(JSON.stringify(localStorageJson));
 
-    		cardTitle.innerHTML = "Local Storage";
-    		cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "Local Storage";
+  		cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
+  	}
+  	break;
 
-    case 'SESSIONSTORAGE':
-    	if (document.getElementById('sessionStorageEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
-    		sessiontorageJson  = await sessionStorageReq.json();
+  case 'SESSIONSTORAGE':
+  	if (document.getElementById('sessionStorageEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
+  		sessiontorageJson  = await sessionStorageReq.json();
 
-    		cardTitle.innerHTML = "Session Storage";
-    		cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "Session Storage";
+  		cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
+  	}
+  	break;
 
-    case 'URLVISITED':
-    	if (document.getElementById('urlEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
-    		urlVisitedJson = await urlVisitedReq.json();
+  case 'URLVISITED':
+  	if (document.getElementById('urlEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
+  		urlVisitedJson = await urlVisitedReq.json();
 
-    		cardTitle.innerHTML = "<u>URL Visited</u>";
-    		cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "<u>URL Visited</u>";
+  		cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
+  	}
+  	break;
 
-    case 'HTML':
-    	if (document.getElementById('htmlScrapeEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
-    		htmlScrapeJson = await htmlScrapeReq.json();
+  case 'HTML':
+  	if (document.getElementById('htmlScrapeEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
+  		htmlScrapeJson = await htmlScrapeReq.json();
 
-    		cardTitle.innerHTML = "HTML Scraped";
-    		cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
-    		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode(' + eventKey + ')">View Code</button>';
-    		cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
-    	}
-    	break;
+  		cardTitle.innerHTML = "HTML Scraped";
+  		cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
+  		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode(' + eventKey + ')">View Code</button>';
+  		cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
+  	}
+  	break;
 
-    case 'SCREENSHOT':
-    	if (document.getElementById('screenshotEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
-    		screenshotJson = await screenshotReq.json();
+  case 'SCREENSHOT':
+  	if (document.getElementById('screenshotEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
+  		screenshotJson = await screenshotReq.json();
 
-    		cardTitle.innerHTML = "Screenshot Captured";
-    		cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
-    	}
-    	break;
+  		cardTitle.innerHTML = "Screenshot Captured";
+  		cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
+  	}
+  	break;
 
-    case 'USERINPUT':
-    	if (document.getElementById('userInputEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
-    		userInputJson = await userInputReq.json();
+  case 'USERINPUT':
+  	if (document.getElementById('userInputEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
+  		userInputJson = await userInputReq.json();
 
-    		cardTitle.innerHTML = "User Input";
-    		cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "User Input";
+  		cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
+  	}
+  	break;
 
 
-    case 'XHROPEN':
-    	if (document.getElementById('apiEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
-    		xhrOpenJson = await xhrOpenReq.json();
+  case 'XHROPEN':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
+  		xhrOpenJson = await xhrOpenReq.json();
 
-    		cardTitle.innerHTML = "API - XHR Open";
-    		cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "API - XHR Open";
+  		cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
+  	}
+  	break;
 
-    case 'XHRSETHEADER':
-    	if (document.getElementById('apiEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
-    		xhrHeaderJson = await xhrHeaderReq.json();
+  case 'XHRSETHEADER':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
+  		xhrHeaderJson = await xhrHeaderReq.json();
 
-    		cardTitle.innerHTML = "API - XHR Set Header";
-    		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Value: <b>" + xhrHeaderJson.value + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "API - XHR Set Header";
+  		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Value: <b>" + xhrHeaderJson.value + "</b>";
+  	}
+  	break;
 
-    case 'XHRCALL':
-    	if (document.getElementById('apiEvents').checked == true)
-    	{
-    		activeEvent = true;
+  case 'XHRCALL':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
 
-    		cardTitle.innerHTML = "API - XHR Call";
-    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
-    		+ eventKey + ',"XHR")>View API Call</button>';
-    	}
-    	break;
+  		cardTitle.innerHTML = "API - XHR Call";
+  		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
+  		+ eventKey + ',"XHR")>View API Call</button>';
+  	}
+  	break;
 
-    case 'FETCHSETUP':
-    	if (document.getElementById('apiEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		fetchSetupReq  = await fetch('/api/clientFetchSetup/' + eventKey);
-    		fetchSetupJson = await fetchSetupReq.json();
+  case 'FETCHSETUP':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		fetchSetupReq  = await fetch('/api/clientFetchSetup/' + eventKey);
+  		fetchSetupJson = await fetchSetupReq.json();
 
-    		cardTitle.innerHTML = "API - Fetch Setup";
-    		cardText.innerHTML  = "URL: <b>" + fetchSetupJson.url + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Method: <b>" + fetchSetupJson.method + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "API - Fetch Setup";
+  		cardText.innerHTML  = "URL: <b>" + fetchSetupJson.url + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Method: <b>" + fetchSetupJson.method + "</b>";
+  	}
+  	break;
 
-    case 'FETCHHEADER':
-    	if (document.getElementById('apiEvents').checked == true)
-    	{
-    		activeEvent = true;
-    		fetchHeaderReq  = await fetch('/api/clientFetchHeader/' + eventKey);
-    		fetchHeaderJson = await fetchHeaderReq.json();
+  case 'FETCHHEADER':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		fetchHeaderReq  = await fetch('/api/clientFetchHeader/' + eventKey);
+  		fetchHeaderJson = await fetchHeaderReq.json();
 
-    		cardTitle.innerHTML = "API - Fetch Header";
-    		cardText.innerHTML  = "Header: <b>" + fetchHeaderJson.header + "</b>";
-    		cardText.innerHTML += "<br>";
-    		cardText.innerHTML += "Value: <b>" + fetchHeaderJson.value + "</b>";
-    	}
-    	break;
+  		cardTitle.innerHTML = "API - Fetch Header";
+  		cardText.innerHTML  = "Header: <b>" + fetchHeaderJson.header + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Value: <b>" + fetchHeaderJson.value + "</b>";
+  	}
+  	break;
 
-    case 'FETCHCALL':
-    	if (document.getElementById('apiEvents').checked == true)
-    	{
-    		activeEvent = true;
+  case 'FETCHCALL':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
 
-    		cardTitle.innerHTML = "API - Fetch Call";
-    		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
-    		+ eventKey + ',"FETCH")>View API Call</button>';
-    	}
-    	break;
+  		cardTitle.innerHTML = "API - Fetch Call";
+  		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
+  		+ eventKey + ',"FETCH")>View API Call</button>';
+  	}
+  	break;
 
-    default:
-    	alert('!!!!Switch default-No good');
-    }
+  default:
+  	alert('!!!!Switch default-No good');
+  }
 
 
     // Only need the bottom part of the card
     // if the event in the loop is active
-    if (activeEvent)
-    {
-    	cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
+  if (activeEvent)
+  {
+  	cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
 
-    	cardBody.appendChild(cardTitle);
-    	cardBody.appendChild(cardSubtitle);
-    	cardBody.appendChild(cardText);
+  	cardBody.appendChild(cardTitle);
+  	cardBody.appendChild(cardSubtitle);
+  	cardBody.appendChild(cardText);
 
-    	card.appendChild(cardBody);
+  	card.appendChild(cardBody);
 
-    	cardStack.appendChild(card);    	
-    }
+  	cardStack.appendChild(card);    	
   }
+}
 }
 
 
@@ -1180,6 +1261,33 @@ function sortClients(clientsJson)
 
 
 
+// Search bar filtering. Shows any card 
+// whose innterHTML contains the string
+function filterClients()
+{
+	var searchBar   = document.getElementById('searchClientInput');
+	var searchTerm  = searchBar.value.toLowerCase();
+	var cardStack   = document.getElementById('client-stack');
+	var clientCards = cardStack.getElementsByClassName('card');
+
+	for (let i = 0; i < clientCards.length; i++)
+	{
+		const card = clientCards[i];
+		clientText = card.innerHTML.toLowerCase();
+
+		if (clientText.indexOf(searchTerm) !== -1)
+		{
+			card.style.display="block";
+		}
+		else
+		{
+			card.style.display="none";
+		}
+	}
+}
+
+
+
 
 async function updateClients()
 {
@@ -1255,86 +1363,87 @@ async function updateClients()
     	animation: true, // Optional: Enable tooltip animation
       delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
       container: cardSubtitle // Optional: Specify a container for the tooltip
-    };
-    new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
+  };
+  new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
 
 
-    var cardText = document.createElement('p');
-    cardText.className = 'card-text';
+  var cardText = document.createElement('p');
+  cardText.className = 'card-text';
 
-    var clientName = "";
-    if (client.tag != "")
-    {
-    	clientName = client.tag + "/" + client.nickname;
-    }
-    else
-    {
-    	clientName = client.nickname;
-    }
+  var clientName = "";
+  if (client.tag != "")
+  {
+  	clientName = client.tag + "/" + client.nickname;
+  }
+  else
+  {
+  	clientName = client.nickname;
+  }
 
-    cardTitle.innerHTML = "<u>" + clientName + "</u>";
+  cardTitle.innerHTML = "<u>" + clientName + "</u>";
 
-    if (client.isStarred)
-    {
-    	cardTitle.innerHTML += '<img src="/protectedStatic/star-fill.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
-    }
-    else
-    {
-    	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
-    }
+  if (client.isStarred)
+  {
+  	cardTitle.innerHTML += '<img src="/protectedStatic/star-fill.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+  }
+  else
+  {
+  	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+  }
 
 
-    cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClient(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
-    cardTitle.innerHTML += '&nbsp;&nbsp;&nbsp';
+  cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClient(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+  cardTitle.innerHTML += '&nbsp;&nbsp;&nbsp';
 
-    cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
+  cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
 
 		//What to do about client notes?
-    if (client.notes.length > 0)
-    {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
-    	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Edit Notes</button>';
-    }
-    else
-    {
-    	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
-    	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
-    }
-
-    cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
-    cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
-
-    cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
-    	+ client.id + `'`+ ')>Run Payload</button>';
-
-
-    cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
-    cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
-
-
-    cardBody.appendChild(cardTitle);
-    cardBody.appendChild(cardSubtitle);
-    cardBody.appendChild(cardText);
-
-    card.appendChild(cardBody);
-
-    card.onclick =  function(event) {
-    	// console.log("!!! CLIENT CARD CLICKED!!!");
-    	unselectAllClients();
-    	clickedClient = this.getAttribute("clientIndex");
-    	this.classList.add("table-active");
-    	selectedClientId = clickedClient;
-    	getClientDetails(selectedClientId);
-    };
-
-    cardStack.appendChild(card);
+  if (client.notes.length > 0)
+  {
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
+  	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Edit Notes</button>';
   }
+  else
+  {
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
+  	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
+  }
+
+  cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
+  cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
+
+  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
+  + client.id + `'`+ ')>Run Payload</button>';
+
+
+  cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
+  cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
+
+
+  cardBody.appendChild(cardTitle);
+  cardBody.appendChild(cardSubtitle);
+  cardBody.appendChild(cardText);
+
+  card.appendChild(cardBody);
+
+  card.onclick =  function(event) {
+    	// console.log("!!! CLIENT CARD CLICKED!!!");
+  	unselectAllClients();
+  	clickedClient = this.getAttribute("clientIndex");
+  	this.classList.add("table-active");
+  	selectedClientId = clickedClient;
+  	getClientDetails(selectedClientId);
+  };
+
+  cardStack.appendChild(card);
+}
+
+filterClients();
 }
 
 
 
 
-// Every 2 seconds...
 setInterval(updateClients, 5000);
 
 updateClients();

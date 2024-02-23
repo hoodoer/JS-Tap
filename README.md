@@ -1,17 +1,17 @@
 # JS-Tap
-### v1.02
+### v1.03
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 
 ## Demo
-You can read the blog post about JS-Tap here:<br>
+You can read the original blog post about JS-Tap here:<br>
 <https://trustedsec.com/blog/js-tap-weaponizing-javascript-for-red-teams>
+
+Best recorded demo so far, from ShmooCon:<br>
+<https://youtu.be/IDLMMiqV6ss?si=XunvnVarqSIjx_x0&t=19814>
 
 A demo can also be seen in this webinar:<br>
 <https://youtu.be/-c3b5debhME?si=CtJRqpklov2xv7Um>
-
-Better/shorter demo at ShmooCon:<br>
-<https://youtu.be/IDLMMiqV6ss?si=XunvnVarqSIjx_x0&t=19814>
 
 
 ## Introduction
@@ -62,17 +62,6 @@ Also Note, I've had good luck using Trap Mode for an implant in very specific lo
 
 #### Implant Mode
 Implant mode would typically be used if you're directly adding the payload into the targeted application. Perhaps you have a shell on the server that hosts the JavaScript files for the application. Add the payload to a JavaScript file that's used throughout the application (jQuery, main.js, etc.). Which file would be ideal really depends on the app in question and how it's using JavaScript files. Implant mode does not require a starting page to be configured, and does not use the iFrame trap technique. 
-
-## Custom Payloads
-Starting in version 1.02 there is a custom payload feature. Multiple JavaScript payloads can be added in the JS-Tap portal and executed on a single client, all current clients, or set to autorun on all future clients. Payloads can be written/edited within the JS-Tap portal, or imported from a file. Payloads can also be exported. The format for importing payloads is simple JSON. The JavaScript code and description are simply base64 encoded. 
-```
-[{"code":"YWxlcnQoJ1BheWxvYWQgMSBmaXJpbmcnKTs=","description":"VGhlIGZpcnN0IHBheWxvYWQ=","name":"Payload 1"},{"code":"YWxlcnQoJ1BheWxvYWQgMiBmaXJpbmcnKTs=","description":"VGhlIHNlY29uZCBwYXlsb2Fk","name":"Payload 2"}]
-```
-The main user interface for custom payloads is from the top menu bar. Select **Custom Payloads** to open the interface. Any existing payloads will be shown in a list. The bottom button bar allows you to import and export the list. A **Show Editor** button allows you to create and edit payloads. To load an existing payload for editing, open the editor and select the payload by clicking on it in the **Saved Payloads** list. Once you have payloads defined and saved, you can execute them on clients. <br>
-
-In the main **Custom Payloads** view you can launch a payload against all current clients (the **Run Payload** button). You can also toggle on the **Autorun** attribute of a payload, which means that all new clients will run the payload. Note that existing clients will not run a payload based on the Autorun setting. <br>
-
-To run a payload on a single client user the **Run Payload** button on the specific client you wish to run it on, and then hit the run button for the specific payload you wish to use. 
 
 
 ## Installation and Start
@@ -158,7 +147,11 @@ Sets the page the user starts on when the iFrame trap is set.
 ```
 window.taperstartingPage = "http://targetapp.com/somestartpage";
 ```
-
+#### Client Tag
+Useful if you're using JS-Tap against multiple applications or deployments at once and want a visual indicator of what payload was loaded. This tag string (keep it short!) is prepended to the client nickname in the JS-Tap portal. Setup multiple payloads, each with the appropriate configuration for the application its being used against, and add a tag indicating which app the client is running. 
+```
+window.taperTag = 'whatever';
+```
 #### Custom Payload Tasks
 Used to set if clients are checking for **Custom Payload** tasks, and how often they're checking. 
 ```
@@ -193,15 +186,26 @@ Login with the admin credentials provided by the server script on startup.
 
 Clients show up on the left, selecting one will show a time series of their events (loot) on the right. 
 
-The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. 
+The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. There is also a quick filter search above the clients list that allows you to quickly filter clients that have the entered string. Useful if you set an optional tag in the payload configuration. Optional tags show up prepended to the client nickname. 
 
 Each client has an 'x' button (near the star button). This allows you to delete the session for that client, if they're sending junk or useless data, you can prevent that client from submitting future data. 
 
-When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop all new client sessions from being issues, select **App Settings** at the top and you can disable new client sessions. 
+When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop all new client sessions from being issues, select **Session Settings** at the top and you can disable new client sessions. You can also block specific IP addresses from receiving a session in here. 
 
 Each client has a "notes" feature. If you find juicy information for that particular client (credentials, API tokens, etc) you can add it to the client notes. After you've reviewed all your clients and made you notes, the **View All Notes** feature at the top allows you to export all notes from all clients at once. 
 
 The events list can be filtered by event type if you're trying to focus on something specific, like screenshots. Note that the events/loot list does _not_ automatically update (the clients list does). If you want to load the latest events for the client you need to select the client again on the left. 
+
+#### Custom Payloads
+Starting in version 1.02 there is a custom payload feature. Multiple JavaScript payloads can be added in the JS-Tap portal and executed on a single client, all current clients, or set to autorun on all future clients. Payloads can be written/edited within the JS-Tap portal, or imported from a file. Payloads can also be exported. The format for importing payloads is simple JSON. The JavaScript code and description are simply base64 encoded. 
+```
+[{"code":"YWxlcnQoJ1BheWxvYWQgMSBmaXJpbmcnKTs=","description":"VGhlIGZpcnN0IHBheWxvYWQ=","name":"Payload 1"},{"code":"YWxlcnQoJ1BheWxvYWQgMiBmaXJpbmcnKTs=","description":"VGhlIHNlY29uZCBwYXlsb2Fk","name":"Payload 2"}]
+```
+The main user interface for custom payloads is from the top menu bar. Select **Custom Payloads** to open the interface. Any existing payloads will be shown in a list. The bottom button bar allows you to import and export the list. A **Show Editor** button allows you to create and edit payloads. To load an existing payload for editing, open the editor and select the payload by clicking on it in the **Saved Payloads** list. Once you have payloads defined and saved, you can execute them on clients. <br>
+
+In the main **Custom Payloads** view you can launch a payload against all current clients (the **Run Payload** button). You can also toggle on the **Autorun** attribute of a payload, which means that all new clients will run the payload. Note that existing clients will not run a payload based on the Autorun setting. <br>
+
+To run a payload on a single client user the **Run Payload** button on the specific client you wish to run it on, and then hit the run button for the specific payload you wish to use. 
 
 
 ## Tools

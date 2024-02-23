@@ -24,7 +24,16 @@
 			overflow: hidden;
 		}
 
+		#searchClientInput {
+			height: 30px; 
+			padding: 3px 8px;
+			background-color: #aaa;
+			color: #000; /* Text color */
+		}
 
+		#searchClientInput::placeholder {
+			color: #8b8680; /* Placeholder text color */
+		}
 
 	</style>
 </head>
@@ -114,442 +123,466 @@
 
 	<!-- Dynamic UI Stuff below -->
 
-	<div class="container-fluid border">
-		<div class="row"> 
-
-			<!-- Client Card Stack -->
-			<div class="col-5">
-				<div class="d-flex justify-content-between align-items-center">
-					<label><h4><b>&nbsp;&nbsp;Clients</b></h4></label>
-					<button type="button" class="btn btn-primary" onclick=showClientFilterModal()><img src="/protectedStatic/filter.svg"></button>
-
-				</div>
-				<div class="card-stack" id="client-stack"></div>
-			</div>
-
-			<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
-			<div class="col-7">
-
-				<div class="d-flex justify-content-between align-items-center">
-					<label><h4><b>&nbsp;&nbsp;Loot</b></h4></label>
-					<button type="button" class="btn btn-primary" onclick=showEventFilterModal()><img src="/protectedStatic/filter.svg"></button>
-
-				</div>
-				<div class="card-stack" id="detail-stack">
-				</div>
-			</div>
-		</div>
+	<!-- <div class="d-flex justify-content-between align-items-center"> -->
 
 
+		<div class="container-fluid border">
+			<div class="row"> 
 
-		<!-- Modals below -->
-
-		<!-- HTML Code Viewer Modal -->
-		<div class="modal fade modal-xl" id="codeModal" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title" id="htmlCodeModal">HTML Code Viewer</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				<!-- Client Card Stack -->
+				<div class="col-5">
+					<div class="d-flex align-items-center">
+						<label style="margin-top: 8;"><h4><b>&nbsp;&nbsp;Clients</b></h4></label>
+						<div style="width: 25px;"></div>
+						<input type="text" class="form-control" placeholder="Filter clients..." id="searchClientInput">
+						<div style="width: 25px;"></div>
+						<button type="button" class="btn btn-primary" onclick=showClientFilterModal()><img src="/protectedStatic/filter.svg"></button>
 					</div>
-					<textarea class="form-control" id="code-viewer-body" rows="25" readonly></textarea>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					<div class="card-stack" id="client-stack"></div>
+				</div>
+
+				<!-- Register filter handler -->
+				<script type="text/javascript">document.getElementById('searchClientInput').addEventListener('input', filterClients);</script>
+
+				<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
+				<div class="col-7">
+
+					<div class="d-flex justify-content-between align-items-center">
+						<label style="margin-top: 8;"><h4><b>&nbsp;&nbsp;Loot</b></h4></label>
+						<button type="button" class="btn btn-primary" onclick=showEventFilterModal()><img src="/protectedStatic/filter.svg"></button>
+
+					</div>
+					<div class="card-stack" id="detail-stack">
 					</div>
 				</div>
 			</div>
-		</div>
 
 
 
+			<!-- Modals below -->
 
-		<!-- About Modal -->
-		<div class="modal fade modal-lg" id="aboutModal" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title" id="aboutTitle">About JS-Tap</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div class="modal-body" id="code-viewer-body">
-						This tool is designed to help red teamers recon web applications using XSS payloads or post exploitation implants. <br><br>
-						This tool is intended to be used on systems you are authorized to attack.
-						Do not use this tool for illegal purposes, or I will be very grumpy in your general direction. <br><br>
-
-						<a href="https://github.com/hoodoer/JS-Tap" target="_blank">https://github.com/hoodoer/JS-Tap</a><br><br><br>
-
-						Contact:<br>
-						<a href="https://twitter.com/hoodoer" target="_blank">@hoodoer</a><br>
-						<a href="mailto:hoodoer@bitwisemunitions.dev" target="_blank">hoodoer@bitwisemunitions.dev</a>
-						<br>
-						<br>
-						<a href="https://trustedsec.com" target="_blank">Consulting Work</a><br>
-
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+			<!-- HTML Code Viewer Modal -->
+			<div class="modal fade modal-xl" id="codeModal" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="htmlCodeModal">HTML Code Viewer</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<textarea class="form-control" id="code-viewer-body" rows="25" readonly></textarea>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
 
 
 
 
-		<!-- Guide Modal -->
-		<div class="modal fade modal-lg" id="guideModal" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title" id="guideTitle">JS-Tap Guide</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div class="modal-body" id="guide-body">
-						There are a quite a few settings in the JS-Tap payload that need to be set prior<br>
-						to your engagement. The primary JavaScript payload is contained in <b>telemlib.js.</b><br><br>
-						See the project README file for instructions:<br>
-						<a href="https://github.com/hoodoer/JS-Tap" target="_blank">JS-Tap README</a><br>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-					</div>
-				</div>
-			</div>
-		</div>
+			<!-- About Modal -->
+			<div class="modal fade modal-lg" id="aboutModal" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="aboutTitle">About JS-Tap</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body" id="code-viewer-body">
+							This tool is designed to help red teamers recon web applications using XSS payloads or post exploitation implants. <br><br>
+							This tool is intended to be used on systems you are authorized to attack.
+							Do not use this tool for illegal purposes, or I will be very grumpy in your general direction. <br><br>
 
+							<a href="https://github.com/hoodoer/JS-Tap" target="_blank">https://github.com/hoodoer/JS-Tap</a><br><br><br>
 
+							Contact:<br>
+							<a href="https://twitter.com/hoodoer" target="_blank">@hoodoer</a><br>
+							<a href="mailto:hoodoer@bitwisemunitions.dev" target="_blank">hoodoer@bitwisemunitions.dev</a>
+							<br>
+							<br>
+							<a href="https://trustedsec.com" target="_blank">Consulting Work</a><br>
 
-		<!-- Note Editor Modal -->
-		<div id="noteEditorModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title" id="note-editor-title"></h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div class="modal-body">
-						<textarea id="note-editor" class="form-control" rows="20"></textarea>
-					</div>
-					<div class="modal-footer">
-						<button id="note-save-button" class="btn btn-primary">Save</button>
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
 
 
 
-		<!-- All Notes viewer Modal -->
-		<div id="allNoteViewerModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title" id="note-viewer-title">All Client Notes</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div class="modal-body">
-						<textarea id="all-note-viewer" class="form-control" rows="20" readonly></textarea>
-					</div>
-					<div class="modal-footer">
-						<button id="note-download-button" class="btn btn-primary">Download Notes</button>
-						<!-- Hidden anchor element for downloading -->
-						<a id="downloadLink" style="display: none;"></a>
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+
+			<!-- Guide Modal -->
+			<div class="modal fade modal-lg" id="guideModal" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="guideTitle">JS-Tap Guide</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body" id="guide-body">
+							There are a quite a few settings in the JS-Tap payload that need to be set prior<br>
+							to your engagement. The primary JavaScript payload is contained in <b>telemlib.js.</b><br><br>
+							See the project README file for instructions:<br>
+							<a href="https://github.com/hoodoer/JS-Tap" target="_blank">JS-Tap README</a><br>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
 
 
 
-
-		<!-- Request/Response modal -->
-		<div class="modal fade modal-lg" id="requestResponseModal">
-			<div class="modal-dialog">
-				<div class="modal-content">
-
-					<!-- Modal Header -->
-					<div class="modal-header">
-						<h4 class="modal-title">API Call Viewer</h4>
-						<button type="button" class="close" data-bs-dismiss="modal">&times;</button>
+			<!-- Note Editor Modal -->
+			<div id="noteEditorModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="note-editor-title"></h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body">
+							<textarea id="note-editor" class="form-control" rows="20"></textarea>
+						</div>
+						<div class="modal-footer">
+							<button id="note-save-button" class="btn btn-primary">Save</button>
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>
 					</div>
+				</div>
+			</div>
 
-					<!-- Modal Body -->
-					<div class="modal-body">
-						<div class="container">
-							<div class="row">
-								<div class="col-lg-6">
-									<div class="form-group">
-										<label for="textarea1">Request</label>
-										<textarea class="form-control" id="requestBox" rows="4" readonly=""></textarea>
+
+
+			<!-- All Notes viewer Modal -->
+			<div id="allNoteViewerModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="note-viewer-title">All Client Notes</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body">
+							<textarea id="all-note-viewer" class="form-control" rows="20" readonly></textarea>
+						</div>
+						<div class="modal-footer">
+							<button id="note-download-button" class="btn btn-primary">Download Notes</button>
+							<!-- Hidden anchor element for downloading -->
+							<a id="downloadLink" style="display: none;"></a>
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+
+
+
+			<!-- Request/Response modal -->
+			<div class="modal fade modal-lg" id="requestResponseModal">
+				<div class="modal-dialog">
+					<div class="modal-content">
+
+						<!-- Modal Header -->
+						<div class="modal-header">
+							<h4 class="modal-title">API Call Viewer</h4>
+							<button type="button" class="close" data-bs-dismiss="modal">&times;</button>
+						</div>
+
+						<!-- Modal Body -->
+						<div class="modal-body">
+							<div class="container">
+								<div class="row">
+									<div class="col-lg-6">
+										<div class="form-group">
+											<label for="textarea1">Request</label>
+											<textarea class="form-control" id="requestBox" rows="4" readonly=""></textarea>
+										</div>
 									</div>
-								</div>
-								<div class="col-lg-6">
-									<div class="form-group">
-										<label for="textarea2">Response</label>
-										<textarea class="form-control" id="responseBox" rows="4" readonly = ""></textarea>
+									<div class="col-lg-6">
+										<div class="form-group">
+											<label for="textarea2">Response</label>
+											<textarea class="form-control" id="responseBox" rows="4" readonly = ""></textarea>
+										</div>
 									</div>
 								</div>
 							</div>
 						</div>
-					</div>
 
-					<!-- Modal Footer -->
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						<!-- Modal Footer -->
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>	
 					</div>	
-				</div>	
+				</div>
 			</div>
-		</div>
 
 
-		<!-- Client Filter/Sort Modal -->
-		<div id="clientFilterModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title">Client Sort</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div class="modal-body" id="clientFilterModalBody">
+			<!-- Client Filter/Sort Modal -->
+			<div id="clientFilterModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title">Client Sort</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body" id="clientFilterModalBody">
 
-						<h5><u>Order clients by date/time they were first seen:</u></h5>
-						<div class="form-check">
-							<input class="form-check-input" type="radio" name="flexRadioDefault" id="firstSeenAscending" checked>
-							<label class="form-check-label" for="flexRadioDefault1">
-								First Seen - Oldest to most recent
-							</label>
+							<h5><u>Order clients by date/time they were first seen:</u></h5>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="flexRadioDefault" id="firstSeenAscending" checked>
+								<label class="form-check-label" for="flexRadioDefault1">
+									First Seen - Oldest to most recent
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="flexRadioDefault" id="firstSeenDescending">
+								<label class="form-check-label" for="flexRadioDefault2">
+									First Seen - Most recent to oldest
+								</label>
+							</div>
+							<br>
+							<h5><u>Order clients by date/time they were last seen (update):</u></h5>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="flexRadioDefault" id="lastSeenAscending">
+								<label class="form-check-label" for="flexRadioDefault1">
+									Last Seen - Oldest to most recent
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="flexRadioDefault" id="lastSeenDescending">
+								<label class="form-check-label" for="flexRadioDefault2">
+									Last Seen - Most recent to oldest
+								</label>
+							</div>
+							<br>
+							<br>
+							<h5><u>Client Filter Options:</u></h5>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="onlyStarredClients">
+								<label class="form-check-label" for="flexCheckChecked">
+									Show Only Starred Clients
+								</label>
+							</div>
+
 						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="radio" name="flexRadioDefault" id="firstSeenDescending">
-							<label class="form-check-label" for="flexRadioDefault2">
-								First Seen - Most recent to oldest
-							</label>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClients()>Close</button>
 						</div>
-						<br>
-						<h5><u>Order clients by date/time they were last seen (update):</u></h5>
-						<div class="form-check">
-							<input class="form-check-input" type="radio" name="flexRadioDefault" id="lastSeenAscending">
-							<label class="form-check-label" for="flexRadioDefault1">
-								Last Seen - Oldest to most recent
-							</label>
-						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="radio" name="flexRadioDefault" id="lastSeenDescending">
-							<label class="form-check-label" for="flexRadioDefault2">
-								Last Seen - Most recent to oldest
-							</label>
-						</div>
-						<br>
-						<br>
-						<h5><u>Client Filter Options:</u></h5>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="onlyStarredClients">
-							<label class="form-check-label" for="flexCheckChecked">
-								Show Only Starred Clients
-							</label>
-						</div>
-						
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClients()>Close</button>
 					</div>
 				</div>
 			</div>
-		</div>
 
 
 
 
-		<!-- Event Filtering Modal -->
-		<div id="eventFilterModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title">Event Filtering</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div class="modal-body" id="eventFilterModalBody">
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="cookieEvents" checked>
-							<label class="form-check-label" for="flexCheckDefault">
-								Cookies
-							</label>
+			<!-- Event Filtering Modal -->
+			<div id="eventFilterModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title">Event Filtering</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="localStorageEvents" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								Local Storage
-							</label>
-						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="sessionStorageEvents" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								Session Storage
-							</label>
-						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="urlEvents" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								URLs Visited
-							</label>
-						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="htmlScrapeEvents" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								HTML Scraped
-							</label>
-						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="screenshotEvents" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								Screenshots
-							</label>
-						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="userInputEvents" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								User Inputs
-							</label>
-						</div>
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="apiEvents" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								API Events
-							</label>
-						</div>
+						<div class="modal-body" id="eventFilterModalBody">
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="cookieEvents" checked>
+								<label class="form-check-label" for="flexCheckDefault">
+									Cookies
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="localStorageEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									Local Storage
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="sessionStorageEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									Session Storage
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="urlEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									URLs Visited
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="htmlScrapeEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									HTML Scraped
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="screenshotEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									Screenshots
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="userInputEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									User Inputs
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="apiEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									API Events
+								</label>
+							</div>
 
 
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateEvents()>Close</button>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateEvents()>Close</button>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
 
 
 
 
 
-		<!-- New Client Session Control Modal -->
-		<div id="clientSessionModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title">Session Settings</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div class="modal-body" id="clientFilterModalBody">
-						<div class="form-check">
-							<input class="form-check-input" type="checkbox" value="" id="allowNewClientSessions" checked>
-							<label class="form-check-label" for="flexCheckChecked">
-								Allow New Client Sessions
-							</label>
+			<!-- New Client Session Control Modal -->
+			<div id="clientSessionModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title">Session Settings</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
-						
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
+						<div class="modal-body" id="clientFilterModalBody">
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="allowNewClientSessions" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									Allow New Client Sessions
+								</label>
+							</div>
+
+							<br><br>
+							<!-- List of Blocked IPs -->
+							<div class="modal-body">
+								<h6>Blocked IPs:</h6>
+
+								<div class="input-group mb-3">
+									<input id="ipInput" type="text" class="form-control" placeholder="Enter IP">
+									<div class="input-group-append">
+										<button id="addBlockIP" class="btn btn-primary" type="button">Add</button>
+									</div>
+								</div>
+								<ul id="blockedIPList" class="list-group">
+								</ul>
+							</div>
+							<script>document.getElementById("addBlockIP").addEventListener('click', blockIP);</script>
+
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
 
 
 
-		<!-- Custom Payload Modal -->
-		<div id="customPayloadModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title" id="custom-payload-title">Custom JavaScript Payloads</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div>						
-						<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Custom JavaScript payloads can be entered in this tool and executed on clients.</p>
-					</div>
-
-					<!-- List of Saved Payloads -->
-					<div class="modal-body">
-						<h6>Saved Payloads (select to load for editing):</h6>
-						<ul id="savedPayloadsList" class="list-group">
-						</ul>
-					</div>
-
-					<div class="modal-footer">
-						<div class="ms-0">
-							<button id="payload-import-button" class="btn btn-secondary me-2" data-toggle="tooltip" title="Import Custom Payloads">Import</button>
-							<!-- input for importing -->
-							<input type="file" id="importInput" accept=".json" style="display: none;">
-
-							<button id="payload-export-button" class="btn btn-secondary me-4"data-toggle="tooltip" title="Export Custom Payloads">Export</button>
-							<!-- Hidden anchor element for exporting -->
-							<a id="exportLink" style="display: none;"></a>
-
-							<button id="payload-editor-button" class="btn btn-secondary">Show Editor</button>
+			<!-- Custom Payload Modal -->
+			<div id="customPayloadModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="custom-payload-title">Custom JavaScript Payloads</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
-						<div class="ms-auto">
-							<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
-							<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
+						<div>						
+							<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Custom JavaScript payloads can be entered in this tool and executed on clients.</p>
 						</div>
-					</div>
 
-
-					<div id="payloadEditor">
+						<!-- List of Saved Payloads -->
 						<div class="modal-body">
-							<label for="payloadName" class="form-label">Payload Name:</label>
-							<input type="text" class="form-control input-width" id="payloadName" name="name" required>
-						</div>
-						
-						<div class="modal-body">
-							<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
-							<textarea id="payloadDescription" class="form-control"  rows="2"></textarea>
-						</div>
-						
-						<div class="modal-body">
-							<label for="payload-editor" class="form-label">JavaScript Code:</label>
-							<textarea id="payload-editor" class="form-control" rows="10"></textarea>
+							<h6>Saved Payloads (select to load for editing):</h6>
+							<ul id="savedPayloadsList" class="list-group">
+							</ul>
 						</div>
 
-					</div>
+						<div class="modal-footer">
+							<div class="ms-0">
+								<button id="payload-import-button" class="btn btn-secondary me-2" data-toggle="tooltip" title="Import Custom Payloads">Import</button>
+								<!-- input for importing -->
+								<input type="file" id="importInput" accept=".json" style="display: none;">
 
-				</div>
-			</div>
-		</div>
+								<button id="payload-export-button" class="btn btn-secondary me-4"data-toggle="tooltip" title="Export Custom Payloads">Export</button>
+								<!-- Hidden anchor element for exporting -->
+								<a id="exportLink" style="display: none;"></a>
 
-
-
-		<!-- Custom Payload Modal - Single Client -->
-		<div id="singleClientPayloadModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
-			<div class="modal-dialog">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title" id="single-client-payload-title">Custom JavaScript Payloads</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-					</div>
-					<div>						
-						<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Payloads can be run on this client.</p>
-					</div>
-
-					<!-- List of Saved Payloads -->
-					<div class="modal-body">
-						<h6>Saved Payloads:</h6>
-						<ul id="singleClientPayloadList" class="list-group">
-						</ul>
-					</div>
-
-					<div class="modal-footer">
-						<div class="ms-auto">
-							<button id="payload-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
+								<button id="payload-editor-button" class="btn btn-secondary">Show Editor</button>
+							</div>
+							<div class="ms-auto">
+								<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
+								<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
+							</div>
 						</div>
+
+
+						<div id="payloadEditor">
+							<div class="modal-body">
+								<label for="payloadName" class="form-label">Payload Name:</label>
+								<input type="text" class="form-control input-width" id="payloadName" name="name" required>
+							</div>
+
+							<div class="modal-body">
+								<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
+								<textarea id="payloadDescription" class="form-control"  rows="2"></textarea>
+							</div>
+
+							<div class="modal-body">
+								<label for="payload-editor" class="form-label">JavaScript Code:</label>
+								<textarea id="payload-editor" class="form-control" rows="10"></textarea>
+							</div>
+
+						</div>
+
 					</div>
 				</div>
 			</div>
+
+
+
+			<!-- Custom Payload Modal - Single Client -->
+			<div id="singleClientPayloadModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title" id="single-client-payload-title">Custom JavaScript Payloads</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div>						
+							<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Payloads can be run on this client.</p>
+						</div>
+
+						<!-- List of Saved Payloads -->
+						<div class="modal-body">
+							<h6>Saved Payloads:</h6>
+							<ul id="singleClientPayloadList" class="list-group">
+							</ul>
+						</div>
+
+						<div class="modal-footer">
+							<div class="ms-auto">
+								<button id="payload-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+
 		</div>
-
-
-	</div>
-</body>
-</html>
+	</body>
+	</html>
