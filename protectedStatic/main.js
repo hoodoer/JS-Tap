@@ -1270,12 +1270,37 @@ function filterClients()
 	var cardStack   = document.getElementById('client-stack');
 	var clientCards = cardStack.getElementsByClassName('card');
 
+	// Regular expressions to extract data
+	const titleRegex    = /<u>(.*?)<\/u>/;
+	const ipRegex       = /ip:<b>\s*(.*?)\s*<\/b>/;
+	const platformRegex = /platform:<b>\s*(.*?)\s*<\/b>/;
+	const browserRegex  = /browser:<b>\s*(.*?)\s*<\/b>/;
+
+
 	for (let i = 0; i < clientCards.length; i++)
 	{
 		const card = clientCards[i];
 		clientText = card.innerHTML.toLowerCase();
 
-		if (clientText.indexOf(searchTerm) !== -1)
+		// Extract data using regex
+		const titleMatch    = clientText.match(titleRegex);
+		const ipMatch       = clientText.match(ipRegex);
+		const platformMatch = clientText.match(platformRegex);
+		const browserMatch  = clientText.match(browserRegex);
+
+		// Extracted data
+		var cardTitle = titleMatch ? titleMatch[1] : '';
+		var ip        = ipMatch ? ipMatch[1] : '';
+		var platform  = platformMatch ? platformMatch[1] : '';
+		var browser   = browserMatch ? browserMatch[1] : '';
+
+		ip       = ip.replace(/&nbsp;/g, '');
+		platform = platform.replace(/&nbsp;/g, '');
+		browser  = browser.replace(/&nbsp;/g, '');
+		
+		var cleanedString = cardTitle + ip + platform + browser;
+
+		if (cleanedString.indexOf(searchTerm) !== -1)
 		{
 			card.style.display="block";
 		}
