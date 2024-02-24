@@ -14,6 +14,10 @@ A demo can also be seen in this webinar:<br>
 <https://youtu.be/-c3b5debhME?si=CtJRqpklov2xv7Um>
 
 
+## Upgrade warning
+I do not plan on creating migration scripts for the database, and version number bumps often involve database schema changes. You should probably delete your jsTap.db database on version bumps. If you have custom payloads in your JS-Tap server, make sure you export them before the upgrade. 
+
+
 ## Introduction
 JS-Tap is a generic JavaScript payload and supporting software to help red teamers attack webapps. The JS-Tap payload can be used as an XSS payload or as a post exploitation implant. 
 
