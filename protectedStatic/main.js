@@ -340,6 +340,7 @@ function importPayloads(event)
 	reader.readAsText(file);
 	document.getElementById('payload-import-button').blur();
 	event.target.value = "";
+	refreshSavedPayloadList();
 }
 
 
@@ -429,6 +430,44 @@ async function runPayloadAllClient(button)
 		button.style.borderWidth = '';
 		button.style.borderColor = '';
 	}, 750);
+}
+
+
+
+async function repeatPayloadAllClients(repeatRunToggle)
+{
+	var repeatrun = false;
+
+	//Toggle functionality
+	if (repeatRunToggle.classList.contains('active'))
+	{
+        // If the button is active, deactivate it
+		repeatRunToggle.classList.remove('active');
+		repeatRunToggle.style.borderWidth = '';
+		repeatRunToggle.style.borderColor = '';
+		repeatrun = false;
+	} 
+	else 
+	{
+        // If the button is inactive, activate it
+		repeatRunToggle.classList.add('active');
+		repeatRunToggle.style.borderWidth = '2px';
+		repeatRunToggle.style.borderColor = 'green';
+		repeatrun = true;
+	}
+
+
+	// Update autorun status server side
+	fetch('/api/setPayloadRepeatRun', {
+		method:"POST",
+		body: JSON.stringify({
+			name: repeatRunToggle.name,
+			repeatrun: repeatrun
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
 }
 
 
@@ -543,7 +582,7 @@ async function refreshSavedPayloadList()
 		id          = jsonResponse[i].id;
 		name        = jsonResponse[i].name;
 		autorun     = jsonResponse[i].autorun;
-		// code = atob(jsonResponse[i].code);
+		repeatrun   = jsonResponse[i].repeatrun;
 
 		var payload = document.createElement('li');
 		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
@@ -578,7 +617,6 @@ async function refreshSavedPayloadList()
 			autorunToggle.classList.add('active');
 			autorunToggle.style.borderWidth = '2px';
 			autorunToggle.style.borderColor = 'green';
-
 		}
 
 		var executePayloadButton         = document.createElement('button');
@@ -594,6 +632,33 @@ async function refreshSavedPayloadList()
 			// Run on all clients
 			runPayloadAllClient(this);
 		})
+
+		var repeatPayloadToggle         = document.createElement('button');
+		repeatPayloadToggle.id          = id;
+		repeatPayloadToggle.className   = 'btn btn-sm me-2';
+		repeatPayloadToggle.textContent = 'Repeat Payload';
+		repeatPayloadToggle.name        = name;
+
+		repeatPayloadToggle.setAttribute('data-toggle', 'tooltip');
+		repeatPayloadToggle.setAttribute('title', 'Regularly rerun Payload on All Clients');
+
+
+		repeatPayloadToggle.addEventListener('click', function()
+		{
+			// Run on all clients
+			repeatPayloadAllClients(this);
+		})
+
+
+		// If it was already toggled on in the database, make sure we reflect that here
+		if (repeatrun)
+		{
+			repeatPayloadToggle.classList.add('active');
+			repeatPayloadToggle.style.borderWidth = '2px';
+			repeatPayloadToggle.style.borderColor = 'green';
+		}
+
+
 
 
 		var deletePayloadButton         = document.createElement('button');
@@ -616,6 +681,7 @@ async function refreshSavedPayloadList()
 
 		payload.appendChild(spacer);
 		payload.appendChild(autorunToggle);
+		payload.appendChild(repeatPayloadToggle);
 		payload.appendChild(executePayloadButton);
 		payload.appendChild(deletePayloadButton);
 		savedPayloadsList.appendChild(payload);

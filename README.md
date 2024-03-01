@@ -1,5 +1,5 @@
 # JS-Tap
-### v1.03
+### v1.04
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 
@@ -208,6 +208,8 @@ Starting in version 1.02 there is a custom payload feature. Multiple JavaScript 
 The main user interface for custom payloads is from the top menu bar. Select **Custom Payloads** to open the interface. Any existing payloads will be shown in a list. The bottom button bar allows you to import and export the list. A **Show Editor** button allows you to create and edit payloads. To load an existing payload for editing, open the editor and select the payload by clicking on it in the **Saved Payloads** list. Once you have payloads defined and saved, you can execute them on clients. <br>
 
 In the main **Custom Payloads** view you can launch a payload against all current clients (the **Run Payload** button). You can also toggle on the **Autorun** attribute of a payload, which means that all new clients will run the payload. Note that existing clients will not run a payload based on the Autorun setting. <br>
+
+You can toggle on **Repeat Payload** and the payload will be tasked for each client when they send an update to the JS-Tap server. Remember, the rate that a client checks for custom payload tasks is variable, and that rate can be changed in the main JS-Tap payload configuration. That rate can be changed with a custom payload. <br>
 
 To run a payload on a single client user the **Run Payload** button on the specific client you wish to run it on, and then hit the run button for the specific payload you wish to use. 
 
