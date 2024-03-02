@@ -498,7 +498,7 @@ def dbCommit():
 
 # Updates "last seen" timestamp"
 def clientSeen(identifier, ip, userAgent):
-    print("!! Client seen: " + str(ip) + ', ' + userAgent)
+    # print("!! Client seen: " + str(ip) + ', ' + userAgent)
     # print("*** Starting clientSeen Update!")
 
     parsedUserAgent = parse(userAgent)
@@ -521,12 +521,9 @@ def clientSeen(identifier, ip, userAgent):
     payloads = CustomPayload.query.filter_by(repeatrun=True)
 
     for payload in payloads:
-        print("Repeat run job being added for client: " + str(client.id))
+        # print("Repeat run job being added for client: " + str(client.id))
         newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
         db.session.add(newJob)
-
-    if payloads is not None:
-        dbCommit()  
 
 
 
