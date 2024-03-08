@@ -302,31 +302,16 @@ function importPayloads(event)
 		{
 			const jsonData = JSON.parse(fileContent);
 
-			for (let i = 0; i < jsonData.length; i++)
-			{
-				var name        = jsonData[i].name;
-				var description = jsonData[i].description;
-				var code        = jsonData[i].code;
-
-					// send payload to server
-				fetch('/api/savePayload', {
-					method:"POST",
-					body: JSON.stringify({
-						name: name,
-						description: description,
-						code: code
-					}),
-					headers: {
-						"Content-type": "application/json; charset=UTF-8"
-					}
-				})
-				.then(response => {
-					if (i === jsonData.length - 1)
-					{
-						refreshSavedPayloadList();
-					}
-				});		
-			}
+			fetch('/api/savePayloads', {
+				method:"POST",
+				body: JSON.stringify(jsonData),
+				headers: {
+					"Content-type": "application/json; charset=UTF-8"
+				}
+			})
+			.then(response => {
+				refreshSavedPayloadList();
+			});		
 		}
 		catch (error)
 		{
@@ -471,6 +456,49 @@ async function repeatPayloadAllClients(repeatRunToggle)
 }
 
 
+async function repeatPayloadClient(repeatRunToggle)
+{
+	var repeatrun = false;
+
+	var payloadId = repeatRunToggle.id;
+	var clientId  = repeatRunToggle.client;
+
+
+	//Toggle functionality
+	if (repeatRunToggle.classList.contains('active'))
+	{
+        // If the button is active, deactivate it
+		repeatRunToggle.classList.remove('active');
+		repeatRunToggle.style.borderWidth = '';
+		repeatRunToggle.style.borderColor = '';
+		repeatrun = false;
+	} 
+	else 
+	{
+        // If the button is inactive, activate it
+		repeatRunToggle.classList.add('active');
+		repeatRunToggle.style.borderWidth = '2px';
+		repeatRunToggle.style.borderColor = 'green';
+		repeatrun = true;
+	}
+
+
+	// Update autorun status server side
+	fetch('/api/singleClientPayloadRepeatRun', {
+		method:"POST",
+		body: JSON.stringify({
+			name: repeatRunToggle.name,
+			clientID: clientId,
+			repeatrun: repeatrun
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+}
+
+
+
 
 
 async function runPayloadSingleClient(button, modal)
@@ -496,7 +524,7 @@ async function runPayloadSingleClient(button, modal)
 	{
 		button.style.borderWidth = '';
 		button.style.borderColor = '';
-		modal.hide();
+		// modal.hide();
 	}, 750);
 }
 
@@ -529,13 +557,15 @@ async function refreshSingleClientPayloadList(client, modal)
 	savedPayloadsList.innerHTML = '';
 
 	// Let's get our saved payloads from the database
-	var req = await fetch('/api/getSavedPayloads');
+	var req = await fetch('/api/getPayloadsForClient/' + client);
 	var jsonResponse = await req.json();
 
 	for (let i = 0; i < jsonResponse.length; i++)
 	{
-		id   = jsonResponse[i].id;
-		name = jsonResponse[i].name;
+		id        = jsonResponse[i].id;
+		name      = jsonResponse[i].name;
+		repeatrun = jsonResponse[i].repeatrun;
+
 
 		var payload = document.createElement('li');
 		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
@@ -558,6 +588,38 @@ async function refreshSingleClientPayloadList(client, modal)
 			runPayloadSingleClient(this, modal);
 		})
 
+
+		var repeatPayloadToggle         = document.createElement('button');
+		repeatPayloadToggle.id          = id;
+		repeatPayloadToggle.className   = 'btn btn-sm me-2';
+		repeatPayloadToggle.textContent = 'Repeat Payload';
+		repeatPayloadToggle.name        = name;
+		repeatPayloadToggle.client      = client;
+
+		repeatPayloadToggle.setAttribute('data-toggle', 'tooltip');
+		repeatPayloadToggle.setAttribute('title', 'Repeatedly rerun Payload on this Client');
+
+
+		repeatPayloadToggle.addEventListener('click', function()
+		{
+			// Run on all clients
+			repeatPayloadClient(this, modal);
+		})
+
+
+		// If it was already toggled on in the database, make sure we reflect that here
+		if (repeatrun)
+		{
+			repeatPayloadToggle.classList.add('active');
+			repeatPayloadToggle.style.borderWidth = '2px';
+			repeatPayloadToggle.style.borderColor = 'green';
+		}
+
+		var spacerDiv = document.createElement('div');
+		spacerDiv.className = 'ms-auto'; 
+
+		payload.appendChild(spacerDiv);
+		payload.appendChild(repeatPayloadToggle);
 		payload.appendChild(executePayloadButton);
 		savedPayloadsList.appendChild(payload);
 	}
@@ -602,7 +664,7 @@ async function refreshSavedPayloadList()
 		autorunToggle.textContent = 'Autorun';
 		autorunToggle.name        = name;
 		autorunToggle.setAttribute('data-toggle', 'tooltip');
-		autorunToggle.setAttribute('title', 'Automatically Run Payload on All New Clients');
+		autorunToggle.setAttribute('title', 'Automatically Run Payload on All New Clients Once');
 
 
 		autorunToggle.addEventListener('click', function() 
@@ -624,7 +686,7 @@ async function refreshSavedPayloadList()
 		executePayloadButton.className   = 'btn btn-sm me-2';
 		executePayloadButton.textContent = 'Run Payload';
 		executePayloadButton.setAttribute('data-toggle', 'tooltip');
-		executePayloadButton.setAttribute('title', 'Run Payload on All Clients');
+		executePayloadButton.setAttribute('title', 'Run Payload on All Clients Once');
 
 
 		executePayloadButton.addEventListener('click', function()
@@ -640,7 +702,7 @@ async function refreshSavedPayloadList()
 		repeatPayloadToggle.name        = name;
 
 		repeatPayloadToggle.setAttribute('data-toggle', 'tooltip');
-		repeatPayloadToggle.setAttribute('title', 'Regularly rerun Payload on All Clients');
+		repeatPayloadToggle.setAttribute('title', 'Repeatedly rerun Payload on All Clients');
 
 
 		repeatPayloadToggle.addEventListener('click', function()
@@ -693,7 +755,6 @@ async function refreshSavedPayloadList()
 
 async function showCustomPayloadModal()
 {
-	console.log("Custom Payload times!");
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
 
 	var saveButton   = document.getElementById('payload-save-button');
@@ -832,9 +893,16 @@ async function showCustomPayloadModal()
 					headers: {
 						"Content-type": "application/json; charset=UTF-8"
 					}
-				});
-
-				refreshSavedPayloadList();
+				})
+				.then(response => {
+					if (!response.ok) {
+						console.log('Save payload server failed.');
+					}
+					return response.text();
+				})
+				.then(text => {
+					refreshSavedPayloadList();
+				});	
 			}
 		}
 	}
@@ -1503,8 +1571,16 @@ async function updateClients()
   cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
   cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
 
-  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
-  + client.id + `'`+ ')>Run Payload</button>';
+  if (client.hasJobs)
+  {
+	  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
+	  + client.id + `'`+ ')>Run Payload</button>';  
+	}	
+  else
+  {
+	  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
+	  + client.id + `'`+ ')>Run Payload</button>';
+  }
 
 
   cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";

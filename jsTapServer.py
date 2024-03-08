@@ -5,8 +5,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_cors import CORS
 from markupsafe import Markup, escape
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import DateTime, func
+from sqlalchemy import DateTime, func, event
 from sqlalchemy_utils import database_exists
+from sqlalchemy.engine import Engine
 from flask_login import LoginManager, login_user, logout_user, UserMixin, login_required, current_user
 from flask_bcrypt import Bcrypt
 from enum import Enum
@@ -67,6 +68,13 @@ login_manager.login_view = 'login'
 login_manager.init_app(app)
 bcrypt = Bcrypt(app)
 
+
+# Set our journaling mode to wright ahead log
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL;")
+    cursor.close()
 
 
 # *********************************************************************
@@ -226,10 +234,11 @@ class Client(db.Model):
     platform     = db.Column(db.String(100), nullable=True)
     browser      = db.Column(db.String(100), nullable=True)
     isStarred    = db.Column(db.Boolean, nullable=False, default=False)
+    hasJobs      = db.Column(db.Boolean, nullable=False, default=False)
 
 
     def update(self):
-        print("$$ Client Update func")
+        # print("$$ Client Update func")
         self.lastSeen = func.now()
 
     def __repr__(self):
@@ -417,7 +426,9 @@ class CustomPayload(db.Model):
 class ClientPayloadJob(db.Model):   
     id          = db.Column(db.Integer, primary_key=True)
     clientKey   = db.Column(db.Integer, nullable=False)
+    payloadKey  = db.Column(db.Integer, nullable=False)
     code        = db.Column(db.Text, nullable=False)
+    repeatrun   = db.Column(db.Boolean, nullable=False, default=False)
 
     def __repr__(self):
         return f'<ClientPayloadJob {self.id}>'
@@ -496,7 +507,36 @@ def dbCommit():
 
 
 
+
+def scheduleRepeatTasks(client):
+    # Check for repeat run jobs
+    payloads = CustomPayload.query.filter_by(repeatrun=True)
+
+    # get client scheduled payload
+    clientPayloads = ClientPayloadJob.query.filter_by(clientKey=client.id)
+
+
+    for payload in payloads:
+        alreadyScheduled = False
+ 
+        for clientPayload in clientPayloads:
+            if clientPayload.payloadKey == payload.id:
+                # already scheduled!
+                alreadyScheduled = True
+                break
+        
+        if not alreadyScheduled:
+            newJob = ClientPayloadJob(clientKey=client.id, payloadKey = payload.id, code=payload.code, repeatrun=True)
+            db.session.add(newJob)
+            # print('********* Just added client update repeat job: ' + client.nickname + ', ' + str(payload.id))
+            dbCommit()
+
+
+
+
+
 # Updates "last seen" timestamp"
+# Do not call db commit in here
 def clientSeen(identifier, ip, userAgent):
     # print("!! Client seen: " + str(ip) + ', ' + userAgent)
     # print("*** Starting clientSeen Update!")
@@ -514,16 +554,9 @@ def clientSeen(identifier, ip, userAgent):
 
     # update method touches the database lastseen timestamp
     client.update()
-    # print("--- Done client seen update...")
 
-
-    # Check for repeat run jobs
-    payloads = CustomPayload.query.filter_by(repeatrun=True)
-
-    for payload in payloads:
-        # print("Repeat run job being added for client: " + str(client.id))
-        newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
-        db.session.add(newJob)
+    # See if we have any scheduling work to do here
+    scheduleRepeatTasks(client)
 
 
 
@@ -808,7 +841,7 @@ def returnUUID(tag=''):
     client   = Client.query.filter_by(uuid=token).first()
 
     for payload in payloads:
-        newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+        newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
         db.session.add(newJob)
     dbCommit()
 
@@ -824,13 +857,38 @@ def returnPayloads(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    client   = Client.query.filter_by(uuid=identifier).first()
-    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id)
+    client = Client.query.filter_by(uuid=identifier).first()
+
+    # Make sure we run the repeat run scheduler
+    scheduleRepeatTasks(client)
+
+    dbChange = False
+
+    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id).all()
+
 
     taskedPayloads = [{'id':payload.id, 'data':payload.code} for payload in payloads]
 
     for payload in payloads:
-        db.session.delete(payload)
+        print("Payload found: " + str(payload.id))
+        # only delete if it's repeatrun is set to no
+        if payload.repeatrun == False:
+            db.session.delete(payload)
+            dbChange = True
+    
+    # Useful for UI feedback
+    if payloads:
+        if not client.hasJobs:
+            dbChange = True
+            client.hasJobs = True
+            print("++++++ Client has jobs!")
+    else:
+        if client.hasJobs:
+            dbChange = True
+            client.hasJobs = False
+            print("------ Client NO jobs!")
+
+    if dbChange:
         dbCommit()
 
     return jsonify(taskedPayloads)
@@ -1154,7 +1212,7 @@ def recordXhrOpen(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    print("## Recording XHR open event")
+    # print("## Recording XHR open event")
     content = request.json 
     method  = content['method']
     url     = content['url']
@@ -1189,7 +1247,7 @@ def recordXhrHeader(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    print("## Recording XHR Header event")
+    # print("## Recording XHR Header event")
     content = request.json 
     header  = content['header']
     value   = content['value']
@@ -1224,7 +1282,7 @@ def recordXhrCall(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    print("## Recording XHR api call")
+    # print("## Recording XHR api call")
     content      = request.json 
     requestBody  = content['requestBody']
     responseBody = content['responseBody']
@@ -1259,7 +1317,7 @@ def recordFetchSetup(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    print("## Recording Fetch setup event")
+    # print("## Recording Fetch setup event")
     content = request.json 
     method  = content['method']
     url     = content['url']
@@ -1295,7 +1353,7 @@ def recordFetchHeader(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    print("## Recording Fetch Header event")
+    # print("## Recording Fetch Header event")
     content = request.json 
     header  = content['header']
     value   = content['value']
@@ -1329,7 +1387,7 @@ def recordFetchCall(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    print("## Recording Fetch api call")
+    # print("## Recording Fetch api call")
     content      = request.json 
     requestBody  = content['requestBody']
     responseBody = content['responseBody']
@@ -1370,7 +1428,7 @@ def getClients():
 
     allClients = [{'id':escape(client.id), 'tag':escape(client.tag), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
         'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen, 'ip':escape(client.ipAddress),
-        'platform':escape(client.platform), 'browser':escape(client.browser), 'isStarred':client.isStarred} for client in clients]
+        'platform':escape(client.platform), 'browser':escape(client.browser), 'isStarred':client.isStarred, 'hasJobs':client.hasJobs} for client in clients]
 
     return jsonify(allClients)
 
@@ -1447,7 +1505,7 @@ def getClientUserInputs(key):
 @app.route('/api/clientCookie/<key>', methods=['GET'])
 @login_required
 def getClientCookies(key):
-    print("*** In cookie lookup, key is: " + key)
+    # print("*** In cookie lookup, key is: " + key)
     cookie = Cookie.query.filter_by(id=key).first()
 
     cookieData = {'cookieName':escape(cookie.cookieName), 'cookieValue':escape(cookie.cookieValue)}
@@ -1464,7 +1522,7 @@ def getClientCookies(key):
 def getClientLocalStorage(key):
     # print("**** Fetching client local storage...")
     localStorage = LocalStorage.query.filter_by(id=key).first()
-    print("Sending back: " + localStorage.key + ":" + localStorage.value)
+    # print("Sending back: " + localStorage.key + ":" + localStorage.value)
     
     localStorageData = {'localStorageKey':escape(localStorage.key), 'localStorageValue':escape(localStorage.value)}
     
@@ -1607,14 +1665,14 @@ def getAllowNewClientSessions():
 @app.route('/api/app/setAllowNewClientSessions/<setting>', methods=['GET'])
 @login_required
 def setAllowNewClientSessions(setting):
-    appSettngs = AppSettings.query.filter_by(id=1).first()
+    appSettings = AppSettings.query.filter_by(id=1).first()
    
     if (setting != '0' and setting != '1'):
         return "No.", 401
     elif setting == '1':
-        appSettngs.allowNewSesssions = True
+        appSettings.allowNewSesssions = True
     else:
-        appSettngs.allowNewSesssions = False
+        appSettings.allowNewSesssions = False
 
     dbCommit()
 
@@ -1683,6 +1741,41 @@ def getSavedCustomPayloads():
 
 
 
+
+# Returns the payload list and whether that payload
+# is enabled for autorun for the particular client key
+@app.route('/api/getPayloadsForClient/<key>', methods=['GET'])
+@login_required
+def getPayloadsForClient(key):
+    clientSavedPayloads = []
+    savedPayloads = CustomPayload.query.all()
+
+    repeatRunJobs = ClientPayloadJob.query.filter_by(clientKey=key).filter_by(repeatrun=True).all()
+
+    for payload in savedPayloads:
+        repeatRunFound = False
+        
+        for job in repeatRunJobs:
+            if job.payloadKey == payload.id:
+                repeatRunFound = True
+                break
+
+        payloadData = {
+            'id':escape(payload.id),
+            'name':escape(payload.name),
+            'autorun':payload.autorun,
+            'repeatrun':repeatRunFound
+        }
+
+        clientSavedPayloads.append(payloadData)
+
+
+    return jsonify(clientSavedPayloads)
+
+
+
+
+
 @app.route('/api/getSavedPayloadCode/<key>', methods=['GET'])
 @login_required
 def getSavedPayloadCode(key):
@@ -1702,6 +1795,8 @@ def getAllSavedPayloads():
     allPayloadsDump = [{'name':payload.name, 'description':payload.description, 'code':payload.code} for payload in payloads]
 
     return jsonify(allPayloadsDump)
+
+
 
 
 
@@ -1731,7 +1826,7 @@ def runPayloadAllClients(key):
 
     for client in clients:
         if client.sessionValid:
-            newJob = ClientPayloadJob(clientKey=client.id, code=payload.code)
+            newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
             db.session.add(newJob)
 
     dbCommit()
@@ -1751,10 +1846,49 @@ def repeatPayloadAllClients():
     
     payload.repeatrun = repeatrun
 
+    # need to cancel individual client jobs
+    if payload.repeatrun == False:
+        clientJobs = ClientPayloadJob.query.filter_by(payloadKey=payload.id)
+
+        for clientJob in clientJobs:
+            db.session.delete(clientJob)
+
+
     dbCommit()
 
     return "ok", 200
 
+
+
+
+@app.route('/api/singleClientPayloadRepeatRun', methods=['POST'])
+@login_required
+def repeatPayloadSingleClient():
+    content   = request.json
+    name      = content['name']
+    clientID  = content['clientID']
+    repeatrun = content['repeatrun']
+
+    payload = CustomPayload.query.filter_by(name=name).first()
+    
+
+    if repeatrun:
+        # Turn it on
+        newJob = ClientPayloadJob(clientKey=clientID, payloadKey=payload.id, code=payload.code, repeatrun=True)
+        db.session.add(newJob)
+    else:
+        # Turn it off
+        currentClientPayloads = (ClientPayloadJob.query
+        .filter_by(clientKey=clientID)
+        .filter_by(payloadKey=payload.id)
+        .filter_by(repeatrun=True))
+
+        for clientPayload in currentClientPayloads:
+            clientPayload.repeatrun = False 
+
+    dbCommit()
+
+    return "ok", 200
 
 
 
@@ -1769,43 +1903,17 @@ def runPayloadSingleClient():
     payload = CustomPayload.query.filter_by(id=payloadKey).first()
 
     # testing just for the print
-    client = Client.query.filter_by(id=clientKey).first()
+    # client = Client.query.filter_by(id=clientKey).first()
 
     # print("Running single client payload:")
     # print("Client: " + client.nickname)
     # print("Code: " + payload.code)
 
-    newJob = ClientPayloadJob(clientKey=clientKey, code=payload.code)
+    newJob = ClientPayloadJob(clientKey=clientKey, payloadKey=payloadKey, code=payload.code)
     db.session.add(newJob)
     dbCommit()
 
     return "ok", 200
-
-
-@app.route('/api/repeatPayloadSingleClient', methods=['POST'])
-@login_required
-def repeatPayloadSingleClient():
-    content = request.json 
-
-    payloadKey = content['payloadKey']
-    clientKey  = content['clientKey']
-
-    payload = CustomPayload.query.filter_by(id=payloadKey).first()
-
-    # testing just for the print
-    client = Client.query.filter_by(id=clientKey).first()
-
-    # print("Running single client payload:")
-    # print("Client: " + client.nickname)
-    # print("Code: " + payload.code)
-
-    repeatJob = RepeatClientPayloadJob(clientKey=clientKey, code=payload.code)
-    db.session.add(repeatJob)
-    dbCommit()
-
-    return "ok", 200
-
-
 
 
 
@@ -1832,6 +1940,33 @@ def saveCustomPayload():
     dbCommit()
 
     return "ok", 200
+
+
+
+@app.route('/api/savePayloads', methods=['POST'])
+@login_required
+def saveCustomPayloads():
+    contents        = request.json 
+
+    for content in contents:
+        name           = content['name']
+        newDescription = content['description']
+        newCode        = content['code']
+
+        # Check if this is an existing payload we're just updating
+        payload = CustomPayload.query.filter_by(name=name).first()
+
+        if payload is not None:
+            payload.description = newDescription
+            payload.code        = newCode
+        else:
+            newPayload = CustomPayload(name=name, description=newDescription, code=newCode)
+            db.session.add(newPayload)
+
+    dbCommit()
+
+    return "ok", 200
+
 
 
 
