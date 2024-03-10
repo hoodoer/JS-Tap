@@ -283,7 +283,7 @@ class UserInput(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     clientID   = db.Column(db.String(100), nullable=False)
     inputName  = db.Column(db.String(100), nullable=False)
-    inputValue = db.Column(db.String(100), nullable=False)
+    inputValue = db.Column(db.Text, nullable=False)
     timeStamp  = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):

