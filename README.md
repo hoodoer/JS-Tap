@@ -211,6 +211,8 @@ In the main **Custom Payloads** view you can launch a payload against all curren
 
 You can toggle on **Repeat Payload** and the payload will be tasked for each client when they send an update to the JS-Tap server. Remember, the rate that a client checks for custom payload tasks is variable, and that rate can be changed in the main JS-Tap payload configuration. That rate can be changed with a custom payload. <br>
 
+The **Clear All Jobs** button in the custom payload UI will delete all custom payload jobs from the queue for all clients and resets the auto/repeat run toggles. <br>
+
 To run a payload on a single client user the **Run Payload** button on the specific client you wish to run it on, and then hit the run button for the specific payload you wish to use. You can also set **Repeat Payload** on individual clients. 
 
 
