@@ -1917,6 +1917,27 @@ def runPayloadSingleClient():
 
 
 
+@app.route('/api/clearAllPayloadJobs', methods=['GET'])
+@login_required
+def clearAllPayloadJobs():
+    # print("Clearing all client payload jobs...")
+    db.session.query(ClientPayloadJob).delete()
+
+    CustomPayloads = CustomPayload.query.filter_by(autorun=True)
+
+    for payload in CustomPayloads:
+        payload.autorun=False 
+
+    CustomPayloads = CustomPayload.query.filter_by(repeatrun=True)
+
+    for payload in CustomPayloads:
+        payload.repeatrun=False 
+
+    dbCommit()
+
+    return "ok", 200
+   
+
 
 @app.route('/api/savePayload', methods=['POST'])
 @login_required

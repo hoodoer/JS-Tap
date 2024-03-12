@@ -757,11 +757,12 @@ async function showCustomPayloadModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
 
-	var saveButton   = document.getElementById('payload-save-button');
-	var importButton = document.getElementById('payload-import-button');
-	var exportButton = document.getElementById('payload-export-button');
-	var closeButton  = document.getElementById('payload-close-button');
-	var editorButton = document.getElementById('payload-editor-button');
+	var saveButton      = document.getElementById('payload-save-button');
+	var importButton    = document.getElementById('payload-import-button');
+	var exportButton    = document.getElementById('payload-export-button');
+	var clearJobsButton = document.getElementById('payload-clear-button');
+	var closeButton     = document.getElementById('payload-close-button');
+	var editorButton    = document.getElementById('payload-editor-button');
 
 
 	var payloadNameInput   = document.getElementById('payloadName');
@@ -909,6 +910,22 @@ async function showCustomPayloadModal()
 
 
 
+	clearJobsButton.onclick = function(event)
+	{
+		var userConfirmed = window.confirm('Do you want to clear all custom payload jobs from all clients\nand disable all auto/repeat run jobs?');
+
+		if (userConfirmed)
+		{
+			console.log("Clearing all jobs!");
+			fetch('/api/clearAllPayloadJobs')
+				.then(response => {
+					refreshSavedPayloadList();
+				});
+		}
+
+		clearJobsButton.blur();
+	}
+
 
 
 	var importInput = document.getElementById('importInput');
@@ -940,11 +957,11 @@ function updateClientSessions()
 
 	if (checkBox.checked == true)
 	{
-		fetch('/api/app/setAllowNewClientSessions/1')
+		fetch('/api/app/setAllowNewClientSessions/1');
 	}
 	else
 	{
-		fetch('/api/app/setAllowNewClientSessions/0')
+		fetch('/api/app/setAllowNewClientSessions/0');
 	}
 }
 
