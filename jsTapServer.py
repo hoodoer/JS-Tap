@@ -870,7 +870,7 @@ def returnPayloads(identifier):
     taskedPayloads = [{'id':payload.id, 'data':payload.code} for payload in payloads]
 
     for payload in payloads:
-        print("Payload found: " + str(payload.id))
+        # print("Payload found: " + str(payload.id))
         # only delete if it's repeatrun is set to no
         if payload.repeatrun == False:
             db.session.delete(payload)

@@ -1,5 +1,5 @@
 # JS-Tap
-### v1.06
+### v1.07
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 
@@ -98,7 +98,7 @@ Playing with JS-Tap locally is fine, but to use in a proper engagment you'll nee
 ## Configuration (VERY VERY IMPORTANT!)
 ### jsTapServer.py Configuration
 #### Secret Key <------ (deprecated)
-**Note: Latest version of JS-Tap randomly generates this secret key each start. If you're running an old copy make sure you're not using a static key.** The old notes are below:
+**Note: Current versions of JS-Tap randomly generates this secret key each start. If you're running an old copy make sure you're not using a static key.** The old notes are below:
 
 The most important change to make is in the **SECRET_KEY** used by the jsTapServer. This is the secret used to sign authentication cookies. Even if you regenerate a new admin user and password on startup, if you don't change the secret key someone could generate a valid cookie and access your server. 
 
@@ -205,11 +205,11 @@ Starting in version 1.02 there is a custom payload feature. Multiple JavaScript 
 ```
 [{"code":"YWxlcnQoJ1BheWxvYWQgMSBmaXJpbmcnKTs=","description":"VGhlIGZpcnN0IHBheWxvYWQ=","name":"Payload 1"},{"code":"YWxlcnQoJ1BheWxvYWQgMiBmaXJpbmcnKTs=","description":"VGhlIHNlY29uZCBwYXlsb2Fk","name":"Payload 2"}]
 ```
-The main user interface for custom payloads is from the top menu bar. Select **Custom Payloads** to open the interface. Any existing payloads will be shown in a list. The bottom button bar allows you to import and export the list. A **Show Editor** button allows you to create and edit payloads. To load an existing payload for editing, open the editor and select the payload by clicking on it in the **Saved Payloads** list. Once you have payloads defined and saved, you can execute them on clients. <br>
+The main user interface for custom payloads is from the top menu bar. Select **Custom Payloads** to open the interface. Any existing payloads will be shown in a list on the left. The button bar allows you to import and export the list. Payloads can be edited on the right side. To load an existing payload for editing select the payload by clicking on it in the **Saved Payloads** list. Once you have payloads defined and saved, you can execute them on clients. <br>
 
 In the main **Custom Payloads** view you can launch a payload against all current clients (the **Run Payload** button). You can also toggle on the **Autorun** attribute of a payload, which means that all new clients will run the payload. Note that existing clients will not run a payload based on the Autorun setting. <br>
 
-You can toggle on **Repeat Payload** and the payload will be tasked for each client when they send an update to the JS-Tap server. Remember, the rate that a client checks for custom payload tasks is variable, and that rate can be changed in the main JS-Tap payload configuration. That rate can be changed with a custom payload. <br>
+You can toggle on **Repeat Payload** and the payload will be tasked for each client when they check for tasks. Remember, the rate that a client checks for custom payload tasks is variable, and that rate can be changed in the main JS-Tap payload configuration. That rate can be changed with a custom payload (calling the <i>updateTaskCheckInterval(newDelay)</i> function). <br>
 
 The **Clear All Jobs** button in the custom payload UI will delete all custom payload jobs from the queue for all clients and resets the auto/repeat run toggles. <br>
 

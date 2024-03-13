@@ -483,7 +483,7 @@ async function repeatPayloadClient(repeatRunToggle)
 	}
 
 
-	// Update autorun status server side
+	// Update repeatrun status server side
 	fetch('/api/singleClientPayloadRepeatRun', {
 		method:"POST",
 		body: JSON.stringify({
@@ -762,7 +762,6 @@ async function showCustomPayloadModal()
 	var exportButton    = document.getElementById('payload-export-button');
 	var clearJobsButton = document.getElementById('payload-clear-button');
 	var closeButton     = document.getElementById('payload-close-button');
-	var editorButton    = document.getElementById('payload-editor-button');
 
 
 	var payloadNameInput   = document.getElementById('payloadName');
@@ -776,30 +775,9 @@ async function showCustomPayloadModal()
 	payloadCode.value        = "";
 
 
-// Editor toggle stuff
+	// Editor toggle stuff
 	var codeEditor = document.getElementById('payloadEditor');
-	codeEditor.style.display = 'none';
-	saveButton.disabled      = true;
-	editorButton.innerText   = "Show Editor";
-
-
-	editorButton.onclick = function(event) 
-	{
-		if (codeEditor.style.display === 'none')
-		{
-			codeEditor.style.display = 'block';
-			saveButton.disabled      = false;
-			editorButton.innerText   = "Hide Editor";
-			editorButton.blur();
-		}
-		else
-		{
-			codeEditor.style.display = 'none';
-			saveButton.disabled      = true;
-			editorButton.innerText   = "Show Editor";
-			editorButton.blur();
-		}
-	};
+	saveButton.disabled      = false;
 
 
 	refreshSavedPayloadList();

@@ -223,7 +223,11 @@
 						</div>
 						<div class="modal-body" id="guide-body">
 							There are a quite a few settings in the JS-Tap payload that need to be set prior<br>
-							to your engagement. The primary JavaScript payload is contained in <b>telemlib.js.</b><br><br>
+							to your engagement. The example JavaScript payload is contained in <b>telemlib.js.</b><br>
+							You can rename this or copy this to whatever name you wish, all files in the <b>payloads</b><br>
+							directory are served up publicly for clients to pull in. You can have different payloads <br>
+							with difference configurations for different applications.
+							<br><br>
 							See the project README file for instructions:<br>
 							<a href="https://github.com/hoodoer/JS-Tap" target="_blank">JS-Tap README</a><br>
 						</div>
@@ -493,35 +497,23 @@
 
 
 			<!-- Custom Payload Modal -->
-			<div id="customPayloadModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
+			<div id="customPayloadModal" class="modal fade" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog modal-xl">
 					<div class="modal-content">
+
+						<!-- Modal Header with Title and Close Button -->
 						<div class="modal-header">
 							<h5 class="modal-title" id="custom-payload-title">Custom JavaScript Payloads</h5>
 							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
-						<div>						
-							<p class="description">&nbsp;&nbsp;&nbsp;&nbsp;Custom JavaScript payloads can be entered in this tool and executed on clients.</p>
-						</div>
 
-						<!-- List of Saved Payloads -->
-						<div class="modal-body">
-							<h6>Saved Payloads (select to load for editing):</h6>
-							<ul id="savedPayloadsList" class="list-group">
-							</ul>
-						</div>
-
-						<div class="modal-footer">
+						<!-- Button Bar -->
+						<div class="modal-header">
 							<div class="ms-0">
 								<button id="payload-import-button" class="btn btn-secondary me-2" data-toggle="tooltip" title="Import Custom Payloads">Import</button>
-								<!-- input for importing -->
 								<input type="file" id="importInput" accept=".json" style="display: none;">
-
 								<button id="payload-export-button" class="btn btn-secondary me-4"data-toggle="tooltip" title="Export Custom Payloads">Export</button>
-								<!-- Hidden anchor element for exporting -->
 								<a id="exportLink" style="display: none;"></a>
-
-								<button id="payload-editor-button" class="btn btn-secondary">Show Editor</button>
 							</div>
 							<div class="ms-auto">
 								<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
@@ -530,24 +522,34 @@
 							</div>
 						</div>
 
+						<!-- Modal Body with Split Layout -->
+						<div class="modal-body row">
 
-						<div id="payloadEditor">
-							<div class="modal-body">
-								<label for="payloadName" class="form-label">Payload Name:</label>
-								<input type="text" class="form-control input-width" id="payloadName" name="name" required>
+							<!-- Payload List - Left Side -->
+							<div class="col-md-7">
+								<h6>Saved Payloads (select to load for editing):</h6>
+								<ul id="savedPayloadsList" class="list-group">
+									<!-- List items here -->
+								</ul>
 							</div>
 
-							<div class="modal-body">
-								<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
-								<textarea id="payloadDescription" class="form-control"  rows="2"></textarea>
+							<!-- Code Editor - Right Side -->
+							<div class="col-md-5" id="payloadEditor">
+								<div>
+									<label for="payloadName" class="form-label">Payload Name:</label>
+									<input type="text" class="form-control" id="payloadName" name="name" required><br>
+								</div>
+								<div>
+									<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
+									<textarea id="payloadDescription" class="form-control" rows="2"></textarea><br>
+								</div>
+								<div>
+									<label for="payload-editor" class="form-label">JavaScript Code:</label>
+									<textarea id="payload-editor" class="form-control" rows="10"></textarea>
+								</div>
 							</div>
 
-							<div class="modal-body">
-								<label for="payload-editor" class="form-label">JavaScript Code:</label>
-								<textarea id="payload-editor" class="form-control" rows="10"></textarea>
-							</div>
-
-						</div>
+						</div> <!-- End of Modal Body -->
 
 					</div>
 				</div>
