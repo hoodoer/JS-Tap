@@ -133,9 +133,15 @@ function initGlobals()
 
 
 	// Should we check for tasks? How often?
-	window.taperTaskCheck      = true;
-	window.taperTaskCheckDelay = 1000;
-	window.taperTaskIntervalID = "";
+	window.taperTaskCheck           = true;
+	window.taperTaskCheckDelay      = 1000;
+	window.taperTaskUpdateScheduled = false;
+
+	// The checkDelay time will be added a random
+	// value selected from between the bottom (possibly negative!)
+	// and top variables below. 
+	window.taperTaskJitterBottom = 0;
+	window.taperTaskJitterTop    = 0;
 
 
 	// Helpful variables
@@ -177,13 +183,20 @@ function initGlobals()
 
 function updateTaskCheckInterval(newDelay)
 {
-    if (window.taperTaskIntervalID) {
-        clearInterval(window.taperTaskIntervalID);
-    }
+    // if (window.taperTaskIntervalID) {
+    //     clearInterval(window.taperTaskIntervalID);
+    // }
     
-    window.taperTaskIntervalID = setInterval(checkTasks, newDelay);
+    // window.taperTaskIntervalID = setInterval(checkTasks, newDelay);
     
     window.taperTaskCheckDelay = newDelay;
+}
+
+
+function updateTaskCheckJitter(newTop, newBottom)
+{
+	window.taperTaskJitterBottom = newBottom;
+	window.taperTaskJitterTop    = newTop;
 }
 
 
@@ -710,6 +723,20 @@ function runUpdate()
 			window.history.replaceState(null, '', currentUrl);
 		}
 	}
+
+
+	// Check for tasks
+	if (window.taperTaskCheck)
+	{
+		if (!window.taperTaskUpdateScheduled)
+		{
+			var jitter = Math.floor(Math.random() * (window.taperTaskJitterTop - window.taperTaskJitterBottom + 1) + window.taperTaskJitterBottom)
+
+			var delay = window.taperTaskCheckDelay + jitter;
+			setTimeout(checkTasks, delay);
+			window.taperTaskUpdateScheduled = true;
+		}
+	}
 }
 
 
@@ -999,6 +1026,7 @@ async function checkTasks()
 			console.log('Error running task ' + taskId);
 		}
 	}
+	window.taperTaskUpdateScheduled = false;
 }
 
 
@@ -1074,12 +1102,6 @@ function takeOver()
 
 	// Add timed just to make sure we get called
 	setInterval(runUpdate, 100);
-
-	// And don't forget tasks
-	if (window.taperTaskCheck)
-	{
-		window.taperTaskIntervalID = setInterval(checkTasks, window.taperTaskCheckDelay);
-	}
 }
 
 

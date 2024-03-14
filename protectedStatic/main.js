@@ -884,6 +884,7 @@ async function showCustomPayloadModal()
 				});	
 			}
 		}
+		saveButton.blur();
 	}
 
 

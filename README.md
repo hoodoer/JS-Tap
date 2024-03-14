@@ -157,10 +157,14 @@ Useful if you're using JS-Tap against multiple applications or deployments at on
 window.taperTag = 'whatever';
 ```
 #### Custom Payload Tasks
-Used to set if clients are checking for **Custom Payload** tasks, and how often they're checking. 
+Used to set if clients are checking for **Custom Payload** tasks, and how often they're checking. The jitter settings
+Let you optionally set a floor and ceiling modifier. A random value between these two numbers will be picked
+and added to the check delay. Set these to 0 and 0 for no jitter. 
 ```
-window.taperTaskCheck      = true;
-window.taperTaskCheckDelay = 5000;
+window.taperTaskCheck        = true;
+window.taperTaskCheckDelay   = 5000;
+window.taperTaskJitterBottom = -2000;
+window.taperTaskJitterTop    = 2000;
 ```
 
 #### Exfiltrate HTML
@@ -209,7 +213,7 @@ The main user interface for custom payloads is from the top menu bar. Select **C
 
 In the main **Custom Payloads** view you can launch a payload against all current clients (the **Run Payload** button). You can also toggle on the **Autorun** attribute of a payload, which means that all new clients will run the payload. Note that existing clients will not run a payload based on the Autorun setting. <br>
 
-You can toggle on **Repeat Payload** and the payload will be tasked for each client when they check for tasks. Remember, the rate that a client checks for custom payload tasks is variable, and that rate can be changed in the main JS-Tap payload configuration. That rate can be changed with a custom payload (calling the <i>updateTaskCheckInterval(newDelay)</i> function). <br>
+You can toggle on **Repeat Payload** and the payload will be tasked for each client when they check for tasks. Remember, the rate that a client checks for custom payload tasks is variable, and that rate can be changed in the main JS-Tap payload configuration. That rate can be changed with a custom payload (calling the <i>updateTaskCheckInterval(newDelay)</i> function). The jitter in the task check delay can be set with the <i>updateTaskCheckJitter(newTop, newBottom)</i> function. <br>
 
 The **Clear All Jobs** button in the custom payload UI will delete all custom payload jobs from the queue for all clients and resets the auto/repeat run toggles. <br>
 
