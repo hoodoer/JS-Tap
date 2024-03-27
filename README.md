@@ -1,7 +1,10 @@
 # JS-Tap
-### v1.08
+### v2.0
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
+## Changelogs
+Major changes are documented in the project Announcements:<br>
+<https://github.com/hoodoer/JS-Tap/discussions/categories/announcements>
 
 ## Demo
 You can read the original blog post about JS-Tap here:<br>
@@ -15,7 +18,7 @@ A demo can also be seen in this webinar:<br>
 
 
 ## Upgrade warning
-I do not plan on creating migration scripts for the database, and version number bumps often involve database schema changes. You should probably delete your jsTap.db database on version bumps. If you have custom payloads in your JS-Tap server, make sure you export them before the upgrade. 
+I do not plan on creating migration scripts for the database, and version number bumps often involve database schema changes (check the changelogs). You should probably delete your jsTap.db database on version bumps. If you have custom payloads in your JS-Tap server, make sure you export them before the upgrade. 
 
 
 ## Introduction
@@ -25,9 +28,9 @@ The payload does not require the targeted user running the payload to be authent
 
 Instead of attacking the application server itself, JS-Tap focuses on the client-side of the application and heavily instruments the client-side code. 
 
-The JS-Tap payload is contained in the **telemlib.js** file. This file has _not_ been obfuscated. Prior to using in an engagement strongly consider changing the naming of endpoints, stripping comments, and highly obfuscating the payload. 
+The example JS-Tap payload is contained in the **telemlib.js** file in the payloads directory, however any file in this directory is served unauthenticated. Copy the **telemlib.js** file to whatever filename you wish and modify the configuration as needed. This file has _not_ been obfuscated. Prior to using in an engagement strongly consider changing the naming of endpoints, stripping comments, and highly obfuscating the payload. 
 
-Make sure you review the configuration section below carefully before using on a publicly exposed server. If you don't change the secret key you're going to have a bad time. 
+Make sure you review the configuration section below carefully before using on a publicly exposed server. 
 
 ## Data Collected
 * Client IP address, OS, Browser
@@ -62,10 +65,14 @@ In trap mode JS-Tap monitors the location of the user in the iframe trap and it 
 
 Note that the application targeted must allow iFraming from same-origin or self if it's setting CSP or X-Frame-Options headers. JavaScript based framebusters can also prevent iFrame traps from working. 
 
-Also Note, I've had good luck using Trap Mode for an implant in very specific locations of an application. 
+Note, I've had good luck using Trap Mode for a post exploitation implant in very specific locations of an application, or when I'm not sure what resources the application is using inside the authenticated section of the application. You can put an implant in the login page, with trap mode and the trap mode start page set to **window.location.href** (i.e. current location). The trap will set when the user visits the login page, and they'll hopefully contine into the authenticated portions of the application inside the iframe trap.
+
+A user refreshing the page will generally break/escape the iframe trap. 
 
 #### Implant Mode
 Implant mode would typically be used if you're directly adding the payload into the targeted application. Perhaps you have a shell on the server that hosts the JavaScript files for the application. Add the payload to a JavaScript file that's used throughout the application (jQuery, main.js, etc.). Which file would be ideal really depends on the app in question and how it's using JavaScript files. Implant mode does not require a starting page to be configured, and does not use the iFrame trap technique. 
+
+A user refreshing the page in implant mode will generally continue to run the JS-Tap payload. 
 
 
 ## Installation and Start
@@ -81,10 +88,16 @@ git clone https://github.com/hoodoer/JS-Tap
 cd JS-Tap
 pip3 install -r requirements.txt
 
-run:
+run in debug/single thread mode:
 python3 jsTapServer.py
+
+run with gunicorn multithreaded (production use):
+./jstapRun.sh
 ```
-If an existing database is found by jsTapServer on startup it will ask you if you want to regenerate a new admin password, and if existing clients are found in the database it will ask if you wish to delete them or not. 
+
+A new admin password is generated on startup. If you didn't catch it in the startup print statements you can find the credentials saved to the adminCreds.txt file. 
+
+If an existing database is found by jsTapServer on startup it will ask you if you want to keep existing clients in the database or drop those tables to start fresh.
 
 
 
@@ -92,40 +105,45 @@ Note that on Mac I also had to install libmagic outside of python.
 ```
 brew install libmagic
 ```
-Playing with JS-Tap locally is fine, but to use in a proper engagment you'll need to be running JS-Tap on publicly accessible VPS and configure Flask with a valid certificate. 
+Playing with JS-Tap locally is fine, but to use in a proper engagment you'll need to be running JS-Tap on publicly accessible VPS and setup JS-Tap with **PROXYMODE** set to True. Use NGINX on the front end to handle a valid certificate. 
 
 
-## Configuration (VERY VERY IMPORTANT!)
-### jsTapServer.py Configuration
-#### Secret Key <------ (deprecated)
-**Note: Current versions of JS-Tap randomly generates this secret key each start. If you're running an old copy make sure you're not using a static key.** The old notes are below:
+## Configuration
+### JS-Tap Server Configuration
+#### Debug/Single thread config
+If you're running JS-Tap with the jsTapServer.py script in single threaded mode (great for testing/demos) there are configuration options directly in the jsTapServer.py script. 
 
-The most important change to make is in the **SECRET_KEY** used by the jsTapServer. This is the secret used to sign authentication cookies. Even if you regenerate a new admin user and password on startup, if you don't change the secret key someone could generate a valid cookie and access your server. 
+##### Proxy Mode
+For production use JS-Tap should be hosted on a publicly available server with a proper SSL certificate from someone like letsencrypt. The easiest way to deploy this is to allow NGINX to act as a front-end to JS-Tap and handle the letsencrypt cert, and then forward the decrypted traffic to JS-Tap as HTTP traffic locally (i.e. NGINX and JS-Tap run on the same VPS). 
 
-Change this value from it's default. I left it static because it has made development significantly easier. 
-Search for this line:
-```
-app.config['SECRET_KEY'] = 'YOUR_NEW_SECRET_KEY'
-```
-Or just switch to the commented out line below it that dynamically generates a new key on startup. 
-
-#### Proxy Mode
-For production use JS-Tap should be hosted on a publicly available server with a proper SSL certificate from someone like letsencrypt. The easiest way to deploy this is to allow nginx to act as a front-end to JS-Tap and handle the letsencrypt cert, and then forward the decrypted traffic to JS-Tap as HTTP traffic locally (i.e. nginx and JS-Tap run on the same VPS). 
-
-If you set **proxyMode** to true, JS-Tap server will run in HTTP mode, and take the client IP address from the **X-Forwarded-For** header, which nginx needs to be configured to set. 
+If you set **proxyMode** to true, JS-Tap server will run in HTTP mode, and take the client IP address from the **X-Forwarded-For** header, which NGINX needs to be configured to set. 
 
 When **proxyMode** is set to false, JS-Tap will run with a self-signed certificate, which is useful for testing. The client IP will be taken from the source IP of the client. 
 
 
-#### Data Directory
+##### Data Directory
 The **dataDirectory** parameter tells JS-Tap where the directory is to use for the SQLite database and loot directory. Not all "loot" is stored in the database, screenshots and scraped HTML files in particular are not. 
 
-#### Server Port
+##### Server Port
 To change the server port configuration see the last line of **jsTapServer.py**
 
 ```
 app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
 ```
+
+#### Gunicorn Production Configuration
+Gunicorn is the preferred means of running JS-Tap in production. The same settings mentioned above can be set in the jstapRun.sh bash script. Values set in the startup script take precedence over the values set directly in the jsTapServer.py script when JS-Tap is started with the gunicorn startup script. 
+
+A big difference in configuration when using Gunicorn for serving the application is that you need to configure the number of workers (heavy weight processes) and threads (lightweight serving processes). JS-Tap is a very I/O heavy application, so using threads in addition to workers is beneficial in scaling up the application on multi-processor machines. Note that if you're using NGINX on the same box you need to configure NGNIX to also use multiple processes so you don't bottleneck on the proxy itself. 
+
+At the top of the jstapRun.sh script are the **numWorkers** and **numThreads** parameters. I like to use number of CPUs + 1 for workers, and 4-8 threads depending on how beefy the processors are. For NGINX in its configuration I typically set **worker_processes auto;**
+
+Proxy Mode is set by the **PROXYMODE** variable, and the data directory with the **DATADIRECTORY** variable. Note the data directory variable needs a trailing '/' added. 
+
+
+Using the gunicorn startup script will use a self-signed cert when started with PROXYMODE set to False. You need to generate that self-signed cert first with:<br>
+**openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes**
+
 
 ### telemlib.js Configuration
 These configuration variables are in the **initGlobals()** function. 
@@ -151,8 +169,15 @@ Sets the page the user starts on when the iFrame trap is set.
 ```
 window.taperstartingPage = "http://targetapp.com/somestartpage";
 ```
+
+If you want the trap to start on the current page, instead of redirecting the user to a different page in the iframe trap, you can use:
+```
+window.taperstartingPage = window.location.href;
+```
 #### Client Tag
-Useful if you're using JS-Tap against multiple applications or deployments at once and want a visual indicator of what payload was loaded. This tag string (keep it short!) is prepended to the client nickname in the JS-Tap portal. Setup multiple payloads, each with the appropriate configuration for the application its being used against, and add a tag indicating which app the client is running. 
+Useful if you're using JS-Tap against multiple applications or deployments at once and want a visual indicator of what payload was loaded. Remember that the entire /payloads directory is served, you can have multiple JS-Tap payloads configured with different modes, start pages, and clien tags.
+
+This tag string (keep it short!) is prepended to the client nickname in the JS-Tap portal. Setup multiple payloads, each with the appropriate configuration for the application its being used against, and add a tag indicating which app the client is running. 
 ```
 window.taperTag = 'whatever';
 ```
@@ -231,12 +256,13 @@ At the top of the script is a **numClients** variable, set to how many clients y
 ```
 numClients = 50
 ```
-Hopefully a future blog will show how to configure JS-Tap to use a proper database instead of sqlite (it's using sqlalchemy, so not a hard switch) and a better server configuration to scale better. 
 
 You'll also need to configure where you're running the jsTapServer for the clientSimulator to connect to:
 ```
 apiServer = "https://127.0.0.1:8444"
 ```
+
+JS-Tap run using gunicorn scales quite well. 
 
 ### MonkeyPatchApp
 A simple app used for testing XHR/Fetch monkeypatching, but can give you a simple app to test the payload against in general. 
@@ -268,7 +294,7 @@ You should be able to run it on exfiltrated HTML files. Again, this is currently
 
 
 ### generateIntelReport.py
-Not even sure if this works anymore. Prior to the web UI for JS-Tap, the generateIntelReport script would comb through the gathered loot and generate a PDF report. 
+No longer working, used before the web UI for JS-Tap. The generateIntelReport script would comb through the gathered loot and generate a PDF report. Saving all the loot to disk is now disabled for performance reasons, most of it is stored in the datagbase with the exception of exfiltratred HTML code and screenshots. 
 
 
 

