@@ -1297,7 +1297,7 @@ async function getClientDetails(id)
   		formData        = escapeHTML(atob(formPostJson.data));
   		splitFormData  = formData.split('\n');
 
-  		cardTitle.innerHTML = "Form Post";
+  		cardTitle.innerHTML = "Form Submission";
   		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
   		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Method: <b>" + formPostJson.method + "</b>";
