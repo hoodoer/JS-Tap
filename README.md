@@ -10,8 +10,11 @@ Major changes are documented in the project Announcements:<br>
 You can read the original blog post about JS-Tap here:<br>
 <https://trustedsec.com/blog/js-tap-weaponizing-javascript-for-red-teams>
 
-Best recorded demo so far, from ShmooCon:<br>
+Short demo from ShmooCon of JS-Tap version 1:<br>
 <https://youtu.be/IDLMMiqV6ss?si=XunvnVarqSIjx_x0&t=19814>
+
+Demo of JS-Tap version 2 at HackSpaceCon, including C2 and how to use it as a post exploitation implant:<br>
+<https://youtu.be/aWvNLJnqObQ?t=11719>
 
 A demo can also be seen in this webinar:<br>
 <https://youtu.be/-c3b5debhME?si=CtJRqpklov2xv7Um>
