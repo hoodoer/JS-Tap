@@ -1042,6 +1042,56 @@ async function showReqRespViewer(eventKey, type)
 	modal.show();
 }
 
+
+
+async function showMimicFormModal(eventKey, formDataString)
+{
+
+	// createFormMimicModal
+	console.log("Showing mimic form modal with key: " + eventKey);
+
+	formData = JSON.parse(formDataString);
+
+	formName    = formData.name;
+	formContent = escapeHTML(atob(formData.data));
+	formAction  = escapeHTML(atob(formData.action))
+	formMethod  = formData.method;
+	formEncType = formData.encType;
+
+
+	console.log("Form action: " + formAction);
+	console.log("Method: " + formMethod);
+	console.log("Content: " + formContent);
+
+
+	var formDataDiv = document.getElementById('formDataDiv')
+
+	formDataDiv.innerHTML = "";
+
+	var data = document.createElement('p');
+    data.innerHTML  = '<b>Form Name:</b> ' + formName + '<br>';
+    data.innerHTML += '<b>Action:</b> ' + formAction + '<br>';
+    data.innerHTML += '<b>Method:</b> ' + formMethod + '<br>';
+    data.innerHTML += '<b>Encoding Type:</b> ' + formEncType + '<br>';
+
+    data.innerHTML += '<b>Content:</b>' + '<br>';
+
+	formattedContent = formContent.replace(/\n/g, '<br>');
+
+	formattedContent = formattedContent.replace(/^<br>/, '');
+    data.innerHTML  += formattedContent;
+
+    // Append the paragraph to the dynamic div
+    formDataDiv.appendChild(data);
+
+	var modal = new bootstrap.Modal(document.getElementById('createFormMimicModal'));
+	modal.show();
+}
+
+
+
+
+
 function showAboutModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("aboutModal"));
@@ -1294,7 +1344,7 @@ async function getClientDetails(id)
   		formPostReq  = await fetch('/api/clientFormPosts/' + eventKey);
   		formPostJson = await formPostReq.json();
 
-  		formData        = escapeHTML(atob(formPostJson.data));
+  		formData       = escapeHTML(atob(formPostJson.data));
   		splitFormData  = formData.split('\n');
 
   		cardTitle.innerHTML = "Form Submission";
@@ -1304,15 +1354,12 @@ async function getClientDetails(id)
    		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Data:";
   	  	cardText.innerHTML += "<br>";
-
   	  	cardText.innerHTML += splitFormData.map(line => "<b>" + line + "</b>").join("<br>");
+   	  	cardText.innerHTML += "<br>";
 
-
-  	  	// for (line of splitFormData)
-  	  	// {
-  	  	// 	cardText.innerHTML += "<b>" + line + "</b><br>";
-  	  	// }
-  	}
+   	  	jsonDataString = JSON.stringify(formPostJson).replace(/"/g, '&quot;');
+		cardText.innerHTML += `<button type="button" class="btn btn-primary" onclick="showMimicFormModal('${eventKey}', '${jsonDataString}')">Create Mimic Payload</button>`;
+	}
   	break;
 
 

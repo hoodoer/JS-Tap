@@ -452,12 +452,14 @@ class FetchCall(Base):
 class FormPost(Base):
     __tablename__ = 'formpost'
 
-    id         = Column(Integer, primary_key=True)
-    clientID   = Column(String(100), nullable=False)
-    formAction = Column(String(100), nullable=False)
-    formMethod = Column(String(12), nullable=False)
-    formData   = Column(Text, nullable=True);
-    timeStamp  = Column(DateTime(timezone=True), server_default=func.now())
+    id          = Column(Integer, primary_key=True)
+    clientID    = Column(String(100), nullable=False)
+    formName    = Column(String(100), nullable=True)
+    formAction  = Column(String(100), nullable=False)
+    formMethod  = Column(String(12), nullable=False)
+    formEncType = Column(String(12), nullable=True)
+    formData    = Column(Text, nullable=True);
+    timeStamp   = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<FormPost {self.id}>'
@@ -1602,13 +1604,22 @@ def recordFormPost(identifier):
         return "No.", 401
 
     # logger.info("## Recording Form Post")
-    content    = request.json 
-    formAction = content['action'] # This is base64 encoded
-    formMethod = content['method']
-    formData   = content['data'] # Make sure this comes in base64 encoded
+    content     = request.json
+
+    # formName    = content['name']
+    # formAction  = content['action'] # This is base64 encoded
+    # formMethod  = content['method']
+    # formEncType = content['encType']
+    # formData    = content['data'] # Make sure this comes in base64 encoded
+
+    formName    = content.get('name', None)
+    formAction  = content.get('action', None)  # This may be base64 encoded
+    formMethod  = content.get('method', None)
+    formEncType = content.get('encType', None)
+    formData    = content.get('data', None)   # Make sure this comes in base64 encoded
 
     # Put it in the database
-    newFormPost = FormPost(clientID=identifier, formAction=formAction, formMethod=formMethod, formData=formData)
+    newFormPost = FormPost(clientID=identifier, formName=formName, formAction=formAction, formMethod=formMethod, formEncType=formEncType, formData=formData)
     db_session.add(newFormPost)
 
     if (proxyMode):
@@ -1837,7 +1848,7 @@ def getClientFormPost(key):
     formPost = FormPost.query.filter_by(id=key).first()
 
     # formAction and data are base64 encoded at this point
-    formPostData = {'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData}
+    formPostData = {'name':escape(formPost.formName), 'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData}
 
     return jsonify(formPostData)
 

