@@ -457,7 +457,7 @@ class FormPost(Base):
     formName    = Column(String(100), nullable=True)
     formAction  = Column(String(100), nullable=False)
     formMethod  = Column(String(12), nullable=False)
-    formEncType = Column(String(12), nullable=True)
+    formEncType = Column(String(100), nullable=True)
     formData    = Column(Text, nullable=True);
     timeStamp   = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -1851,6 +1851,48 @@ def getClientFormPost(key):
     formPostData = {'name':escape(formPost.formName), 'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData}
 
     return jsonify(formPostData)
+
+
+
+@app.route('/api/formCsrfTokenSearch/<key>', methods=['POST'])
+@login_required
+def searchCsrfToken(key):
+    content    = request.json
+    tokenName  = content['tokenName']
+    tokenValue = content['tokenValue']
+
+    print("!!!!!!! Searching for: " + tokenName + ":" + tokenValue)
+
+    # Get client ID from form even key
+    # get all HTML file content (and URL) for that client (html table)
+    # loop through all files looking for token
+
+    # return URL
+    # return JavaScript code to find token?
+
+    formPost = FormPost.query.filter_by(id=key).first()
+
+    clientID = formPost.clientID
+
+    htmlLoot = HtmlCode.query.filter_by(clientID=clientID)
+
+    for htmlCode in htmlLoot:
+        print("Going to search file: " + htmlCode.fileName)
+        with open(htmlCode.fileName, 'r', encoding='utf-8') as file:
+            content = file.read()
+
+            if (tokenValue in content):
+                if (tokenName in content):
+                    print("Found to token in: " + htmlCode.fileName)
+                    print("URL is: " + htmlCode.url)
+
+                    break
+
+
+
+
+
+    return "ok", 200
 
 
 

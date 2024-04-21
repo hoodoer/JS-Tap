@@ -1050,6 +1050,11 @@ async function showMimicFormModal(eventKey, formDataString)
 	// createFormMimicModal
 	console.log("Showing mimic form modal with key: " + eventKey);
 
+	var searchButton = document.getElementById("mimic-form-search-button");
+	var csrfName     = document.getElementById("csrfNameInput");
+	var csrfValue    = document.getElementById("csrfValueInput");
+
+
 	formData = JSON.parse(formDataString);
 
 	formName    = formData.name;
@@ -1083,6 +1088,50 @@ async function showMimicFormModal(eventKey, formDataString)
 
     // Append the paragraph to the dynamic div
     formDataDiv.appendChild(data);
+
+    searchButton.onclick = function(event) 
+    {
+    	console.log("Searching for CSRF tokens!");
+
+
+    	var canSearch = true;
+
+    	if (csrfName.value.trim() === "")
+    	{
+    		csrfName.classList.add('is-invalid');
+    		canSearch = false;
+    	}
+    	else
+    	{
+    		csrfName.classList.remove('is-invalid');
+    	}
+
+    	if (csrfValue.value.trim() === "")
+    	{
+    		csrfValue.classList.add('is-invalid');
+     		canSearch = false;
+	   	}
+    	else
+    	{
+    		csrfValue.classList.remove('is-invalid');
+    	}
+
+    	if (canSearch)
+    	{
+    		fetch('/api/formCsrfTokenSearch/' + eventKey, {
+    			method:"POST",
+    			body: JSON.stringify({
+        			tokenName: csrfName.value.trim(),
+    				tokenValue: csrfValue.value.trim()
+				
+    			}),
+    			headers: {
+					"Content-type": "application/json; charset=UTF-8"
+				}
+    		});
+    	}
+    }
+
 
 	var modal = new bootstrap.Modal(document.getElementById('createFormMimicModal'));
 	modal.show();

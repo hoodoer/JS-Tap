@@ -594,58 +594,62 @@
 
 
 
-			<!-- Create Form Mimic Modal -->
-			<div id="createFormMimicModal" class="modal fade" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog modal-xl">
-					<div class="modal-content">
+		<!-- Create Form Mimic Modal -->
+		<div id="createFormMimicModal" class="modal fade" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog modal-xl">
+				<div class="modal-content">
 
-						<!-- Modal Header with Title and Close Button -->
-						<div class="modal-header">
-							<h5 class="modal-title" id="custom-payload-title">Mimic Form Submission</h5>
-							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-						</div>
+					<!-- Modal Header with Title and Close Button -->
+					<div class="modal-header">
+						<h5 class="modal-title" id="custom-payload-title">Mimic Form Submission</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div>
+						<p style="padding-left: 40px;padding-right: 40px">This modal allows you to configure a custom payload that will mimic this form submission. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the submission uses a CSRF token. We'll need to build a more complicated payload if the request uses such a token. These tokens are a random value and the parameter name is typically related to CSRF, XSRF, or Nonce. If you see a parameter like that, enter the parameter name and value on the right and hit search. JS-Tap will search it's previously captured HTML looking for where this secret value comes from and build a payload to find and parse out this value. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
+						If there is no random CSRF value apparent in the form submission hit the Next button. 
+						</p>
+						<hr>
+					</div>
 
-						<!-- Button Bar -->
-						<div class="modal-header">
-							<div class="ms-auto">
-								<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
-								<button id="payload-clear-button"type="button" class="btn btn-secondary">Clear All Jobs</button>
-								<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
-							</div>
-						</div>
-
-						<!-- Modal Body with Split Layout -->
-						<div class="modal-body row">
+					<!-- Modal Body with Split Layout -->
+					<div class="modal-body container-fluid">
+						<div class="row">
 
 							<!-- Form Data -->
 							<div class="col-md-7">
 								<h6>Form Data:</h6>
+								<!-- To be filled in by JavaScript -->
+								<div id="formDataDiv"></div>
 							</div>
 
-							<!-- To be filled in by JavaScript -->
-							<div id="formDataDiv"></div>
 
 							<!-- Code Editor - Right Side -->
-							<div class="col-md-5" id="mimicPayloadEditor">
+							<div class="col-md-5" id="csrfSelector">
 								<div>
-									<label for="mimicPayloadName" class="form-label">Payload Name:</label>
-									<input type="text" class="form-control" id="mimicPayloadName" name="name" required><br>
+									<label for="csrfNameInput" class="form-label">CSRF Token Name:</label>
+									<input type="text" class="form-control" id="csrfNameInput" name="csrfNameInput" required><br>
 								</div>
 								<div>
-									<label for="mimicPayloadDescription" class="form-label">Payload Description/Instructions:</label>
-									<textarea id="mimicPayloadDescription" class="form-control" rows="2"></textarea><br>
-								</div>
-								<div>
-									<label for="mimic-payload-editor" class="form-label">JavaScript Code:</label>
-									<textarea id="mimic-payload-editor" class="form-control" rows="10"></textarea>
+									<label for="csrfValueInput" class="form-label">CSRF Token Value:</label>
+									<input type="text" class="form-control" id="csrfValueInput" name="csrfValueInput" required><br>
 								</div>
 							</div>
+						</div>
 
-						</div> <!-- End of Modal Body -->
-
+					</div> <!-- End of Modal Body -->
+					<!-- Button Bar -->
+					<div class="modal-header">
+						<div class="ms-auto">
+							<button id="mimic-form-search-button"type="button" class="btn btn-primary">Search CSRF</button>
+							<button id="mimic-form-next-button"type="button" class="btn btn-primary">Next</button>
+							<button id="mimic-form-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
+						</div>
 					</div>
+
+
 				</div>
 			</div>
+		</div>
 
 	</body>
 	</html>

@@ -353,7 +353,7 @@ function hookForms()
 	    // console.log('Form method:', event.target.method.toUpperCase());
 
 			var name    = event.target.name;
-			var action  = event.target.action;
+			var action  = event.target.getAttribute('action');
 			var method  = event.target.method.toUpperCase();
 			var encType = event.target.enctype;
 
