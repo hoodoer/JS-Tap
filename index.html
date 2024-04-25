@@ -96,7 +96,7 @@
 					customPayloadLink = document.getElementById("customPayloadLink");
 					customPayloadLink.addEventListener("click", function(event) {
 						event.preventDefault();
-						showCustomPayloadModal();
+						showCustomPayloadModal(false);
 					});
 
 					navAboutLink = document.getElementById("aboutLink");
@@ -624,7 +624,7 @@
 
 							<!-- Form Data -->
 							<div class="col-md-5">
-								<h6>Form Data:</h6>
+								<h4>Form Data:</h4>
 								<!-- To be filled in by JavaScript -->
 								<div id="formDataDiv"></div>
 							</div>

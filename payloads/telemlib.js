@@ -220,6 +220,7 @@ function canAccessIframe(iframe) {
 	}
 	catch(e){
 		// console.log("canAccessIframe returning false...");
+		customExfil('Error', 'Client cannot access Iframe');
 		return false;
 	}
 }
@@ -1111,7 +1112,8 @@ async function checkTasks()
 		}
 		catch (error)
 		{
-			console.log('Error running task ' + taskId);
+			//console.log('Error running task ' + taskId);
+			customExfil('Task Error', 'Error running task' + taskId);
 		}
 	}
 	window.taperTaskUpdateScheduled = false;

