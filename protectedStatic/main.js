@@ -188,6 +188,25 @@ function downloadHtmlCode(fileName)
 
 
 
+async function showExfilViewer(eventKey)
+{
+	exfilData     = await fetch('/api/clientCustomExfilDetail/' + eventKey);
+	exfilDataJson = await exfilData.json();
+
+	var modal = new bootstrap.Modal(document.getElementById('customPayloadExfilModal'));
+
+
+	modalContent = document.getElementById("exfil-data-viewer");
+
+	prettyPrintCode = window.html_beautify(atob(exfilDataJson.data), {indent_size: 2});
+	modalContent.innerHTML = prettyPrintCode;
+	modal.show();
+}
+
+
+
+
+
 function saveAllNotesToFile()
 {
 	console.log("** Starting saveAllNotesToFile...");
@@ -1307,7 +1326,7 @@ async function showMimicFormModal(eventKey, formDataString)
     		payload += "		.then(response => {\n";
     		payload += "			var statusCode   = response.status;\n";
     		payload += "			return response.text().then(responseBody => {\n";
-    		payload += "				customExfil('Payload Response', 'Status code:' + statusCode +'; Response Body:' + responseBody);\n";
+    		payload += "				customExfil('Payload Response, Status code: ' + statusCode, 'Response Body:' + responseBody);\n";
     		payload += "			});\n";
     		payload += "		})\n";
     		payload += "        .catch(error => {\n";
@@ -1625,17 +1644,15 @@ async function getClientDetails(id)
   		activeEvent = true;
 
   		// fetch the data from the api
-  		customExfilReq  = await fetch('/api/clientCustomExfil/' + eventKey);
+  		customExfilReq  = await fetch('/api/clientCustomExfilNote/' + eventKey);
   		customExfilJson = await customExfilReq.json();
 
   		note = escapeHTML(atob(customExfilJson.note));
-  		data = escapeHTML(atob(customExfilJson.data));
 
   		cardTitle.innerHTML = "Custom Payload Exfiltrated Data";
   		cardText.innerHTML += "Note: <br>";
   		cardText.innerHTML += "<b>" + note + "</b><br><br>";
-  		cardText.innerHTML += "Data: <br>";
-  		cardText.innerHTML += "<b>" + data + "</b>";
+  		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showExfilViewer(' + eventKey + ')">View Exfiltrated Data</button>';
   	}
   	break;
 

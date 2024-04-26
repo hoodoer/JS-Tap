@@ -1949,9 +1949,22 @@ def searchCsrfToken(key):
 
 
 
-@app.route('/api/clientCustomExfil/<key>', methods=['GET'])
+@app.route('/api/clientCustomExfilNote/<key>', methods=['GET'])
 @login_required
 def getClientCustomExfil(key):
+    customExfil = CustomExfil.query.filter_by(id=key).first()
+
+    # Note these are base64 encoded at this point, they'll need
+    # to be escaped client side
+    customExfilData = {'note':customExfil.note}
+
+    return jsonify(customExfilData)
+
+
+
+@app.route('/api/clientCustomExfilDetail/<key>', methods=['GET'])
+@login_required
+def getClientCustomExfilDetail(key):
     customExfil = CustomExfil.query.filter_by(id=key).first()
 
     # Note these are base64 encoded at this point, they'll need
@@ -1959,7 +1972,6 @@ def getClientCustomExfil(key):
     customExfilData = {'note':customExfil.note, 'data':customExfil.data}
 
     return jsonify(customExfilData)
-
 
 
 
