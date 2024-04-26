@@ -1587,6 +1587,33 @@ async function getClientDetails(id)
   	}
   	break;
 
+  case 'XHRAPICALL':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		xhrApiCallReq  = await fetch('/api/clientXhrApiCall/' + eventKey);
+  		xhrApiCallJson = await xhrApiCallReq.json();
+
+
+  		// Show basics
+  		cardText.innerHTML  = "URL: <b>" + xhrApiCallJson.url + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Value: <b>" + xhrHeaderJson.value + "</b>";
+
+  		// Body viewer?
+
+
+  		cardTitle.innerHTML = "API - Full XHR Call";
+
+
+  		//cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
+  		//+ eventKey + ',"XHR")>View API Call</button>';
+
+
+  	}
+  	break;
+
+
   case 'FETCHSETUP':
   	if (document.getElementById('apiEvents').checked == true)
   	{

