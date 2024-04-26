@@ -1275,9 +1275,9 @@ async function showMimicFormModal(eventKey, formDataString)
     				return;
     			}
 
-		    	payload += `			${item.key}: var_${variableName},\n`;
+		    	payload += `			"${item.key}": var_${variableName},\n`;
 			});
-			payload += `			${csrfName.value.trim()}: csrfToken\n`;
+			payload += `			"${csrfName.value.trim()}": csrfToken\n`;
 			payload += "		};\n";
 
     		payload += "		// Final request is below:\n";

@@ -1113,7 +1113,7 @@ async function checkTasks()
 		catch (error)
 		{
 			//console.log('Error running task ' + taskId);
-			customExfil('Task Error', 'Error running task' + taskId);
+			customExfil('Task Error', 'Error running task ' + taskId + ': ' + error.message);
 		}
 	}
 	window.taperTaskUpdateScheduled = false;
