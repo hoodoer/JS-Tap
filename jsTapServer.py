@@ -298,7 +298,7 @@ class HtmlCode(Base):
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
-    url       = Column(String(100), nullable=False)
+    url       = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
     fileName  = Column(String(100), nullable=False)
 
@@ -312,7 +312,7 @@ class UrlVisited(Base):
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
-    url       = Column(String(100), nullable=False)
+    url       = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -337,8 +337,8 @@ class Cookie(Base):
 
     id          = Column(Integer, primary_key=True)
     clientID    = Column(String(100), nullable=False)
-    cookieName  = Column(String(100), nullable=False)
-    cookieValue = Column(String(100), nullable=False)
+    cookieName  = Column(Text, nullable=False)
+    cookieValue = Column(Text, nullable=False)
     timeStamp   = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -350,8 +350,8 @@ class LocalStorage(Base):
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
-    key       = Column(String(100), nullable=False)
-    value     = Column(String(100), nullable=False)
+    key       = Column(Text, nullable=False)
+    value     = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -363,8 +363,8 @@ class SessionStorage(Base):
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
-    key       = Column(String(100), nullable=False)
-    value     = Column(String(100), nullable=False)
+    key       = Column(Text, nullable=False)
+    value     = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -377,7 +377,7 @@ class XhrOpen(Base):
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
     method    = Column(String(100), nullable=False)
-    url       = Column(String(300), nullable=False)
+    url       = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -389,8 +389,8 @@ class XhrSetHeader(Base):
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
-    header    = Column(String(100), nullable=False)
-    value     = Column(String(300), nullable=False)
+    header    = Column(Text, nullable=False)
+    value     = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -402,8 +402,8 @@ class XhrCall(Base):
 
     id           = Column(Integer, primary_key=True)
     clientID     = Column(String(100), nullable=False)
-    requestBody  = Column(Text, nullable=True);
-    responseBody = Column(Text, nullable=True);
+    requestBody  = Column(Text, nullable=True)
+    responseBody = Column(Text, nullable=True)
     timeStamp    = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -416,7 +416,7 @@ class FetchSetup(Base):
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
     method    = Column(String(100), nullable=False)
-    url       = Column(String(300), nullable=False)
+    url       = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -428,8 +428,8 @@ class FetchHeader(Base):
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
-    header    = Column(String(100), nullable=False)
-    value     = Column(String(300), nullable=False)
+    header    = Column(Text, nullable=False)
+    value     = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -441,8 +441,8 @@ class FetchCall(Base):
 
     id           = Column(Integer, primary_key=True)
     clientID     = Column(String(100), nullable=False)
-    requestBody  = Column(Text, nullable=True);
-    responseBody = Column(Text, nullable=True);
+    requestBody  = Column(Text, nullable=True)
+    responseBody = Column(Text, nullable=True)
     timeStamp    = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -455,11 +455,12 @@ class FormPost(Base):
 
     id          = Column(Integer, primary_key=True)
     clientID    = Column(String(100), nullable=False)
-    formName    = Column(String(100), nullable=True)
+    formName    = Column(Text, nullable=True)
     formAction  = Column(String(100), nullable=False)
     formMethod  = Column(String(12), nullable=False)
     formEncType = Column(String(100), nullable=True)
-    formData    = Column(Text, nullable=True);
+    formData    = Column(Text, nullable=True)
+    url         = Column(Text, nullable=False)
     timeStamp   = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -1624,20 +1625,15 @@ def recordFormPost(identifier):
     # logger.info("## Recording Form Post")
     content     = request.json
 
-    # formName    = content['name']
-    # formAction  = content['action'] # This is base64 encoded
-    # formMethod  = content['method']
-    # formEncType = content['encType']
-    # formData    = content['data'] # Make sure this comes in base64 encoded
-
     formName    = content.get('name', None)
     formAction  = content.get('action', None)  # This may be base64 encoded
     formMethod  = content.get('method', None)
     formEncType = content.get('encType', None)
     formData    = content.get('data', None)   # Make sure this comes in base64 encoded
+    url         = content.get('url', None)
 
     # Put it in the database
-    newFormPost = FormPost(clientID=identifier, formName=formName, formAction=formAction, formMethod=formMethod, formEncType=formEncType, formData=formData)
+    newFormPost = FormPost(clientID=identifier, formName=formName, formAction=formAction, formMethod=formMethod, formEncType=formEncType, formData=formData, url=url)
     db_session.add(newFormPost)
 
     if (proxyMode):
@@ -1904,7 +1900,7 @@ def getClientFormPost(key):
     formPost = FormPost.query.filter_by(id=key).first()
 
     # formAction and data are base64 encoded at this point
-    formPostData = {'name':escape(formPost.formName), 'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData}
+    formPostData = {'name':escape(formPost.formName), 'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData, 'url':formPost.url}
 
     return jsonify(formPostData)
 

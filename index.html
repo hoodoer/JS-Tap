@@ -613,7 +613,7 @@
 					</div>
 					<div>
 						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to configure a custom payload that will mimic this form submission. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the submission uses a CSRF token. We'll need to build a more complicated payload if the request uses such a token. These tokens are a random value and the parameter name is typically related to CSRF, XSRF, or Nonce. If you see a parameter like that, enter the parameter name and value on the right and hit search. JS-Tap will search it's previously captured HTML looking for where this secret value comes from and build a payload to find and parse out this value. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
-						If there is no random CSRF value apparent in the form submission hit the "Next" button to build the payload. 
+							If there is no random CSRF value apparent in the form submission hit the "Next" button to build the payload. 
 						</p>
 						<hr>
 					</div>
@@ -662,23 +662,23 @@
 
 
 
-			<!-- Custom Payload Exfil Viewer Modal -->
-			<div id="customPayloadExfilModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h5 class="modal-title" id="exfil-viewer-title">Custom Exfiltration Viewer</h5>
-							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-						</div>
-						<div class="modal-body">
-							<textarea id="exfil-data-viewer" class="form-control" rows="20" readonly></textarea>
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-						</div>
+		<!-- Custom Payload Exfil Viewer Modal -->
+		<div id="customPayloadExfilModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="exfil-viewer-title">Custom Exfiltration Viewer</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body">
+						<textarea id="exfil-data-viewer" class="form-control" rows="20" readonly></textarea>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 					</div>
 				</div>
 			</div>
+		</div>
 
 
 	</body>
