@@ -1595,21 +1595,33 @@ async function getClientDetails(id)
   		xhrApiCallJson = await xhrApiCallReq.json();
 
 
+  		cardTitle.innerHTML = "API - Full XHR Call";
+
   		// Show basics
   		cardText.innerHTML  = "URL: <b>" + xhrApiCallJson.url + "</b>";
   		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Value: <b>" + xhrHeaderJson.value + "</b>";
+  		cardText.innerHTML += "Method: <b>" + xhrApiCallJson.method + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Basic Auth: <b>" + xhrApiCallJson.user + ':' + xhrApiCallJson.password + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Headers:";
+  		cardText.innerHTML += "<br>";
+
+  		xhrApiCallJson.headers.forEach(header => {
+  			console.log("*** Header: " + header.header);
+	  		cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+  			cardText.innerHTML += "<br>";
+
+    	});
+
+
+
+  		cardText.innerHTML += "Response Status: <b>" + xhrApiCallJson.responseStatus + "</b>";
 
   		// Body viewer?
 
-
-  		cardTitle.innerHTML = "API - Full XHR Call";
-
-
   		//cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
   		//+ eventKey + ',"XHR")>View API Call</button>';
-
-
   	}
   	break;
 

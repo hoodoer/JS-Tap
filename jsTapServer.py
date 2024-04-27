@@ -1951,9 +1951,13 @@ def getClientXhrCall(key):
 @login_required
 def getClientXhrApiCall(key):
     xhrApiCall = XhrApiCall.query.filter_by(id=key).first()
-    xhrHeaders = XhrHeader.query.filter_by(clientID=key).all()
+    xhrHeaders = XhrHeader.query.filter_by(apiCallID=key).all()
 
     headers_list = [{'header': header.header, 'value': header.value} for header in xhrHeaders]
+
+    for header in headers_list:
+        print(f"---------Header: {header['header']}, Value: {header['value']}")
+
 
     xhrCallData = {
         'method': escape(xhrApiCall.method),
@@ -1964,7 +1968,7 @@ def getClientXhrApiCall(key):
         'requestBody': xhrApiCall.requestBody, # escape client side after b64 decode
         'responseBody': xhrApiCall.responseBody, # escape client side after b64 decode
         'responseStatus': escape(xhrApiCall.responseStatus),
-        'headers': escape(headers_list)
+        'headers': headers_list
     }
 
     return jsonify(xhrCallData)
