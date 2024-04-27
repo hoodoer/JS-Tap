@@ -2,8 +2,6 @@ let selectedClientId = "";
 let tokenUrl         = "";
 
 
-
-
 function escapeHTML(string) 
 {
     if (string === undefined || string === null) 
@@ -1055,6 +1053,27 @@ function showNoteEditor(event, client, nickname, notes)
 
 
 
+function showReqRespViewer2(requestBody, responseBody)
+{
+	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
+	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
+
+	console.log("!!!! Request: " + prettyRequest);
+	console.log("!!!! Response: " + prettyResponse);
+
+	requestContent = document.getElementById("requestBox");
+	requestContent.innerHTML = prettyRequest;
+
+	responseContent = document.getElementById("responseBox");
+	responseContent.innerHTML = prettyResponse;
+
+
+
+	var modal = new bootstrap.Modal(document.getElementById('requestResponseModal'));
+	modal.show();	
+}
+
+
 async function showReqRespViewer(eventKey, type)
 {
 	if (type == "XHR")
@@ -1604,7 +1623,8 @@ async function getClientDetails(id)
   		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Basic Auth: <b>" + xhrApiCallJson.user + ':' + xhrApiCallJson.password + "</b>";
   		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Headers:";
+   		cardText.innerHTML += "<br>";
+ 		cardText.innerHTML += "Headers:";
   		cardText.innerHTML += "<br>";
 
   		xhrApiCallJson.headers.forEach(header => {
@@ -1614,16 +1634,80 @@ async function getClientDetails(id)
 
     	});
 
+   		cardText.innerHTML += "<br>";
+ 		cardText.innerHTML += "Response Status: <b>" + xhrApiCallJson.responseStatus + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
 
+  		requestBody  = xhrApiCallJson.requestBody;
+  		responseBody = xhrApiCallJson.responseBody;
 
-  		cardText.innerHTML += "Response Status: <b>" + xhrApiCallJson.responseStatus + "</b>";
+  		console.log("API returned request: " + atob(xhrApiCallJson.requestBody));
+  		console.log("API returned response: " + atob(xhrApiCallJson.responseBody));
 
-  		// Body viewer?
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.className = 'btn btn-primary';
+		button.textContent = 'View API Call';
+		cardText.appendChild(button);
 
-  		//cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
-  		//+ eventKey + ',"XHR")>View API Call</button>';
+		button.addEventListener('click', () => {
+   			showReqRespViewer2(requestBody, responseBody);
+		});
   	}
   	break;
+
+
+	case 'FETCHAPICALL':
+  	if (document.getElementById('apiEvents').checked == true)
+  	{
+  		activeEvent = true;
+  		fetchApiCallReq  = await fetch('/api/clientFetchApiCall/' + eventKey);
+  		fetchApiCallJson = await fetchApiCallReq.json();
+
+
+  		cardTitle.innerHTML = "API - Full Fetch Call";
+
+  		// Show basics
+  		cardText.innerHTML  = "URL: <b>" + fetchApiCallJson.url + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Method: <b>" + fetchApiCallJson.method + "</b>";
+  		cardText.innerHTML += "<br>";
+    	cardText.innerHTML += "<br>";
+		cardText.innerHTML += "Headers:";
+  		cardText.innerHTML += "<br>";
+
+  		fetchApiCallJson.headers.forEach(header => {
+  			console.log("*** Header: " + header.header);
+	  		cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+  			cardText.innerHTML += "<br>";
+
+    	});
+
+   		cardText.innerHTML += "<br>";
+ 		cardText.innerHTML += "Response Status: <b>" + fetchApiCallJson.responseStatus + "</b>";
+  	
+  		requestBody  = fetchApiCallJson.requestBody;
+  		responseBody = fetchApiCallJson.responseBody;
+
+    	console.log("API returned request: " + atob(fetchApiCallJson.requestBody));
+  		console.log("API returned response: " + atob(fetchApiCallJson.responseBody));
+
+		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
+
+  		const button = document.createElement('button');
+		button.type = 'button';
+		button.className = 'btn btn-primary';
+		button.textContent = 'View API Call';
+		cardText.appendChild(button);
+
+		button.addEventListener('click', () => {
+   			showReqRespViewer2(requestBody, responseBody);
+		});
+  	}
+  	break;
+
 
 
   case 'FETCHSETUP':
