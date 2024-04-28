@@ -1053,25 +1053,25 @@ function showNoteEditor(event, client, nickname, notes)
 
 
 
-function showReqRespViewer2(requestBody, responseBody)
-{
-	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
-	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
+// function showReqRespViewer2(eventKey, type)
+// {
+// 	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
+// 	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
 
-	console.log("!!!! Request: " + prettyRequest);
-	console.log("!!!! Response: " + prettyResponse);
+// 	console.log("!!!! Request: " + prettyRequest);
+// 	console.log("!!!! Response: " + prettyResponse);
 
-	requestContent = document.getElementById("requestBox");
-	requestContent.innerHTML = prettyRequest;
+// 	requestContent = document.getElementById("requestBox");
+// 	requestContent.innerHTML = prettyRequest;
 
-	responseContent = document.getElementById("responseBox");
-	responseContent.innerHTML = prettyResponse;
+// 	responseContent = document.getElementById("responseBox");
+// 	responseContent.innerHTML = prettyResponse;
 
 
 
-	var modal = new bootstrap.Modal(document.getElementById('requestResponseModal'));
-	modal.show();	
-}
+// 	var modal = new bootstrap.Modal(document.getElementById('requestResponseModal'));
+// 	modal.show();	
+// }
 
 
 async function showReqRespViewer(eventKey, type)
@@ -1099,9 +1099,6 @@ async function showReqRespViewer(eventKey, type)
 
 	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
 	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
-
-	// console.log("!!!! Request: " + prettyRequest);
-	// console.log("!!!! Response: " + prettyResponse);
 
 	requestContent = document.getElementById("requestBox");
 	requestContent.innerHTML = prettyRequest;
@@ -1567,45 +1564,6 @@ async function getClientDetails(id)
   	break;
 
 
-  case 'XHROPEN':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
-  		xhrOpenJson = await xhrOpenReq.json();
-
-  		cardTitle.innerHTML = "API - XHR Open";
-  		cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
-  	}
-  	break;
-
-  case 'XHRSETHEADER':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
-  		xhrHeaderJson = await xhrHeaderReq.json();
-
-  		cardTitle.innerHTML = "API - XHR Set Header";
-  		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Value: <b>" + xhrHeaderJson.value + "</b>";
-  	}
-  	break;
-
-  case 'XHRCALL':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-
-  		cardTitle.innerHTML = "API - XHR Call";
-  		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
-  		+ eventKey + ',"XHR")>View API Call</button>';
-  	}
-  	break;
-
   case 'XHRAPICALL':
   	if (document.getElementById('apiEvents').checked == true)
   	{
@@ -1614,7 +1572,7 @@ async function getClientDetails(id)
   		xhrApiCallJson = await xhrApiCallReq.json();
 
 
-  		cardTitle.innerHTML = "API - Full XHR Call";
+  		cardTitle.innerHTML = "Network - XHR API Call";
 
   		// Show basics
   		cardText.innerHTML  = "URL: <b>" + xhrApiCallJson.url + "</b>";
@@ -1628,7 +1586,6 @@ async function getClientDetails(id)
   		cardText.innerHTML += "<br>";
 
   		xhrApiCallJson.headers.forEach(header => {
-  			console.log("*** Header: " + header.header);
 	  		cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
   			cardText.innerHTML += "<br>";
 
@@ -1639,21 +1596,8 @@ async function getClientDetails(id)
   		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "<br>";
 
-  		requestBody  = xhrApiCallJson.requestBody;
-  		responseBody = xhrApiCallJson.responseBody;
-
-  		console.log("API returned request: " + atob(xhrApiCallJson.requestBody));
-  		console.log("API returned response: " + atob(xhrApiCallJson.responseBody));
-
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.className = 'btn btn-primary';
-		button.textContent = 'View API Call';
-		cardText.appendChild(button);
-
-		button.addEventListener('click', () => {
-   			showReqRespViewer2(requestBody, responseBody);
-		});
+  		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
+  		+ eventKey + ',"XHR")>View API Call</button>';
   	}
   	break;
 
@@ -1666,7 +1610,7 @@ async function getClientDetails(id)
   		fetchApiCallJson = await fetchApiCallReq.json();
 
 
-  		cardTitle.innerHTML = "API - Full Fetch Call";
+  		cardTitle.innerHTML = "Network - Fetch API Call";
 
   		// Show basics
   		cardText.innerHTML  = "URL: <b>" + fetchApiCallJson.url + "</b>";
@@ -1687,67 +1631,15 @@ async function getClientDetails(id)
    		cardText.innerHTML += "<br>";
  		cardText.innerHTML += "Response Status: <b>" + fetchApiCallJson.responseStatus + "</b>";
   	
-  		requestBody  = fetchApiCallJson.requestBody;
-  		responseBody = fetchApiCallJson.responseBody;
-
-    	console.log("API returned request: " + atob(fetchApiCallJson.requestBody));
-  		console.log("API returned response: " + atob(fetchApiCallJson.responseBody));
-
 		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "<br>";
 
-  		const button = document.createElement('button');
-		button.type = 'button';
-		button.className = 'btn btn-primary';
-		button.textContent = 'View API Call';
-		cardText.appendChild(button);
-
-		button.addEventListener('click', () => {
-   			showReqRespViewer2(requestBody, responseBody);
-		});
-  	}
-  	break;
-
-
-
-  case 'FETCHSETUP':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		fetchSetupReq  = await fetch('/api/clientFetchSetup/' + eventKey);
-  		fetchSetupJson = await fetchSetupReq.json();
-
-  		cardTitle.innerHTML = "API - Fetch Setup";
-  		cardText.innerHTML  = "URL: <b>" + fetchSetupJson.url + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + fetchSetupJson.method + "</b>";
-  	}
-  	break;
-
-  case 'FETCHHEADER':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		fetchHeaderReq  = await fetch('/api/clientFetchHeader/' + eventKey);
-  		fetchHeaderJson = await fetchHeaderReq.json();
-
-  		cardTitle.innerHTML = "API - Fetch Header";
-  		cardText.innerHTML  = "Header: <b>" + fetchHeaderJson.header + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Value: <b>" + fetchHeaderJson.value + "</b>";
-  	}
-  	break;
-
-  case 'FETCHCALL':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-
-  		cardTitle.innerHTML = "API - Fetch Call";
   		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
   		+ eventKey + ',"FETCH")>View API Call</button>';
   	}
   	break;
+
+
 
   case 'FORMPOST':
   	if (document.getElementById('formPostEvents').checked == true)
@@ -1760,7 +1652,7 @@ async function getClientDetails(id)
   		formData       = escapeHTML(atob(formPostJson.data));
   		splitFormData  = formData.split('\n');
 
-  		cardTitle.innerHTML = "Form Submission";
+  		cardTitle.innerHTML = "Network Form Submission";
   		cardText.innerHTML += "URL: <b>" + escapeHTML(formPostJson.url) + "</b>";
    		cardText.innerHTML += "<br>";
  		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
