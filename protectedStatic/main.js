@@ -1,5 +1,6 @@
 let selectedClientId = "";
 let tokenUrl         = "";
+let tokenLocation    = "";
 
 
 function escapeHTML(string) 
@@ -1114,7 +1115,7 @@ async function showReqRespViewer(eventKey, type)
 
 
 
-async function searchToken(eventKey, tokenName, tokenValue)
+async function searchCSRFToken(eventKey, tokenName, tokenValue)
 {
 	var searchDataDiv = document.getElementById('searchDataDiv');
 
@@ -1146,6 +1147,149 @@ async function searchToken(eventKey, tokenName, tokenValue)
 
 
 
+async function searchAuthToken(eventKey, tokenName, tokenValue, apiType)
+{
+	var searchDataDiv = document.getElementById('apiSearchDataDiv');
+
+	searchDataDiv.innerHTML = "";
+
+
+	tokenSearchReq = await fetch('/api/apiAuthTokenSearch/' + eventKey, {
+		method:"POST",
+		body: JSON.stringify({
+			type:apiType,
+			tokenName: tokenName,
+			tokenValue: tokenValue
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+
+	tokenSearchJson = await tokenSearchReq.json();
+
+	var searchData = document.createElement('p');
+
+	if (tokenSearchJson.location === "NOT FOUND")
+	{
+		searchData.innerHTML  = '<b>Auth Token not found in cookies or local or session storage. </br><br><br>';
+		searchData.innerHTML += '<b>Check API Call Body for authorization token. </br><br><br>';
+	}
+	else
+	{
+		searchData.innerHTML  = '<b>Auth Token Location:</b><br>' + tokenSearchJson.location + '<br><br>';
+		searchData.innerHTML += '<b>Click "Next" to build payload</b>';		
+	}
+
+
+	tokenLocation = tokenSearchJson.location;
+	searchDataDiv.appendChild(searchData);
+}
+
+
+
+
+
+async function showMimicApiModal(eventKey, apiCallDataString, apiType)
+{
+	console.log("Showing mimic api call modal with key: " + eventKey);
+
+	var searchButton  = document.getElementById("mimic-api-search-button");
+	var nextButton    = document.getElementById("mimic-api-next-button");
+	var tokenName     = document.getElementById("apiTokenNameInput");
+	var tokenValue    = document.getElementById("apiTokenValueInput");
+
+	tokenName.value  = "";
+	tokenValue.value = "";
+
+	var apiCallData = JSON.parse(apiCallDataString);
+
+	console.log(apiCallData);
+
+	var apiURL    = escapeHTML(apiCallData.url);
+	var apiMethod = escapeHTML(apiCallData.method);
+	var apiSync   = true;
+	var name      = "";
+	var password  = "";
+
+	if (apiType === "XHR")
+	{
+		apiAsync = escapeHTML(apiCallData.asyncRequest);
+		name     = escapeHTML(apiCallData.name);
+		passwrod = escapeHTML(apiCallData.password);
+
+	}
+
+	var apiDataDiv    = document.getElementById('apiDataDiv');
+	var searchDataDiv = document.getElementById('apiSearchDataDiv');
+
+	apiDataDiv.innerHTML = "";
+
+	var data = document.createElement('p');
+	data.innerHTML  = 'API Type: <b>' + apiType + '</b><br>';
+	data.innerHTML += 'URL: <b>' + apiURL + '</b><br>';
+	data.innerHTML += 'Method: <b>' + apiMethod + '</b><br>';
+	data.innerHTML += '<br>';
+	data.innerHTML += 'Headers:<br>';
+
+
+	// headers...
+	apiCallData.headers.forEach(header => {
+		data.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+		data.innerHTML += "<br>";
+	});
+
+	// Show body option?
+
+    // Append the paragraph to the dynamic div
+	apiDataDiv.appendChild(data);
+
+	searchDataDiv.innerHTML = "";
+
+
+	searchButton.onclick = function(event) 
+	{
+		var canSearch = true;
+
+		if (tokenName.value.trim() === "")
+		{
+			tokenName.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			tokenName.classList.remove('is-invalid');
+		}
+
+		if (tokenValue.value.trim() === "")
+		{
+			tokenValue.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			tokenValue.classList.remove('is-invalid');
+		}
+
+		if (canSearch)
+		{
+			searchAuthToken(eventKey, tokenName.value.trim(), tokenValue.value.trim(), apiType)
+		}
+
+		searchButton.blur();
+	}
+
+
+
+
+	// Pop that sucker open
+	var modal = new bootstrap.Modal(document.getElementById('createApiMimicModal'));
+	modal.show();
+}
+
+
+
+
 async function showMimicFormModal(eventKey, formDataString)
 {
 
@@ -1160,14 +1304,14 @@ async function showMimicFormModal(eventKey, formDataString)
 	csrfName.value  = "";
 	csrfValue.value = "";
 
-	formData = JSON.parse(formDataString);
+	var formData = JSON.parse(formDataString);
 
-	formName    = escapeHTML(formData.name);
-	formContent = escapeHTML(atob(formData.data));
-	formAction  = escapeHTML(atob(formData.action))
-	formMethod  = escapeHTML(formData.method);
-	formEncType = escapeHTML(formData.encType);
-	formURL     = escapeHTML(formData.url);
+	var formName    = escapeHTML(formData.name);
+	var formContent = escapeHTML(atob(formData.data));
+	var formAction  = escapeHTML(atob(formData.action))
+	var formMethod  = escapeHTML(formData.method);
+	var formEncType = escapeHTML(formData.encType);
+	var formURL     = escapeHTML(formData.url);
 
 	var formDataDiv   = document.getElementById('formDataDiv');
 	var searchDataDiv = document.getElementById('searchDataDiv');
@@ -1175,15 +1319,15 @@ async function showMimicFormModal(eventKey, formDataString)
 	formDataDiv.innerHTML = "";
 
 	var data = document.createElement('p');
-	data.innerHTML  = '<b>Form URL:</b> ' + formURL + '<br>';
-	data.innerHTML += '<b>Form Name:</b> ' + formName + '<br>';
-	data.innerHTML += '<b>Action:</b> ' + formAction + '<br>';
-	data.innerHTML += '<b>Method:</b> ' + formMethod + '<br>';
-	data.innerHTML += '<b>Encoding Type:</b> ' + formEncType + '<br><br>';
+	data.innerHTML  = 'Form URL: <b>' + formURL + '</b><br>';
+	data.innerHTML += 'Form Name: <b>' + formName + '</b><br>';
+	data.innerHTML += 'Action: <b>' + formAction + '</b><br>';
+	data.innerHTML += 'Method: <b>' + formMethod + '</b><br>';
+	data.innerHTML += 'Encoding Type: <b>' + formEncType + '</b><br><br>';
 
-	data.innerHTML += '<b>Content:</b>' + '<br>';
+	data.innerHTML += 'Content:' + '<br>';
 
-	formattedContent = formContent.replace(/\n/g, '<br>');
+	var formattedContent = formContent.replace(/\n/g, '<br>');
 
 	formattedContent = formattedContent.replace(/^<br>/, '');
 	data.innerHTML  += formattedContent;
@@ -1219,7 +1363,7 @@ async function showMimicFormModal(eventKey, formDataString)
 
 		if (canSearch)
 		{
-			searchToken(eventKey, csrfName.value.trim(), csrfValue.value.trim())
+			searchCSRFToken(eventKey, csrfName.value.trim(), csrfValue.value.trim())
 		}
 
 		searchButton.blur();
@@ -1588,7 +1732,6 @@ async function getClientDetails(id)
   		xhrApiCallJson.headers.forEach(header => {
 	  		cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
   			cardText.innerHTML += "<br>";
-
     	});
 
    		cardText.innerHTML += "<br>";
@@ -1598,7 +1741,10 @@ async function getClientDetails(id)
 
   		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
   		+ eventKey + ',"XHR")>View API Call</button>';
-  	}
+
+  		jsonDataString = JSON.stringify(xhrApiCallJson).replace(/"/g, '&quot;');
+  	  	cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'XHR')">Create Mimic Payload</button>`;
+}
   	break;
 
 
@@ -1622,10 +1768,8 @@ async function getClientDetails(id)
   		cardText.innerHTML += "<br>";
 
   		fetchApiCallJson.headers.forEach(header => {
-  			console.log("*** Header: " + header.header);
 	  		cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
   			cardText.innerHTML += "<br>";
-
     	});
 
    		cardText.innerHTML += "<br>";
@@ -1636,6 +1780,9 @@ async function getClientDetails(id)
 
   		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
   		+ eventKey + ',"FETCH")>View API Call</button>';
+
+  		jsonDataString = JSON.stringify(fetchApiCallJson).replace(/"/g, '&quot;');
+  		cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'FETCH')">Create Mimic Payload</button>`;
   	}
   	break;
 

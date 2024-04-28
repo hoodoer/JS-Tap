@@ -1791,6 +1791,7 @@ def getClientFormPost(key):
 @login_required
 def searchCsrfToken(key):
     content    = request.json
+    apiType    = content['type']
     tokenName  = content['tokenName']
     tokenValue = content['tokenValue']
 
@@ -1820,6 +1821,57 @@ def searchCsrfToken(key):
         tokenFileData = {'url':'Not Found', 'fileName':'Not Found'}
 
     return jsonify(tokenFileData)
+
+
+
+
+@app.route('/api/apiAuthTokenSearch/<key>', methods=['POST'])
+@login_required
+def searchApiAuthToken(key):
+    content    = request.json
+    apiType    = content['type']
+    tokenName  = content['tokenName']
+    tokenValue = content['tokenValue']
+
+    locationType = ""
+
+    # Search cookies, local, session
+
+    if apiType == 'XHR':
+        apiCall = XhrApiCall.query.filter_by(id=key).first()
+    elif apiType == 'FETCH':
+        apiCall = FetchApiCall.query.filter_by(id=key).first()
+
+    clientID = apiCall.clientID
+
+    # Search all local storage, most likely spot
+    localStorage = LocalStorage.query.filter_by(clientID=clientID, key=tokenName, value=tokenValue).first()
+
+    if localStorage is not None:
+        locationType = "Local Storage"
+    else:
+        # It's not in local storage, check session storage
+        sessionStorage = SessionStorage.query.filter_by(clientID=clientID, key=tokenName, value=tokenValue).first()
+
+        if sessionStorage is not None:
+            locationType = "Session Storage"
+        else:
+            # Not there either, check cookies
+            cookieStorage = Cookie.query.filter_by(clientID=clientID, cookieName=tokenName, cookieValue=tokenValue).first()
+
+            if cookieStorage is not None:
+                locationType = "Cookies"
+            else:
+                locationType = "NOT FOUND"
+
+    print("*** At end of auth token search, was found in: " + locationType)
+
+    locationData = {'location':locationType}
+
+    return jsonify(locationData)
+
+
+
 
 
 

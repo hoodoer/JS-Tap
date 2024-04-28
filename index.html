@@ -654,11 +654,70 @@
 							<button id="mimic-form-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
 						</div>
 					</div>
-
-
 				</div>
 			</div>
 		</div>
+
+
+
+
+		<!-- Create API Call Mimic Modal -->
+		<div id="createApiMimicModal" class="modal fade" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog modal-xl">
+				<div class="modal-content">
+
+					<!-- Modal Header with Title and Close Button -->
+					<div class="modal-header">
+						<h5 class="modal-title" id="custom-payload-title">Mimic Network API Call</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div>
+						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to configure a custom payload that will mimic this network call. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the submission uses an authoirzation header or token. We'll need to build a more complicated payload if the request uses such an auth token. These tokens are a typically sent in an Authorization header. If you see a header like that, enter the header name and value on the right and hit search. JS-Tap will search it's previously captured storage looking for where this secret value is stored so it can build a payload to find this auth token. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
+						If there is no authorization token perhaps the API relies on cookies you can't see, and you should be able to hit the "Next" button to build the payload. 
+						</p>
+						<hr>
+					</div>
+
+					<!-- Modal Body with Split Layout -->
+					<div class="modal-body container-fluid">
+						<div class="row">
+
+							<!-- Form Data -->
+							<div class="col-md-5">
+								<h4>Network API Data:</h4>
+								<!-- To be filled in by JavaScript -->
+								<div id="apiDataDiv"></div>
+							</div>
+
+
+							<!-- Code Editor - Right Side -->
+							<div class="col-md-7" id="tokenSelector">
+								<div>
+									<label for="tokenNameInput" class="form-label">Token Header Name:</label>
+									<input type="text" class="form-control" id="apiTokenNameInput" name="apiTokenNameInput" required><br>
+								</div>
+								<div>
+									<label for="csrfValueInput" class="form-label">Token Value:</label>
+									<input type="text" class="form-control" id="apiTokenValueInput" name="apiTokenValueInput" required><br>
+								</div>
+								<!-- To be filled in by JavaScript -->
+								<div id="apiSearchDataDiv"></div>
+							</div>
+						</div>
+
+					</div> <!-- End of Modal Body -->
+					<!-- Button Bar -->
+					<div class="modal-header">
+						<div class="ms-auto">
+							<button id="mimic-api-search-button"type="button" class="btn btn-primary">Search Token</button>
+							<button id="mimic-api-next-button"type="button" class="btn btn-primary">Next</button>
+							<button id="mimic-api-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
 
 
 
