@@ -80,8 +80,8 @@ function initGlobals()
 		// when they reloaded the page. Otherwise,
 		// they'll start here
 		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-		window.taperstartingPage = "https://127.0.0.1:8443/";
-		//window.taperstartingPage = "http://127.0.0.1:5000";
+		//window.taperstartingPage = "https://127.0.0.1:8443/";
+		window.taperstartingPage = "http://127.0.0.1:5000";
 	}
 	else // if implant mode
 	{
@@ -417,6 +417,24 @@ function hookForms()
 		}
 	}
 }
+
+
+
+
+function getCookie(name) 
+{
+    let nameEQ = name + "=";
+    let cookieArray = document.cookie.split(';');
+    for(let i = 0; i < cookieArray.length; i++) 
+    {
+        let cookie = cookieArray[i];
+        // Trim spaces and see if this cookie string begins with the cookie name we're looking for
+        while (cookie.charAt(0) === ' ') cookie = cookie.substring(1);
+        if (cookie.indexOf(nameEQ) === 0) return cookie.substring(nameEQ.length, cookie.length);
+    }
+    return null; // Return null if not found
+}
+
 
 
 

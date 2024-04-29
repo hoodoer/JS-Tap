@@ -22,6 +22,7 @@ def index():
         }
     </style>
     <script>
+        sessionStorage.setItem('secret_token', '{{ secret }}');
         function changeDefcon(newLevel) {
             var xhr = new XMLHttpRequest();
             xhr.open("POST", "/change_defcon", true);

@@ -1830,7 +1830,6 @@ def searchCsrfToken(key):
 def searchApiAuthToken(key):
     content    = request.json
     apiType    = content['type']
-    tokenName  = content['tokenName']
     tokenValue = content['tokenValue']
 
     locationType = ""
@@ -1845,28 +1844,32 @@ def searchApiAuthToken(key):
     clientID = apiCall.clientID
 
     # Search all local storage, most likely spot
-    localStorage = LocalStorage.query.filter_by(clientID=clientID, key=tokenName, value=tokenValue).first()
+    localStorage = LocalStorage.query.filter_by(clientID=clientID, value=tokenValue).first()
 
     if localStorage is not None:
         locationType = "Local Storage"
+        tokenName    = localStorage.key
     else:
         # It's not in local storage, check session storage
-        sessionStorage = SessionStorage.query.filter_by(clientID=clientID, key=tokenName, value=tokenValue).first()
+        sessionStorage = SessionStorage.query.filter_by(clientID=clientID, value=tokenValue).first()
 
         if sessionStorage is not None:
             locationType = "Session Storage"
+            tokenName    = sessionStorage.sessionStorageKey
         else:
             # Not there either, check cookies
-            cookieStorage = Cookie.query.filter_by(clientID=clientID, cookieName=tokenName, cookieValue=tokenValue).first()
+            cookieStorage = Cookie.query.filter_by(clientID=clientID, cookieValue=tokenValue).first()
 
             if cookieStorage is not None:
                 locationType = "Cookies"
+                tokenName    = cookieStorage.cookieName
             else:
                 locationType = "NOT FOUND"
+                tokenName    = "NOT FOUND"
 
     print("*** At end of auth token search, was found in: " + locationType)
 
-    locationData = {'location':locationType}
+    locationData = {'location':locationType, 'tokenName':tokenName}
 
     return jsonify(locationData)
 

