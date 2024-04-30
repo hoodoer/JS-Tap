@@ -1855,7 +1855,7 @@ def searchApiAuthToken(key):
 
         if sessionStorage is not None:
             locationType = "Session Storage"
-            tokenName    = sessionStorage.sessionStorageKey
+            tokenName    = sessionStorage.key
         else:
             # Not there either, check cookies
             cookieStorage = Cookie.query.filter_by(clientID=clientID, cookieValue=tokenValue).first()

