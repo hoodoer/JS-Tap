@@ -30,6 +30,8 @@ function initializeCodeMirror()
 }
 
 
+
+
 function escapeHTML(string) 
 {
 	if (string === undefined || string === null) 
