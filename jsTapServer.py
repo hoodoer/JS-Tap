@@ -873,7 +873,7 @@ def afterRequestHeaders(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     response.headers['X-Content-Type-Options']    = 'nosniff'
     response.headers['X-Frame-Options']           = 'DENY'
-    response.headers['Content-Security-Policy']   = "default-src 'self' style-src 'self' script-src 'self' connect-sec 'self' img-src 'self' data: frame-ancestors 'none' object-src 'self'  'unsafe-inline'"
+    # response.headers['Content-Security-Policy']   = "default-src 'self' style-src 'self' script-src 'self' connect-sec 'self' img-src 'self' data: frame-ancestors 'none' object-src 'self'  'unsafe-inline'"
 
     # Server header is set in main function
  

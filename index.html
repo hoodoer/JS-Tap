@@ -4,6 +4,8 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>JS-Tap</title>
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+
 
 	<style>
 		.table-active {
@@ -34,7 +36,6 @@
 		#searchClientInput::placeholder {
 			color: #8b8680; /* Placeholder text color */
 		}
-
 	</style>
 </head>
 
@@ -45,6 +46,10 @@
 	<script src="static/node_modules/js-beautify/js/lib/beautify-html.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautify.js"></script>
 	<script src="protectedStatic/niceTime.js"></script>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+
 	<script src="protectedStatic/main.js"></script>
 
 
@@ -508,7 +513,6 @@
 			</div>
 
 
-
 			<!-- Custom Payload Modal -->
 			<div id="customPayloadModal" class="modal fade" tabindex="-1" aria-hidden="true">
 				<div class="modal-dialog modal-xl">
@@ -530,8 +534,9 @@
 							</div>
 							<div class="ms-auto">
 								<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
-								<button id="payload-clear-button"type="button" class="btn btn-secondary">Clear All Jobs</button>
-								<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
+								<button id="payload-clear-button" type="button" class="btn btn-secondary">Clear All Jobs</button>
+							    <button id="payload-code-button" type="button" class="btn btn-secondary">Expand Code</button>
+								<button id="payload-close-button" type="button" class="btn btn-secondary">Close</button>
 							</div>
 						</div>
 
@@ -539,7 +544,7 @@
 						<div class="modal-body row">
 
 							<!-- Payload List - Left Side -->
-							<div class="col-md-7">
+							<div class="col-md-6" id="savedPayloadsGroup">
 								<h6>Saved Payloads (select to load for editing):</h6>
 								<ul id="savedPayloadsList" class="list-group">
 									<!-- List items here -->
@@ -547,18 +552,19 @@
 							</div>
 
 							<!-- Code Editor - Right Side -->
-							<div class="col-md-5" id="payloadEditor">
-								<div>
+							<div class="col-md-6" id="payloadEditor">
+								<div id="payloadNameGroup">
 									<label for="payloadName" class="form-label">Payload Name:</label>
 									<input type="text" class="form-control" id="payloadName" name="name" required><br>
 								</div>
-								<div>
+								<div id="payloadDescriptionGroup">
 									<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
 									<textarea id="payloadDescription" class="form-control" rows="2"></textarea><br>
 								</div>
 								<div>
 									<label for="payload-editor" class="form-label">JavaScript Code:</label>
-									<textarea id="payload-editor" class="form-control" rows="10"></textarea>
+									<!-- <div id=payload-editor></div> -->
+									<textarea id="payload-editor" class="form-control" wrap="off" overflow="auto" rows="10"></textarea>
 								</div>
 							</div>
 

