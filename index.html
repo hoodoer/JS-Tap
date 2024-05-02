@@ -4,6 +4,8 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>JS-Tap</title>
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
+	<link rel="stylesheet" href="static/node_modules/codemirror/lib/codemirror.css">
+
 
 	<style>
 		.table-active {
@@ -34,7 +36,6 @@
 		#searchClientInput::placeholder {
 			color: #8b8680; /* Placeholder text color */
 		}
-
 	</style>
 </head>
 
@@ -45,6 +46,10 @@
 	<script src="static/node_modules/js-beautify/js/lib/beautify-html.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautify.js"></script>
 	<script src="protectedStatic/niceTime.js"></script>
+
+	<script src="static/node_modules/codemirror/lib/codemirror.js"></script>
+	<script src="static/node_modules/codemirror/mode/javascript/javascript.js"></script>
+
 	<script src="protectedStatic/main.js"></script>
 
 
@@ -96,7 +101,7 @@
 					customPayloadLink = document.getElementById("customPayloadLink");
 					customPayloadLink.addEventListener("click", function(event) {
 						event.preventDefault();
-						showCustomPayloadModal();
+						showCustomPayloadModal(false);
 					});
 
 					navAboutLink = document.getElementById("aboutLink");
@@ -392,6 +397,8 @@
 							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
 						<div class="modal-body" id="eventFilterModalBody">
+							<button type="button" class="btn btn-primary" onclick=selectAllEvents()>Select All</button>
+							<button type="button" class="btn btn-primary" onclick=selectNoEvents()>Select None</button><br><br>
 							<div class="form-check">
 								<input class="form-check-input" type="checkbox" value="" id="cookieEvents" checked>
 								<label class="form-check-label" for="flexCheckDefault">
@@ -437,16 +444,21 @@
 							<div class="form-check">
 								<input class="form-check-input" type="checkbox" value="" id="apiEvents" checked>
 								<label class="form-check-label" for="flexCheckChecked">
-									API Events
+									Network API Calls
 								</label>
 							</div>
 							<div class="form-check">
 								<input class="form-check-input" type="checkbox" value="" id="formPostEvents" checked>
 								<label class="form-check-label" for="flexCheckChecked">
-									Form Submissions
+									Network Form Submissions
 								</label>
 							</div>
-
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="customExfilEvents" checked>
+								<label class="form-check-label" for="flexCheckChecked">
+									Custom Payload Exfiltrated Data
+								</label>
+							</div>
 
 						</div>
 						<div class="modal-footer">
@@ -501,7 +513,6 @@
 			</div>
 
 
-
 			<!-- Custom Payload Modal -->
 			<div id="customPayloadModal" class="modal fade" tabindex="-1" aria-hidden="true">
 				<div class="modal-dialog modal-xl">
@@ -523,8 +534,9 @@
 							</div>
 							<div class="ms-auto">
 								<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
-								<button id="payload-clear-button"type="button" class="btn btn-secondary">Clear All Jobs</button>
-								<button id="payload-close-button"type="button" class="btn btn-secondary">Close</button>
+								<button id="payload-clear-button" type="button" class="btn btn-secondary">Clear All Jobs</button>
+							    <button id="payload-code-button" type="button" class="btn btn-secondary">Expand Code</button>
+								<button id="payload-close-button" type="button" class="btn btn-secondary">Close</button>
 							</div>
 						</div>
 
@@ -532,7 +544,7 @@
 						<div class="modal-body row">
 
 							<!-- Payload List - Left Side -->
-							<div class="col-md-7">
+							<div class="col-md-6" id="savedPayloadsGroup">
 								<h6>Saved Payloads (select to load for editing):</h6>
 								<ul id="savedPayloadsList" class="list-group">
 									<!-- List items here -->
@@ -540,18 +552,19 @@
 							</div>
 
 							<!-- Code Editor - Right Side -->
-							<div class="col-md-5" id="payloadEditor">
-								<div>
+							<div class="col-md-6" id="payloadEditor">
+								<div id="payloadNameGroup">
 									<label for="payloadName" class="form-label">Payload Name:</label>
 									<input type="text" class="form-control" id="payloadName" name="name" required><br>
 								</div>
-								<div>
+								<div id="payloadDescriptionGroup">
 									<label for="payloadDescription" class="form-label">Payload Description/Instructions:</label>
 									<textarea id="payloadDescription" class="form-control" rows="2"></textarea><br>
 								</div>
 								<div>
 									<label for="payload-editor" class="form-label">JavaScript Code:</label>
-									<textarea id="payload-editor" class="form-control" rows="10"></textarea>
+									<!-- <div id=payload-editor></div> -->
+									<textarea id="payload-editor" class="form-control" wrap="off" overflow="auto" rows="10"></textarea>
 								</div>
 							</div>
 
@@ -590,8 +603,148 @@
 					</div>
 				</div>
 			</div>
-
-
 		</div>
+
+
+
+		<!-- Create Form Mimic Modal -->
+		<div id="createFormMimicModal" class="modal fade" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog modal-xl">
+				<div class="modal-content">
+
+					<!-- Modal Header with Title and Close Button -->
+					<div class="modal-header">
+						<h5 class="modal-title" id="custom-payload-title">Mimic Form Submission</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div>
+						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to configure a custom payload that will mimic this form submission. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the submission uses a CSRF token. We'll need to build a more complicated payload if the request uses such a token. These tokens are a random value and the parameter name is typically related to CSRF, XSRF, or Nonce. If you see a parameter like that, enter the parameter name and value on the right and hit search. JS-Tap will search it's previously captured HTML looking for where this secret value comes from and build a payload to find and parse out this value. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
+							If there is no random CSRF value apparent in the form submission hit the "Next" button to build the payload. 
+						</p>
+						<hr>
+					</div>
+
+					<!-- Modal Body with Split Layout -->
+					<div class="modal-body container-fluid">
+						<div class="row">
+
+							<!-- Form Data -->
+							<div class="col-md-5">
+								<h4>Form Data:</h4>
+								<!-- To be filled in by JavaScript -->
+								<div id="formDataDiv"></div>
+							</div>
+
+
+							<!-- Code Editor - Right Side -->
+							<div class="col-md-7" id="csrfSelector">
+								<div>
+									<label for="csrfNameInput" class="form-label">CSRF Token Name:</label>
+									<input type="text" class="form-control" id="csrfNameInput" name="csrfNameInput" required><br>
+								</div>
+								<div>
+									<label for="csrfValueInput" class="form-label">CSRF Token Value:</label>
+									<input type="text" class="form-control" id="csrfValueInput" name="csrfValueInput" required><br>
+								</div>
+								<!-- To be filled in by JavaScript -->
+								<div id="searchDataDiv"></div>
+							</div>
+						</div>
+
+					</div> <!-- End of Modal Body -->
+					<!-- Button Bar -->
+					<div class="modal-header">
+						<div class="ms-auto">
+							<button id="mimic-form-search-button"type="button" class="btn btn-primary">Search CSRF</button>
+							<button id="mimic-form-next-button"type="button" class="btn btn-primary">Next</button>
+							<button id="mimic-form-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+
+
+
+		<!-- Create API Call Mimic Modal -->
+		<div id="createApiMimicModal" class="modal fade" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog modal-xl">
+				<div class="modal-content">
+
+					<!-- Modal Header with Title and Close Button -->
+					<div class="modal-header">
+						<h5 class="modal-title" id="custom-payload-title">Mimic Network API Call</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div>
+						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to automatically build a custom payload that will mimic this network call. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the API call uses an authorization header or token. We'll need to build a more complicated payload if the request uses such an auth token. These tokens are typically sent in an Authorization header. If you see a header like that, enter the header name and value on the right and hit search. These are often in the format:<br>Authorization: Bearer SECRETTOKEN<br><br>Do not include the Bearer string for the search, use Authorization for the token name and SECRETTOKEN as the value for the search. The payload generator will automatically add the Bearer string if needed.<br>JS-Tap will search it's previously captured storage looking for where this secret value is stored so it can build a payload to find this auth token. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
+						If there is no authorization token perhaps the API relies on cookies you can't see, and you should be able to hit the "Next" button to build the payload. 
+						</p>
+						<hr>
+					</div>
+
+					<!-- Modal Body with Split Layout -->
+					<div class="modal-body container-fluid">
+						<div class="row">
+
+							<!-- Form Data -->
+							<div class="col-md-5">
+								<h4>Network API Data:</h4>
+								<!-- To be filled in by JavaScript -->
+								<div id="apiDataDiv"></div>
+							</div>
+
+
+							<!-- Code Editor - Right Side -->
+							<div class="col-md-7" id="tokenSelector">
+								<div>
+									<label for="tokenNameInput" class="form-label">Token Header Name:</label>
+									<input type="text" class="form-control" id="apiTokenNameInput" name="apiTokenNameInput" required><br>
+								</div>
+								<div>
+									<label for="csrfValueInput" class="form-label">Token Value:</label>
+									<input type="text" class="form-control" id="apiTokenValueInput" name="apiTokenValueInput" required><br>
+								</div>
+								<!-- To be filled in by JavaScript -->
+								<div id="apiSearchDataDiv"></div>
+							</div>
+						</div>
+
+					</div> <!-- End of Modal Body -->
+					<!-- Button Bar -->
+					<div class="modal-header">
+						<div class="ms-auto">
+							<button id="mimic-api-search-button"type="button" class="btn btn-primary">Search Token</button>
+							<button id="mimic-api-next-button"type="button" class="btn btn-primary">Next</button>
+							<button id="mimic-api-close-button"type="button" data-bs-dismiss="modal" class="btn btn-secondary">Close</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+
+
+
+		<!-- Custom Payload Exfil Viewer Modal -->
+		<div id="customPayloadExfilModal" class="modal fade modal-lg" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="exfil-viewer-title">Custom Exfiltration Viewer</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body">
+						<textarea id="exfil-data-viewer" class="form-control" rows="20" readonly></textarea>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+
 	</body>
 	</html>

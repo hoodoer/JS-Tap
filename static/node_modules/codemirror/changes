@@ -1,0 +1,3 @@
+* Fix focus tracking in shadow DOM.
+* [go mode](https://codemirror.net/5/mode/go/): Allow underscores in numbers.
+* [jsx mode](https://codemirror.net/5/mode/jsx/index.html): Support TS generics marked by trailing comma.

