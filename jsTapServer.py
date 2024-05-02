@@ -1791,7 +1791,6 @@ def getClientFormPost(key):
 @login_required
 def searchCsrfToken(key):
     content    = request.json
-    apiType    = content['type']
     tokenName  = content['tokenName']
     tokenValue = content['tokenValue']
 

@@ -13,7 +13,7 @@ function initializeCodeMirror()
 {
 	if (!codeEditorLoaded)
 	{
-		console.log("Instantiating code editor");
+		//console.log("Instantiating code editor");
 		var textArea = document.getElementById('payload-editor');
 
 		codeEditor = CodeMirror.fromTextArea(textArea,  {
@@ -24,7 +24,6 @@ function initializeCodeMirror()
 		});
 
 		codeEditorLoaded = true;
-
 		codeEditor.refresh();
 	}
 }
@@ -862,8 +861,7 @@ function toggleCodeEditor()
 		listGroup.style.display               = "block";
 		payloadNameGroup.style.display        = "block";
 		payloadDescriptionGroup.style.display = "block";
-		codeDiv.style.height='200px';
-		codeEditor.setSize(null, "200px");
+		codeEditor.setSize(null, "300px");
 		codeEditor.refresh();
 		codeEditorBig = false;
 	} 
@@ -876,8 +874,7 @@ function toggleCodeEditor()
 		listGroup.style.display               = "none";
 		payloadNameGroup.style.display        = "none";
 		payloadDescriptionGroup.style.display = "none";
-		codeDiv.style.height = '500px';
-		codeEditor.setSize(null, "500px");
+		codeEditor.setSize(null, "600px");
 		codeEditor.refresh();
 		codeEditorBig = true;
 	}
@@ -915,7 +912,7 @@ async function showCustomPayloadModal(skipClear)
 
 	if (!skipClear)
 	{
-		console.log("-----CLEARING CODE");
+		// console.log("-----CLEARING CODE");
 		payloadNameInput.value   = "";
 		payloadDescription.value = "";
 		codeEditor.setValue("");
@@ -941,27 +938,24 @@ async function showCustomPayloadModal(skipClear)
 	payloadNameInput.addEventListener('input', function() 
 	{
 		unsavedChanges = true;
-		console.log("Unsaved changes!");
+		//console.log("Name Unsaved changes!");
 	});
 
 	payloadDescription.addEventListener('input', function() 
 	{
 		unsavedChanges = true;
-		console.log("Unsaved changes!");
+	//	console.log("Description Unsaved changes!");
 	});
 
 
 	codeEditor.on("change", function(cm, change) 
 	{
-		unsavedChanges = true;
-		console.log("Unsaved changes!");
+	    if (change.origin === "+input" || change.origin === "paste") 
+	    {
+	        unsavedChanges = true;
+//	        console.log("Human-made change detected in Code Editor.");
+	    } 
 	});
-
-	// payloadCode.addEventListener('input', function() 
-	// {
-	// 	unsavedChanges = true;
-	// 	console.log("Unsaved changes!");
-	// });
 
 
 	closeButton.onclick = function(event) 
@@ -1030,45 +1024,6 @@ async function showCustomPayloadModal(skipClear)
 			.then(text => {
 				refreshSavedPayloadList();
 			});	
-
-
-			// Ok, now make sure we actually have some code...
-			// if (payloadCode.value === "")
-			// if (codeEditor.getValue() === "")
-			// {
-			// 	console.log("Forget the code?");
-			// 	event.preventDefault();
-			// 	payloadCode.classList.add('is-invalid');
-			// }
-			// else
-			// {
-			// 	payloadCode.classList.remove('is-invalid');
-			// 	console.log("Got code: " + payloadCode.value);
-
-			// 	unsavedChanges = false;
-
-			// 	// send payload to server
-			// 	fetch('/api/savePayload', {
-			// 		method:"POST",
-			// 		body: JSON.stringify({
-			// 			name: payloadNameInput.value,
-			// 			description: btoa(payloadDescription.value),
-			// 			code: btoa(payloadCode.value)
-			// 		}),
-			// 		headers: {
-			// 			"Content-type": "application/json; charset=UTF-8"
-			// 		}
-			// 	})
-			// 	.then(response => {
-			// 		if (!response.ok) {
-			// 			console.log('Save payload server failed.');
-			// 		}
-			// 		return response.text();
-			// 	})
-			// 	.then(text => {
-			// 		refreshSavedPayloadList();
-			// 	});	
-			// }
 		}
 		saveButton.blur();
 	}
@@ -1302,6 +1257,7 @@ async function searchAuthToken(eventKey, tokenValue, apiType)
 
 async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 {
+	initializeCodeMirror();
 	console.log("Showing mimic api call modal with key: " + eventKey);
 
 	var searchButton  = document.getElementById("mimic-api-search-button");
@@ -1572,7 +1528,7 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 
 async function showMimicFormModal(eventKey, formDataString)
 {
-
+	initializeCodeMirror();
 	// createFormMimicModal
 	console.log("Showing mimic form modal with key: " + eventKey);
 
