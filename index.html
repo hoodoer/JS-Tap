@@ -69,7 +69,7 @@
 				</li>
 
 				<li class="nav-item">
-					<a class="nav-link" href="#newsessionhandler" id="newsessionLink">&nbsp;Session Settings&nbsp;</a>
+					<a class="nav-link" href="#newsessionhandler" id="newsessionLink">&nbsp;App Settings&nbsp;</a>
 				</li>
 
 				<li class="nav-item">
@@ -472,45 +472,100 @@
 
 
 
-			<!-- New Client Session Control Modal -->
+			<!-- Application Settings Control Modal -->
 			<div id="clientSessionModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
-					<div class="modal-content">
-						<div class="modal-header">
-							<h5 class="modal-title">Session Settings</h5>
-							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-						</div>
-						<div class="modal-body" id="clientFilterModalBody">
-							<div class="form-check">
-								<input class="form-check-input" type="checkbox" value="" id="allowNewClientSessions" checked>
-								<label class="form-check-label" for="flexCheckChecked">
-									Allow New Client Sessions
-								</label>
+			    <div class="modal-dialog">
+			        <div class="modal-content">
+			            <div class="modal-header">
+			                <h5 class="modal-title">App Settings</h5>
+			                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			            </div>
+			            <div class="modal-body" id="clientFilterModalBody">
+			                <div class="form-check form-switch">
+			                    <input class="form-check-input" type="checkbox" id="allowNewClientSessions" checked>
+			                    <label class="form-check-label" for="allowNewClientSessions">Disable/Enable New Client Sessions</label>
+			                </div>
+			                <br>
+			                <hr>
+
+			                <!-- Delay Between Client List Refresh -->
+							<div class="mb-3">
+							    <label for="clientRefreshDelay">Delay Between Client List Refresh (seconds):</label><br>
+							    <input type="number" class="form-control" id="clientRefreshDelay" value="5">
 							</div>
+			                <br>
+			                <hr>
 
-							<br><br>
-							<!-- List of Blocked IPs -->
-							<div class="modal-body">
-								<h6>Blocked IPs:</h6>
-
-								<div class="input-group mb-3">
-									<input id="ipInput" type="text" class="form-control" placeholder="Enter IP">
-									<div class="input-group-append">
-										<button id="addBlockIP" class="btn btn-primary" type="button">Add</button>
-									</div>
-								</div>
-								<ul id="blockedIPList" class="list-group">
-								</ul>
-							</div>
-							<script>document.getElementById("addBlockIP").addEventListener('click', blockIP);</script>
-
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
-						</div>
-					</div>
-				</div>
+			                <!-- Email Settings -->
+			                <h6>Email Notifications Settings:</h6>
+			                <div class="input-group mb-3">
+			                    <input type="text" class="form-control" placeholder="SMTP Server" id="smtpServer">
+			                </div>
+			                <div class="input-group mb-3">
+			                    <input type="text" class="form-control" placeholder="Username" id="emailUsername">
+			                    <input type="password" class="form-control" placeholder="Password" id="emailPassword">
+			                </div>
+			                <div class="input-group mb-3">
+			                    <input type="text" class="form-control" placeholder="Enter Email" id="emailInput">
+			                    <button class="btn btn-primary" type="button" id="addEmail">Add</button>
+			                </div>
+			                <ul id="emailList" class="list-group">
+			                </ul>
+			                <br>
+			                <div class="form-check form-switch">
+			                    <input class="form-check-input" type="checkbox" id="enableEmails">
+			                    <label class="form-check-label" for="enableEmails">Enable/Disable Emails</label>
+			                </div>
+			                <div class="input-group mb-3">
+			                    <select class="form-select" id="emailNotificationType">
+			                        <option value="newClients">Notify on new clients</option>
+			                        <option value="newClientsAndEvents">Notify on new clients and events</option>
+			                    </select>
+			                </div>
+			                <div class="input-group mb-3">
+			                    <input type="number" class="form-control" placeholder="Delay between emails (minutes)" id="emailDelay">
+			                </div>
+			                
+			                <!-- Buttons for saving settings and sending test email -->
+			                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+			                    <button class="btn btn-primary" type="button" id="saveSettings">Save Settings</button>
+			                    <button class="btn btn-secondary" type="button" id="sendTestEmail">Test Email</button>
+			                </div>
+			                <br>
+			                <hr>
+			                
+			                <!-- List of Blocked IPs -->
+			                <h6>IPs Blocked From Running JS-Tap:</h6>
+			                <div class="input-group mb-3">
+			                    <input id="ipInput" type="text" class="form-control" placeholder="Enter IP">
+			                    <button id="addBlockIP" class="btn btn-primary" type="button">Add</button>
+			                </div>
+			                <ul id="blockedIPList" class="list-group">
+			                </ul>
+			                <script>document.getElementById("addBlockIP").addEventListener('click', blockIP);</script>
+			            </div>
+			            <div class="modal-footer">
+			                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
+			            </div>
+			        </div>
+			    </div>
 			</div>
+			<script>
+			document.getElementById("addEmail").addEventListener('click', function() {
+			    var emailInput = document.getElementById("emailInput");
+			    var emailList = document.getElementById("emailList");
+			    var newEmail = emailInput.value;
+			    if (newEmail) {
+			        var listItem = document.createElement("li");
+			        listItem.textContent = newEmail;
+			        listItem.className = "list-group-item";
+			        emailList.appendChild(listItem);
+			        emailInput.value = ""; // clear the input after adding
+			    }
+			});
+			</script>
+
+
 
 
 			<!-- Custom Payload Modal -->
