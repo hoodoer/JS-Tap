@@ -26,7 +26,7 @@ JS-Tap is a generic JavaScript payload and supporting software to help red teame
 
 The payload does not require the targeted user running the payload to be authenticated to the application being attacked, and it does not require any prior knowledge of the application beyond finding a way to get the JavaScript into the application. 
 
-Instead of attacking the application server itself, the JS-Tap payload focuses on the client-side of the application and heavily instruments the client-side code. 
+Instead of attacking the application server itself, the base JS-Tap payload focuses on the client-side of the application and heavily instruments the client-side code. A C2 feature allows custom JavaScript payloads to be added in the Portal and sent as tasks to clients running the JS-Tap payload. JS-Tap also has an ability to automatically build custom payloads mimicking actions taken by users in the application. <br>
 
 The example JS-Tap payload is contained in the **telemlib.js** file in the payloads directory, however any file in this directory is served unauthenticated so you can serve multiple payloads with different configurations targeting different applications at the same time. <br> 
 
