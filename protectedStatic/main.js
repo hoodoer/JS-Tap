@@ -3,6 +3,10 @@ let tokenUrl         = "";
 let tokenLocation    = "";
 let tokenKey         = "";
 
+let clientUpdateRate = 5;
+let updateTimer = setInterval(updateClients, (clientUpdateRate * 1000));
+
+
 
 // Syntax highlighting code editor
 let codeEditor;
@@ -351,11 +355,18 @@ async function showSessionModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
 
-		// Let's figure out if new sessions are allowed right now
-	var req = await fetch('/api/app/allowNewClientSessions');
-	var jsonResponse = await req.json()
+	// Let's figure out if new sessions are allowed right now
+	var req          = await fetch('/api/app/allowNewClientSessions');
+	var jsonResponse = await req.json();
 
-	var checkBox = document.getElementById('allowNewClientSessions');
+	// Get our current client refresh delay
+	var delayRequest  = await fetch('/api/app/clientRefreshRate');
+	var delayResponse = await delayRequest.json();
+
+	var checkBox    = document.getElementById('allowNewClientSessions');
+	var clientDelay = document.getElementById('clientRefreshDelay');
+
+	clientDelay.value = delayResponse.clientRefreshRate;
 
 	if (jsonResponse.newSessionsAllowed == '1')
 	{
@@ -367,6 +378,25 @@ async function showSessionModal()
 			// console.log("Server says no more client sessions!");
 		checkBox.checked == false;
 	}
+
+
+	clientDelay.addEventListener('change', function()
+	{
+		if (clientDelay.value < 1)
+		{
+			clientDelay.value = 1;
+		}
+		else if (clientDelay.value > 3600)
+		{
+			clientDelay.value = 3600;
+		}
+
+		fetch('/api/app/setClientRefreshRate/' + clientDelay.value);
+		clientUpdateRate = clientDelay.value;
+		clearInterval(updateTimer);
+		updateTimer = setInterval(updateClients, (clientUpdateRate * 1000));
+	});
+
 
 	refreshBlockedIPList();
 
@@ -2243,8 +2273,9 @@ function filterClients()
 
 async function updateClients()
 {
+	console.log("Updating clients...");
 	// Get client info
-	var req = await fetch('/api/getClients');
+	var req         = await fetch('/api/getClients');
 	var clientsJson = await req.json();
 
 	// Start setting up the client cards
@@ -2404,6 +2435,7 @@ filterClients();
 
 
 
-setInterval(updateClients, 5000);
+// setInterval(updateClients, 5000);
+
 
 updateClients();

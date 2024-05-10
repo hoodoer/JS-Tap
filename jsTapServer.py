@@ -491,6 +491,7 @@ class AppSettings(Base):
 
     id                = Column(Integer, primary_key=True)
     allowNewSesssions = Column(Boolean, default=True)
+    clientRefreshRate = Column(Integer, default=5)
 
     def __repr__(self):
         return f'<AppSettings {self.id}>'
@@ -697,7 +698,7 @@ def addAdminUser():
 
 # Initialize app defaults
 def initApplicationDefaults():
-    appSettings = AppSettings(allowNewSesssions=True)
+    appSettings = AppSettings(allowNewSesssions=True, clientRefreshRate=5)
 
     db_session.add(appSettings)
     dbCommit()
@@ -1945,9 +1946,9 @@ def setClientStar(key):
 @app.route('/api/app/allowNewClientSessions', methods=['GET'])
 @login_required
 def getAllowNewClientSessions():
-    appSettngs = AppSettings.query.filter_by(id=1).first()
+    appSettings = AppSettings.query.filter_by(id=1).first()
 
-    newSessionData = {'newSessionsAllowed':appSettngs.allowNewSesssions}
+    newSessionData = {'newSessionsAllowed':appSettings.allowNewSesssions}
 
     return jsonify(newSessionData)
 
@@ -1968,6 +1969,35 @@ def setAllowNewClientSessions(setting):
     dbCommit()
 
     return "ok", 200
+
+
+
+
+@app.route('/api/app/clientRefreshRate', methods=['GET'])
+@login_required
+def getClientRefreshRate():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    refreshData = {'clientRefreshRate':appSettings.clientRefreshRate}
+
+    return jsonify(refreshData)
+
+
+
+@app.route('/api/app/setClientRefreshRate/<rate>', methods=['GET'])
+@login_required
+def setClientRefreshRate(rate):
+    rate = int(rate)
+    
+    if rate < 1 or rate > 3600:
+        return "No.", 401
+    else:
+        appSettings = AppSettings.query.filter_by(id=1).first()
+        appSettings.clientRefreshRate = rate
+        dbCommit()
+
+        return "ok", 200
+
 
 
 

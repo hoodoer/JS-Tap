@@ -485,15 +485,6 @@
 			                    <input class="form-check-input" type="checkbox" id="allowNewClientSessions" checked>
 			                    <label class="form-check-label" for="allowNewClientSessions">Disable/Enable New Client Sessions</label>
 			                </div>
-			                <br>
-			                <hr>
-
-			                <!-- Delay Between Client List Refresh -->
-							<div class="mb-3">
-							    <label for="clientRefreshDelay">Delay Between Client List Refresh (seconds):</label><br>
-							    <input type="number" class="form-control" id="clientRefreshDelay" value="5">
-							</div>
-			                <br>
 			                <hr>
 
 			                <!-- Email Settings -->
@@ -514,7 +505,7 @@
 			                <br>
 			                <div class="form-check form-switch">
 			                    <input class="form-check-input" type="checkbox" id="enableEmails">
-			                    <label class="form-check-label" for="enableEmails">Enable/Disable Emails</label>
+			                    <label class="form-check-label" for="enableEmails">Disable/Enable Emails</label>
 			                </div>
 			                <div class="input-group mb-3">
 			                    <select class="form-select" id="emailNotificationType">
@@ -531,7 +522,13 @@
 			                    <button class="btn btn-primary" type="button" id="saveSettings">Save Settings</button>
 			                    <button class="btn btn-secondary" type="button" id="sendTestEmail">Test Email</button>
 			                </div>
-			                <br>
+			                <hr>
+
+			                <!-- Delay Between Client List Refresh -->
+							<div class="mb-3">
+							    <label for="clientRefreshDelay">Delay Between Client List Refresh (seconds):</label><br>
+							    <input type="number" class="form-control" id="clientRefreshDelay" value="5">
+							</div>
 			                <hr>
 			                
 			                <!-- List of Blocked IPs -->
