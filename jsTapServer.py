@@ -492,9 +492,29 @@ class AppSettings(Base):
     id                = Column(Integer, primary_key=True)
     allowNewSesssions = Column(Boolean, default=True)
     clientRefreshRate = Column(Integer, default=5)
+    emailServer       = Column(String(100), nullable=True)
+    emailUsername     = Column(String(100), nullable=True)
+    emailPassword     = Column(String(100), nullable=True)
+    emailEventType    = Column(String(100), nullable=True)
+    emailDelay        = Column(Integer, default=600)
+    emailEnable       = Column(Boolean, nullable=False, default=False)
+
 
     def __repr__(self):
         return f'<AppSettings {self.id}>'
+
+
+
+# Notification Email contact list
+class NotificationEmail(Base):
+    __tablename__ = 'notificationemails'
+
+    id           = Column(Integer, primary_key=True)
+    emailAddress = Column(String(100), nullable=False)
+
+    def __repr__(self):
+        return f'<NotificationEmail {self.id}>'
+
 
 
 
@@ -698,7 +718,7 @@ def addAdminUser():
 
 # Initialize app defaults
 def initApplicationDefaults():
-    appSettings = AppSettings(allowNewSesssions=True, clientRefreshRate=5)
+    appSettings = AppSettings(allowNewSesssions=True, clientRefreshRate=5, emailDelay=600, emailEnable=False)
 
     db_session.add(appSettings)
     dbCommit()
@@ -1988,7 +2008,7 @@ def getClientRefreshRate():
 @login_required
 def setClientRefreshRate(rate):
     rate = int(rate)
-    
+
     if rate < 1 or rate > 3600:
         return "No.", 401
     else:

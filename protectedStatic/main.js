@@ -351,7 +351,7 @@ async function deleteBlockedIP(button)
 
 
 
-async function showSessionModal()
+async function showAppSettingsModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
 
@@ -365,6 +365,18 @@ async function showSessionModal()
 
 	var checkBox    = document.getElementById('allowNewClientSessions');
 	var clientDelay = document.getElementById('clientRefreshDelay');
+
+
+	var saveButton = document.getElementById('saveEmailSettings');
+
+	var serverString  = document.getElementById('smtpServer');
+	var emailUsername = document.getElementById('emailUsername');
+	var emailPassword = document.getElementById('emailPassword');
+	var notifyEvent   = document.getElementById('emailNotificationType');
+	var emailDelay    = document.getElementById('emailDelay');
+	var emailEnable   = document.getElementById('enableEmails');
+
+
 
 	clientDelay.value = delayResponse.clientRefreshRate;
 
@@ -395,6 +407,15 @@ async function showSessionModal()
 		clientUpdateRate = clientDelay.value;
 		clearInterval(updateTimer);
 		updateTimer = setInterval(updateClients, (clientUpdateRate * 1000));
+	});
+
+
+	saveButton.addEventListener('click', function()
+	{
+
+		console.log("*** Saving email settings...");
+
+		saveButton.blur();
 	});
 
 
