@@ -500,6 +500,8 @@
 							    <label for="emailPassword">Password</label><br>
 							    <input type="password" class="form-control" id="emailPassword">
 							</div>
+
+							<!-- List of email addresses to notify -->
 							<div class="mb-3">
 							    <label for="emailInput">Enter Email</label>
 
@@ -507,10 +509,9 @@
 			                    <input id="emailInput" type="text" class="form-control" placeholder="Enter Email">
 			                    <button id="addEmail" class="btn btn-primary" type="button">Add</button>
 			                </div>
-
-
- 							<ul id="emailList" class="list-group">
+			               	<ul id="emailAddressList" class="list-group">
 			                </ul>
+			                <script>document.getElementById("addEmail").addEventListener('click', addEmail);</script>
 			                <br>
 			                <div class="form-check form-switch">
 			                    <input class="form-check-input" type="checkbox" id="enableEmails">
@@ -559,22 +560,6 @@
 			        </div>
 			    </div>
 			</div>
-			<script>
-			document.getElementById("addEmail").addEventListener('click', function() {
-			    var emailInput = document.getElementById("emailInput");
-			    var emailList = document.getElementById("emailList");
-			    var newEmail = emailInput.value;
-			    if (newEmail) {
-			        var listItem = document.createElement("li");
-			        listItem.textContent = newEmail;
-			        listItem.className = "list-group-item";
-			        emailList.appendChild(listItem);
-			        emailInput.value = ""; // clear the input after adding
-			    }
-			});
-			</script>
-
-
 
 
 			<!-- Custom Payload Modal -->

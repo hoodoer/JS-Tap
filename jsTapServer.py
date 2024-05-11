@@ -2023,11 +2023,6 @@ def saveEmailSettings():
 
 
 
-# Need email targets too, add/delete/get
-
-
-
-
 @app.route('/api/app/enableEmailNotifications/<setting>', methods=['GET'])
 @login_required
 def changeEmailNoficiations(setting):
@@ -2057,10 +2052,40 @@ def getEmailNotifications():
 
 
 
-# @app.route('/app/app/testEmail', methods=['GET'])
-# @login_required
-# def sendTestEmail():
 
+
+@app.route('/api/getTargetEmails', methods=['GET'])
+@login_required
+def getTargetEmails():
+    targetEmails = NotificationEmail.query.all()
+
+    allEmails = [{'id':escape(targetEmail.id), 'address':escape(targetEmail.emailAddress)} for targetEmail in targetEmails]
+
+    return jsonify(allEmails)
+
+
+@app.route('/api/addTargetEmail', methods=['POST'])
+@login_required
+def addTargetEmail(): 
+    content      = request.json
+    emailAddress = content['emailAddress']
+
+    emailAddress = NotificationEmail(emailAddress=emailAddress)
+    db_session.add(emailAddress)
+    dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/deleteTargetEmail/<key>', methods=['GET'])
+@login_required
+def deleteTargetEmail(key):
+    emailAddress = NotificationEmail.query.filter_by(id=key).first()
+
+    db_session.delete(emailAddress)
+    dbCommit()
+
+    return "ok", 200
 
 
 

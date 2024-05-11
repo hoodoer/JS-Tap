@@ -105,7 +105,6 @@ function blockIP()
 	var inputField = document.getElementById('ipInput');
 	var ipAddress  = inputField.value;
 
-
 	const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
 	if (ipv4Regex.test(ipAddress)) 
@@ -118,6 +117,10 @@ function blockIP()
 			headers: {
 				"Content-type": "application/json; charset=UTF-8"
 			}
+		})
+		.then(response => {
+			inputField.value = "";
+			refreshBlockedIPList();			
 		});
 	} 
 	else 
@@ -127,6 +130,40 @@ function blockIP()
 
 	inputField.value = "";
 	refreshBlockedIPList();
+}
+
+
+
+function addEmail()
+{
+	var inputField = document.getElementById('emailInput');
+	var address    = inputField.value;
+
+	const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+
+	if (emailRegex.test(address))
+	{
+		fetch('/api/addTargetEmail', {
+			method:"POST",
+			body: JSON.stringify({
+				emailAddress: address
+			}),
+			headers: {
+				"Content-type": "application/json; charset=UTF-8"
+			}
+		})
+		.then(response => {
+			inputField.value = "";
+			refreshTargetEmailList();			
+		});
+	}
+	else
+	{
+		alert("Invalid email address, please enter a valid email address.");
+	}
+
+	inputField.value = "";
+	refreshTargetEmailList();
 }
 
 
@@ -342,11 +379,59 @@ async function refreshBlockedIPList()
 }
 
 
+
+async function refreshTargetEmailList()
+{
+	var targetEmailList = document.getElementById('emailAddressList');
+
+	targetEmailList.innerHTML = '';
+
+	var req = await fetch('/api/getTargetEmails');
+	var jsonResponse = await req.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		id      = jsonResponse[i].id;
+		address = jsonResponse[i].address;
+
+		var targetEmail = document.createElement('li');
+		targetEmail.className = 'list-group-item d-flex justify-content-between align-items-center'; 
+		targetEmail.textContent = address;
+		targetEmail.id          = id;
+
+		var deleteButton = document.createElement('button');
+		deleteButton.id          = id;
+		deleteButton.emailAddy   = address;
+		deleteButton.className   = 'btn btn-sm me-2';
+		deleteButton.textContent = 'Delete';
+
+
+		deleteButton.addEventListener('click', function()
+		{
+			// Run on this clients
+			deleteTargetEmail(this);
+		})
+
+		targetEmail.appendChild(deleteButton);
+		targetEmailList.appendChild(targetEmail);
+	}
+}
+
+
 async function deleteBlockedIP(button)
 {
 	await fetch('/api/deleteBlockedIP/' + button.id);
 
 	refreshBlockedIPList();
+}
+
+
+
+async function deleteTargetEmail(button)
+{
+	await fetch('/api/deleteTargetEmail/' + button.id);
+
+	refreshTargetEmailList();
 }
 
 
@@ -493,7 +578,7 @@ async function showAppSettingsModal()
 
 
 	refreshBlockedIPList();
-
+	refreshTargetEmailList();
 
 	modal.show();
 }
