@@ -1992,6 +1992,59 @@ def setAllowNewClientSessions(setting):
 
 
 
+@app.route('/api/app/getEmailSettings', methods=['GET'])
+@login_required
+def getEmailSettings():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    emailData = {'emailServer':escape(appSettings.emailServer), 'username':escape(appSettings.emailUsername), 'password':'*********', 'eventType': escape(appSettings.emailEventType), 'delay': escape(appSettings.emailDelay)}
+
+    return jsonify(emailData)
+
+
+
+@app.route('/api/app/saveEmailSettings', methods=['POST'])
+@login_required
+def saveEmailSettings():
+    content = request.json
+
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    appSettings.emailServer    = content['emailServer']
+    appSettings.emailUsername  = content['username']
+    appSettings.emailPassword  = content['password']
+    appSettings.emailEventType = content['eventType']
+    appSettings.emailDelay     = content['delay']
+
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+# Need email targets too, add/delete/get
+
+
+
+
+# @app.route('/api/app/enableEmailNotifications/<setting>', methods=['GET'])
+# @login_required
+# def changeEmailNoficiations(setting):
+
+
+
+
+# @app.route('/app/app/testEmail', methods=['GET'])
+# @login_required
+# def sendTestEmail():
+
+
+
+
+
+
+
 
 @app.route('/api/app/clientRefreshRate', methods=['GET'])
 @login_required

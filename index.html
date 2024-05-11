@@ -489,31 +489,43 @@
 
 			                <!-- Email Settings -->
 			                <h6>Email Notifications Settings:</h6>
-			                <div class="input-group mb-3">
-			                    <input type="text" class="form-control" placeholder="SMTP Server" id="smtpServer">
+							<div class="mb-3">
+							    <label for="smtpServer">SMTP Server</label><br>
+							    <input type="text" class="form-control" id="smtpServer">
+							</div>
+							<div class="mb-3">
+							    <label for="emailUsername">Username</label><br>
+							    <input type="text" class="form-control" id="emailUsername">
+							    
+							    <label for="emailPassword">Password</label><br>
+							    <input type="password" class="form-control" id="emailPassword">
+							</div>
+							<div class="mb-3">
+							    <label for="emailInput">Enter Email</label>
+
+							    <div class="input-group mb-3">
+			                    <input id="emailInput" type="text" class="form-control" placeholder="Enter Email">
+			                    <button id="addEmail" class="btn btn-primary" type="button">Add</button>
 			                </div>
-			                <div class="input-group mb-3">
-			                    <input type="text" class="form-control" placeholder="Username" id="emailUsername">
-			                    <input type="password" class="form-control" placeholder="Password" id="emailPassword">
-			                </div>
-			                <div class="input-group mb-3">
-			                    <input type="text" class="form-control" placeholder="Enter Email" id="emailInput">
-			                    <button class="btn btn-primary" type="button" id="addEmail">Add</button>
-			                </div>
-			                <ul id="emailList" class="list-group">
+
+
+ 							<ul id="emailList" class="list-group">
 			                </ul>
 			                <br>
 			                <div class="form-check form-switch">
 			                    <input class="form-check-input" type="checkbox" id="enableEmails">
 			                    <label class="form-check-label" for="enableEmails">Disable/Enable Emails</label>
 			                </div>
-			                <div class="input-group mb-3">
+			                <div class="mb-3">
+			                	<br>
+							    <label for="emailNotificationType">Event Type</label>
 			                    <select class="form-select" id="emailNotificationType">
 			                        <option value="newClients">Notify on new clients</option>
 			                        <option value="newClientsAndEvents">Notify on new clients and events</option>
 			                    </select>
 			                </div>
-			                <div class="input-group mb-3">
+			                <div class="mb-3">
+							    <label for="emailDelay">Delay Between Emails</label>
 			                    <input type="number" class="form-control" placeholder="Delay between emails (minutes)" id="emailDelay">
 			                </div>
 			                

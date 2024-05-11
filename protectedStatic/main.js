@@ -377,6 +377,34 @@ async function showAppSettingsModal()
 	var emailEnable   = document.getElementById('enableEmails');
 
 
+	var emailData     = await fetch('/api/app/getEmailSettings');
+	var emailDataJson = await emailData.json();
+
+
+	console.log('++++ email settings: ');
+	console.log(emailDataJson);
+
+	serverString.value  = emailDataJson.emailServer;
+	emailUsername.value = emailDataJson.username;
+	emailPassword.value = emailDataJson.password;
+	emailDelay.value    = emailDataJson.delay;
+
+
+	switch(emailDataJson.eventType)
+	{
+	case 'newClients':
+		notifyEvent.value = "newClients";
+		break;
+	case 'newClientsAndEvents':
+		notifyEvent.value = "newClientsAndEvents";
+		break;
+	case 'None':
+		notifyEvent.value = "newClients";
+		break;
+	default:
+		alert("Error parsing email notification event type." + emailDataJson.eventType);
+	}
+
 
 	clientDelay.value = delayResponse.clientRefreshRate;
 
@@ -391,6 +419,10 @@ async function showAppSettingsModal()
 		checkBox.checked == false;
 	}
 
+	notifyEvent.addEventListener('change', function()
+	{
+		console.log("^^^^^ event type now: " + notifyEvent.value)
+	});
 
 	clientDelay.addEventListener('change', function()
 	{
@@ -414,6 +446,20 @@ async function showAppSettingsModal()
 	{
 
 		console.log("*** Saving email settings...");
+
+		fetch('/api/app/saveEmailSettings', {
+			method:"POST",
+			body: JSON.stringify({
+				emailServer: serverString.value,
+				username: emailUsername.value,
+				password: emailPassword.value,
+				eventType: notifyEvent.value,
+				delay: emailDelay.value
+			}),
+			headers: {
+				"Content-type": "application/json; charset=UTF-8"
+			}
+		});
 
 		saveButton.blur();
 	});
