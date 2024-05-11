@@ -380,10 +380,6 @@ async function showAppSettingsModal()
 	var emailData     = await fetch('/api/app/getEmailSettings');
 	var emailDataJson = await emailData.json();
 
-
-	console.log('++++ email settings: ');
-	console.log(emailDataJson);
-
 	serverString.value  = emailDataJson.emailServer;
 	emailUsername.value = emailDataJson.username;
 	emailPassword.value = emailDataJson.password;
@@ -405,6 +401,17 @@ async function showAppSettingsModal()
 		alert("Error parsing email notification event type." + emailDataJson.eventType);
 	}
 
+	var emailsEnabledReq  = await fetch('/api/app/getEmailNotificationSetting');
+	var emailsEnabledJson = await emailsEnabledReq.json();
+
+	if (emailsEnabledJson.emailEnable)
+	{
+		emailEnable.checked  = true;
+	}
+	else
+	{
+		emailEnable.checked = false;
+	}
 
 	clientDelay.value = delayResponse.clientRefreshRate;
 
@@ -419,9 +426,29 @@ async function showAppSettingsModal()
 		checkBox.checked == false;
 	}
 
+
+
+
+
 	notifyEvent.addEventListener('change', function()
 	{
 		console.log("^^^^^ event type now: " + notifyEvent.value)
+	});
+
+	emailEnable.addEventListener('change', function()
+	{
+		if (emailEnable.checked)
+		{
+			// enable
+			fetch('/api/app/enableEmailNotifications/true');
+			console.log("Turning on email notifications");
+		}
+		else
+		{
+			// disabled
+			fetch('/api/app/enableEmailNotifications/false');
+			console.log("Turning off email notifications");
+		}
 	});
 
 	clientDelay.addEventListener('change', function()

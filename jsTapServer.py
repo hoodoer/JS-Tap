@@ -1823,15 +1823,15 @@ def searchCsrfToken(key):
 
     foundToken = False
     for htmlCode in htmlLoot:
-        print("Going to search file: " + htmlCode.fileName)
+        # print("Going to search file: " + htmlCode.fileName)
         with open(htmlCode.fileName, 'r', encoding='utf-8') as file:
             content = file.read()
 
             if (tokenValue in content):
                 if (tokenName in content):
                     foundToken = True
-                    print("Found to token in: " + htmlCode.fileName)
-                    print("URL is: " + htmlCode.url)
+                    # print("Found to token in: " + htmlCode.fileName)
+                    # print("URL is: " + htmlCode.url)
 
                     break
 
@@ -1887,7 +1887,7 @@ def searchApiAuthToken(key):
                 locationType = "NOT FOUND"
                 tokenName    = "NOT FOUND"
 
-    print("*** At end of auth token search, was found in: " + locationType)
+    # print("*** At end of auth token search, was found in: " + locationType)
 
     locationData = {'location':locationType, 'tokenName':tokenName}
 
@@ -2028,10 +2028,32 @@ def saveEmailSettings():
 
 
 
-# @app.route('/api/app/enableEmailNotifications/<setting>', methods=['GET'])
-# @login_required
-# def changeEmailNoficiations(setting):
+@app.route('/api/app/enableEmailNotifications/<setting>', methods=['GET'])
+@login_required
+def changeEmailNoficiations(setting):
+    appSettings = AppSettings.query.filter_by(id=1).first()
 
+    if setting == 'true':
+        appSettings.emailEnable = True
+    elif setting == 'false':
+        appSettings.emailEnable = False
+    else:
+        logger.error("Invalid true/false value in enableEmailNotifications:" + setting)
+    
+    dbCommit()
+
+    return "ok", 200
+
+
+
+@app.route('/api/app/getEmailNotificationSetting', methods=['GET'])
+@login_required
+def getEmailNotifications():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+   
+    emailEnableData = {'emailEnable': appSettings.emailEnable}
+
+    return jsonify(emailEnableData)
 
 
 
