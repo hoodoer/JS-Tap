@@ -14,6 +14,8 @@ from flask_bcrypt import Bcrypt
 from filelock import FileLock, Timeout
 from enum import Enum
 from user_agents import parse
+from email.mime.text import MIMEText
+from flask_executor import Executor
 import magic
 import json
 import uuid
@@ -24,6 +26,7 @@ import string
 import random
 import shutil
 import logging
+import smtplib
 
 
 
@@ -119,6 +122,7 @@ logger.addHandler(fh)
 
 
 app = Flask(__name__)
+backgroundExecutor = Executor(app)
 CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
 
@@ -2062,7 +2066,7 @@ def getTargetEmails():
     allEmails = [{'id':escape(targetEmail.id), 'address':escape(targetEmail.emailAddress)} for targetEmail in targetEmails]
 
     return jsonify(allEmails)
-
+ 
 
 @app.route('/api/addTargetEmail', methods=['POST'])
 @login_required
@@ -2088,6 +2092,47 @@ def deleteTargetEmail(key):
     return "ok", 200
 
 
+
+def sendTestEmail():
+    appSettings  = AppSettings.query.filter_by(id=1).first()
+    targetEmails = NotificationEmail.query.all()
+  
+    fromEmail   = appSettings.emailUsername
+    password    = AppSettings.emailPassword
+    toEmailList = [email.emailAddress for email in targetEmails]
+
+    message = MIMEText("This is a test email from JS-Tap notification service.")
+    message["Subject"] = "JS-Tap Notification: Test Email"
+    message["From"]    = fromEmail
+    message["To"]      = ",".join(toEmailList)
+   
+    serverInfo = appSettings.emailServer
+    hostname, port = serverInfo.split(':')
+    port = int(port)
+
+    with smtplib.SMTP(hostname, port) as emailServer:
+        emailServer.ehlo()
+        emailServer.starttls()
+        emailServer.ehlo()
+        emailServer.login(fromEmail, password)
+        emailServer.sendmail(fromEmail, toEmailList, message.as_string())
+
+    logger.info("Test email sent!")
+
+    return
+
+
+
+@app.route('/api/sendTestEmail', methods=['GET'])
+@login_required
+def sendTestEmailEndpoint():
+ 
+    logger.info("Received request for test email!")
+
+    # backgroundExecutor.submit(sendTestEmail)
+
+    sendTestEmail()
+    return "ok", 200
 
 
 

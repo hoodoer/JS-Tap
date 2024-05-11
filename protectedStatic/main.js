@@ -395,7 +395,7 @@ async function refreshTargetEmailList()
 		address = jsonResponse[i].address;
 
 		var targetEmail = document.createElement('li');
-		targetEmail.className = 'list-group-item d-flex justify-content-between align-items-center'; 
+		targetEmail.className   = 'list-group-item d-flex justify-content-between align-items-center'; 
 		targetEmail.textContent = address;
 		targetEmail.id          = id;
 
@@ -452,7 +452,8 @@ async function showAppSettingsModal()
 	var clientDelay = document.getElementById('clientRefreshDelay');
 
 
-	var saveButton = document.getElementById('saveEmailSettings');
+	var saveButton      = document.getElementById('saveEmailSettings');
+	var testEmailButton = document.getElementById('sendTestEmail');
 
 	var serverString  = document.getElementById('smtpServer');
 	var emailUsername = document.getElementById('emailUsername');
@@ -574,6 +575,15 @@ async function showAppSettingsModal()
 		});
 
 		saveButton.blur();
+	});
+
+
+	testEmailButton.addEventListener('click', function()
+	{
+		console.log("Sending test email...");
+		fetch('/api/sendTestEmail');
+
+		testEmailButton.blur();
 	});
 
 
