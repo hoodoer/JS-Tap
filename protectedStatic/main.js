@@ -13,6 +13,13 @@ let codeEditor;
 let codeEditorLoaded = false;
 let codeEditorBig    = false;
 
+
+// initialized booleans
+let appSettingsEvents = false;
+
+
+
+
 function initializeCodeMirror()
 {
 	if (!codeEditorLoaded)
@@ -515,76 +522,80 @@ async function showAppSettingsModal()
 
 
 
-
-	notifyEvent.addEventListener('change', function()
+	if (!appSettingsEvents)
 	{
-		console.log("^^^^^ event type now: " + notifyEvent.value)
-	});
-
-	emailEnable.addEventListener('change', function()
-	{
-		if (emailEnable.checked)
+		notifyEvent.addEventListener('change', function()
 		{
+			console.log("^^^^^ event type now: " + notifyEvent.value)
+		});
+
+		emailEnable.addEventListener('change', function()
+		{
+			if (emailEnable.checked)
+			{
 			// enable
-			fetch('/api/app/enableEmailNotifications/true');
-			console.log("Turning on email notifications");
-		}
-		else
-		{
+				fetch('/api/app/enableEmailNotifications/true');
+				console.log("Turning on email notifications");
+			}
+			else
+			{
 			// disabled
-			fetch('/api/app/enableEmailNotifications/false');
-			console.log("Turning off email notifications");
-		}
-	});
-
-	clientDelay.addEventListener('change', function()
-	{
-		if (clientDelay.value < 1)
-		{
-			clientDelay.value = 1;
-		}
-		else if (clientDelay.value > 3600)
-		{
-			clientDelay.value = 3600;
-		}
-
-		fetch('/api/app/setClientRefreshRate/' + clientDelay.value);
-		clientUpdateRate = clientDelay.value;
-		clearInterval(updateTimer);
-		updateTimer = setInterval(updateClients, (clientUpdateRate * 1000));
-	});
-
-
-	saveButton.addEventListener('click', function()
-	{
-
-		console.log("*** Saving email settings...");
-
-		fetch('/api/app/saveEmailSettings', {
-			method:"POST",
-			body: JSON.stringify({
-				emailServer: serverString.value,
-				username: emailUsername.value,
-				password: emailPassword.value,
-				eventType: notifyEvent.value,
-				delay: emailDelay.value
-			}),
-			headers: {
-				"Content-type": "application/json; charset=UTF-8"
+				fetch('/api/app/enableEmailNotifications/false');
+				console.log("Turning off email notifications");
 			}
 		});
 
-		saveButton.blur();
-	});
+		clientDelay.addEventListener('change', function()
+		{
+			if (clientDelay.value < 1)
+			{
+				clientDelay.value = 1;
+			}
+			else if (clientDelay.value > 3600)
+			{
+				clientDelay.value = 3600;
+			}
+
+			fetch('/api/app/setClientRefreshRate/' + clientDelay.value);
+			clientUpdateRate = clientDelay.value;
+			clearInterval(updateTimer);
+			updateTimer = setInterval(updateClients, (clientUpdateRate * 1000));
+		});
 
 
-	testEmailButton.addEventListener('click', function()
-	{
-		console.log("Sending test email...");
-		fetch('/api/sendTestEmail');
+		saveButton.addEventListener('click', function()
+		{
 
-		testEmailButton.blur();
-	});
+			console.log("*** Saving email settings...");
+
+			fetch('/api/app/saveEmailSettings', {
+				method:"POST",
+				body: JSON.stringify({
+					emailServer: serverString.value,
+					username: emailUsername.value,
+					password: emailPassword.value,
+					eventType: notifyEvent.value,
+					delay: emailDelay.value
+				}),
+				headers: {
+					"Content-type": "application/json; charset=UTF-8"
+				}
+			});
+
+			saveButton.blur();
+		});
+
+
+		testEmailButton.addEventListener('click', function()
+		{
+			console.log("Sending test email...");
+			fetch('/api/sendTestEmail');
+
+			testEmailButton.blur();
+		});
+
+		appSettingsEvents = true;
+	}
 
 
 	refreshBlockedIPList();
@@ -1104,6 +1115,7 @@ function toggleCodeEditor()
 
 async function showCustomPayloadModal(skipClear)
 {
+	console.log("showing custom payloads...");
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
 
 	var modalElement      = document.getElementById('customPayloadModal');

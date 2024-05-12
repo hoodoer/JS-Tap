@@ -21,6 +21,7 @@ import json
 import uuid
 import os
 import time
+import datetime
 import threading
 import string
 import random
@@ -502,7 +503,13 @@ class AppSettings(Base):
     emailEventType    = Column(String(100), nullable=True)
     emailDelay        = Column(Integer, default=600)
     emailEnable       = Column(Boolean, nullable=False, default=False)
+    lastEmailSent     = Column(DateTime(timezone=True), nullable=True)
+    emailContent      = Column(Text, nullable=True)
 
+
+    def emailSent(self):
+        # logger.info("$$ Client Update func")
+        self.lastEmailSent = func.now()
 
     def __repr__(self):
         return f'<AppSettings {self.id}>'
@@ -637,12 +644,168 @@ def scheduleRepeatTasks(client):
 
 
 
+# For testing the SMTP TLS email configuration
+def sendTestEmail():
+    appSettings  = AppSettings.query.filter_by(id=1).first()
+    targetEmails = NotificationEmail.query.all()
+  
+    fromEmail   = appSettings.emailUsername
+    password    = appSettings.emailPassword
+    toEmailList = [email.emailAddress for email in targetEmails]
+
+    message = MIMEText("This is a test email from JS-Tap notification service.")
+    message["Subject"] = "JS-Tap Notification: Test Email"
+    message["From"]    = fromEmail
+    message["To"]      = ",".join(toEmailList)
+   
+    serverInfo = appSettings.emailServer
+    hostname, port = serverInfo.split(':')
+    port = int(port)
+
+    with smtplib.SMTP(hostname, port) as emailServer:
+        emailServer.ehlo()
+        emailServer.starttls()
+        emailServer.ehlo()
+
+        emailServer.login(fromEmail, password)
+        emailServer.sendmail(fromEmail, toEmailList, message.as_string())
+
+    return
+
+
+
+
+# Check our delay time to see if we should send a notification email or not
+def emailNotification():
+    logger.info("** Top of email notification func")
+    emailSettings = AppSettings.query.with_entities(AppSettings.lastEmailSent, AppSettings.emailDelay).filter_by(id=1).first()
+
+
+    if emailSettings[0] is not None:
+        now = datetime.datetime.now()
+
+        timeDifference = now - emailSettings[0]
+        secondsPassed  = timeDifference.total_seconds()
+        logger.info("In email notification, timeDiffernce is: " + str(secondsPassed))
+
+        if secondsPassed >= emailSettings[1]:
+            logger.info("*** Enough time has passed, time to send email...")
+            logger.info("secondsPassed: " + str(secondsPassed) + ", delay setting: " + str(emailSettings[1]))
+        else:
+            logger.info("Not enough time has passed!")
+    else:
+        # first go, send it 
+        logger.info("First email send...")
+
+        appSettings  = AppSettings.query.filter_by(id=1).first()
+        targetEmails = NotificationEmail.query.all()
+
+        logger.info("2 Email send...")
+
+   
+        fromEmail   = appSettings.emailUsername
+        password    = appSettings.emailPassword
+        toEmailList = [email.emailAddress for email in targetEmails]
+
+        logger.info("3 Email send...")
+
+        message = MIMEText("JS-Tap Update:\n" + appSettings.emailContent)
+        message["Subject"] = "JS-Tap Update Notification"
+        message["From"]    = fromEmail
+        message["To"]      = ",".join(toEmailList)
+       
+        logger.info("4 Email send...")
+
+        serverInfo = appSettings.emailServer
+        hostname, port = serverInfo.split(':')
+        port = int(port)
+
+        logger.info("Sending email now...")
+        with smtplib.SMTP(hostname, port) as emailServer:
+            emailServer.ehlo()
+            emailServer.starttls()
+            emailServer.ehlo()
+
+            emailServer.login(fromEmail, password)
+            emailServer.sendmail(fromEmail, toEmailList, message.as_string())
+
+        appSettings.emailSent()
+        appSettings.emailContent = ""
+        dbCommit()
+
+    return
+
+
+# Handle if we need to do new client notifivation email work
+def newClientNotificationEmail(identifier):
+    isEnabled = AppSettings.query.with_entities(AppSettings.emailEnable).filter_by(id=1).first()
+
+    if (isEnabled[0]):
+        logger.info("NEW CLIENT: Looks like we would send an email!")
+    else:
+        logger.info("NEW CLIENT: Email disabled")
+
+    return
+
+
+
+
+# Handle if we need to do event notification email work
+def eventNotificationEmail(identifier):
+    emailSettings = AppSettings.query.with_entities(AppSettings.emailEnable, AppSettings.emailEventType).filter_by(id=1).first()
+
+    if (emailSettings[0]):
+        logger.info("NEW EVENT: Looks like we would send an email!")
+
+        logger.info("Notification type: " + str(emailSettings[1]))
+
+        # Ok, email notifications are turned on, but do we want to update on events or just new clients?
+        if (str(emailSettings[1]) == 'newClientsAndEvents'):
+            # Yes, we want to know about events
+            logger.info("Events need notifications!")
+
+            emailText  = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0] or ""
+            clientData = Client.query.with_entities(Client.nickname, Client.tag, Client.ipAddress).filter_by(uuid=identifier).first()
+
+            logger.info("Email Text is: " )
+            logger.info(emailText)
+         
+
+            now       = datetime.datetime.now()
+            timeStamp = now.strftime("%Y-%m-%d %H:%M:%S")
+            emailText += timeStamp + ": " + str(clientData[1]) + "/" + str(clientData[0]) + "- event recorded\n" 
+            # emailText += "test\n"
+
+            logger.info("2 - Email Text is: " )
+            logger.info(emailText)
+
+            statement = (update(AppSettings).where(AppSettings.id == 1).values(emailContent=emailText))
+            db_session.execute(statement)
+            dbCommit()
+
+            # Check if it's time to send a notification email
+            logger.info("About to call emailNotification...")
+            emailNotification()
+        else:
+            logger.info("Not emailing about events, mode: " + str(emailSettings[1]))
+
+        #newClientsAndEvents and newClients
+    else:
+        logger.info("NEW EVENT: Email disabled")
+
+    return
+
+
+
+
 
 # Updates "last seen" timestamp"
 # Do not call db commit in here
 def clientSeen(identifier, ip, userAgent):
     # logger.info("!! Client seen: " + str(ip) + ', ' + userAgent)
     # logger.info("*** Starting clientSeen Update!")
+
+    backgroundExecutor.submit(eventNotificationEmail, identifier)
 
     parsedUserAgent = parse(userAgent)
     # logger.info("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
@@ -688,6 +851,7 @@ def user_loader(username):
     return User.query.filter_by(username=username).first()
 
 
+
 # Need an admin account
 def addAdminUser():
     currentAdmin = User.query.filter_by(username='admin').first()
@@ -722,7 +886,7 @@ def addAdminUser():
 
 # Initialize app defaults
 def initApplicationDefaults():
-    appSettings = AppSettings(allowNewSesssions=True, clientRefreshRate=5, emailDelay=600, emailEnable=False)
+    appSettings = AppSettings(allowNewSesssions=True, clientRefreshRate=5, emailDelay=600, emailEnable=False, emailEventType='newClients')
 
     db_session.add(appSettings)
     dbCommit()
@@ -830,6 +994,7 @@ try:
                     FormPost.__table__.drop(engine)
                     CustomExfil.__table__.drop(engine)
                     ClientPayloadJob.__table__.drop(engine)
+                    db_session.execute(update(AppSettings).where(AppSettings.id==1).values(emailContent=""))
                     dbCommit()
 
                     Base.metadata.create_all(engine)
@@ -1074,6 +1239,8 @@ def returnUUID(tag=''):
     for payload in payloads:
         newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
         db_session.add(newJob)
+
+    backgroundExecutor.submit(newClientNotificationEmail, token)
     dbCommit()
 
     uuidData = {'clientToken':token}
@@ -2016,9 +2183,13 @@ def saveEmailSettings():
 
     appSettings.emailServer    = content['emailServer']
     appSettings.emailUsername  = content['username']
-    appSettings.emailPassword  = content['password']
     appSettings.emailEventType = content['eventType']
     appSettings.emailDelay     = content['delay']
+
+    if content['password'] != '*********':
+        # It's an actual password, not our "hide" string
+        appSettings.emailPassword  = content['password']
+    
 
     dbCommit()
 
@@ -2093,45 +2264,14 @@ def deleteTargetEmail(key):
 
 
 
-def sendTestEmail():
-    appSettings  = AppSettings.query.filter_by(id=1).first()
-    targetEmails = NotificationEmail.query.all()
-  
-    fromEmail   = appSettings.emailUsername
-    password    = AppSettings.emailPassword
-    toEmailList = [email.emailAddress for email in targetEmails]
-
-    message = MIMEText("This is a test email from JS-Tap notification service.")
-    message["Subject"] = "JS-Tap Notification: Test Email"
-    message["From"]    = fromEmail
-    message["To"]      = ",".join(toEmailList)
-   
-    serverInfo = appSettings.emailServer
-    hostname, port = serverInfo.split(':')
-    port = int(port)
-
-    with smtplib.SMTP(hostname, port) as emailServer:
-        emailServer.ehlo()
-        emailServer.starttls()
-        emailServer.ehlo()
-        emailServer.login(fromEmail, password)
-        emailServer.sendmail(fromEmail, toEmailList, message.as_string())
-
-    logger.info("Test email sent!")
-
-    return
-
 
 
 @app.route('/api/sendTestEmail', methods=['GET'])
 @login_required
 def sendTestEmailEndpoint():
  
-    logger.info("Received request for test email!")
+    backgroundExecutor.submit(sendTestEmail)
 
-    # backgroundExecutor.submit(sendTestEmail)
-
-    sendTestEmail()
     return "ok", 200
 
 
