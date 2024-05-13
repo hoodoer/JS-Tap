@@ -496,7 +496,7 @@ class AppSettings(Base):
     __tablename__ = 'appsettings'
 
     id                = Column(Integer, primary_key=True)
-    allowNewSesssions = Column(Boolean, default=True)
+    allowNewSessions = Column(Boolean, default=True)
     clientRefreshRate = Column(Integer, default=5)
     emailServer       = Column(String(100), nullable=True)
     emailUsername     = Column(String(100), nullable=True)
@@ -896,7 +896,7 @@ def addAdminUser():
 
 # Initialize app defaults
 def initApplicationDefaults():
-    appSettings = AppSettings(allowNewSesssions=True, clientRefreshRate=5, emailDelay=600, emailEnable=False, emailEventType='newClients')
+    appSettings = AppSettings(allowNewSessions=True, clientRefreshRate=5, emailDelay=600, emailEnable=False, emailEventType='newClients')
 
     db_session.add(appSettings)
     dbCommit()
@@ -1208,8 +1208,8 @@ def returnUUID(tag=''):
     # Check to see if we're still allowing new client connections
     appSettings = AppSettings.query.filter_by(id=1).first()
 
-    # logger.info("In UUID, app setting is: " + str(appSettings.allowNewSesssions))
-    if (appSettings.allowNewSesssions == False):
+    # logger.info("In UUID, app setting is: " + str(appSettings.allowNewSessions))
+    if (appSettings.allowNewSessions == False):
         return "No.", 401
 
     # Is this IP blocked?
@@ -2155,7 +2155,7 @@ def setClientStar(key):
 def getAllowNewClientSessions():
     appSettings = AppSettings.query.filter_by(id=1).first()
 
-    newSessionData = {'newSessionsAllowed':appSettings.allowNewSesssions}
+    newSessionData = {'newSessionsAllowed':appSettings.allowNewSessions}
 
     return jsonify(newSessionData)
 
@@ -2169,9 +2169,9 @@ def setAllowNewClientSessions(setting):
     if (setting != '0' and setting != '1'):
         return "No.", 401
     elif setting == '1':
-        appSettings.allowNewSesssions = True
+        appSettings.allowNewSessions = True
     else:
-        appSettings.allowNewSesssions = False
+        appSettings.allowNewSessions = False
 
     dbCommit()
 
@@ -2660,7 +2660,7 @@ if __name__ == '__main__':
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
         app.run(debug=False, host='0.0.0.0', port=8444)
     else:
-        app.run(debug=True, host='0.0.0.0', port=8444, ssl_context='adhoc')
+        app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
        
 
 
