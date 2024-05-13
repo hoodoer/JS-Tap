@@ -14,16 +14,21 @@ from flask_bcrypt import Bcrypt
 from filelock import FileLock, Timeout
 from enum import Enum
 from user_agents import parse
+from email.mime.text import MIMEText
+from flask_executor import Executor
+from apscheduler.schedulers.background import BackgroundScheduler
 import magic
 import json
 import uuid
 import os
 import time
+import datetime
 import threading
 import string
 import random
 import shutil
 import logging
+import smtplib
 
 
 
@@ -119,6 +124,7 @@ logger.addHandler(fh)
 
 
 app = Flask(__name__)
+backgroundExecutor = Executor(app)
 CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
 
@@ -490,10 +496,37 @@ class AppSettings(Base):
     __tablename__ = 'appsettings'
 
     id                = Column(Integer, primary_key=True)
-    allowNewSesssions = Column(Boolean, default=True)
+    allowNewSessions = Column(Boolean, default=True)
+    clientRefreshRate = Column(Integer, default=5)
+    emailServer       = Column(String(100), nullable=True)
+    emailUsername     = Column(String(100), nullable=True)
+    emailPassword     = Column(String(100), nullable=True)
+    emailEventType    = Column(String(100), nullable=True)
+    emailDelay        = Column(Integer, default=600)
+    emailEnable       = Column(Boolean, nullable=False, default=False)
+    lastEmailSent     = Column(DateTime(timezone=True), nullable=True)
+    emailContent      = Column(Text, nullable=True)
+
+
+    def emailSent(self):
+        # logger.info("$$ Client Update func")
+        self.lastEmailSent = func.now()
 
     def __repr__(self):
         return f'<AppSettings {self.id}>'
+
+
+
+# Notification Email contact list
+class NotificationEmail(Base):
+    __tablename__ = 'notificationemails'
+
+    id           = Column(Integer, primary_key=True)
+    emailAddress = Column(String(100), nullable=False)
+
+    def __repr__(self):
+        return f'<NotificationEmail {self.id}>'
+
 
 
 
@@ -612,12 +645,177 @@ def scheduleRepeatTasks(client):
 
 
 
+# For testing the SMTP TLS email configuration
+def sendTestEmail():
+    appSettings  = AppSettings.query.filter_by(id=1).first()
+    targetEmails = NotificationEmail.query.all()
+  
+    fromEmail   = appSettings.emailUsername
+    password    = appSettings.emailPassword
+    toEmailList = [email.emailAddress for email in targetEmails]
+
+    message = MIMEText("This is a test email from JS-Tap notification service.")
+    message["Subject"] = "JS-Tap Notification: Test Email"
+    message["From"]    = fromEmail
+    message["To"]      = ",".join(toEmailList)
+   
+    serverInfo = appSettings.emailServer
+    hostname, port = serverInfo.split(':')
+    port = int(port)
+
+    with smtplib.SMTP(hostname, port) as emailServer:
+        emailServer.ehlo()
+        emailServer.starttls()
+        emailServer.ehlo()
+
+        emailServer.login(fromEmail, password)
+        emailServer.sendmail(fromEmail, toEmailList, message.as_string())
+
+    return
+
+
+
+
+# Send the actual notification email
+def sendNotificationEmail():
+    appSettings  = AppSettings.query.filter_by(id=1).first()
+    targetEmails = NotificationEmail.query.all()
+
+    fromEmail   = appSettings.emailUsername
+    password    = appSettings.emailPassword
+    toEmailList = [email.emailAddress for email in targetEmails]
+
+    message = MIMEText("JS-Tap Update:\n" + appSettings.emailContent)
+    message["Subject"] = "JS-Tap Update Notification"
+    message["From"]    = fromEmail
+    message["To"]      = ",".join(toEmailList)
+   
+    serverInfo = appSettings.emailServer
+    hostname, port = serverInfo.split(':')
+    port = int(port)
+
+    logger.info("EMAIL: Sending notification email")
+    with smtplib.SMTP(hostname, port) as emailServer:
+        emailServer.ehlo()
+        emailServer.starttls()
+        emailServer.ehlo()
+
+        emailServer.login(fromEmail, password)
+        emailServer.sendmail(fromEmail, toEmailList, message.as_string())
+
+    # logger.info("Email Text is: " )
+    # logger.info(appSettings.emailContent)
+    
+    appSettings.emailSent()
+    appSettings.emailContent = ""
+
+    dbCommit()
+    return
+
+
+
+
+
+
+
+# Check our delay time to see if we should send a notification email or not
+def emailNotificationCheck():
+    emailSettings = AppSettings.query.with_entities(AppSettings.lastEmailSent, AppSettings.emailDelay).filter_by(id=1).first()
+
+    if emailSettings[0] is not None:
+        # We've already sent an email in the past
+        # Make sure we're waiting the delay time before firing off another
+        now = datetime.datetime.utcnow()
+
+        timeDifference = now - emailSettings[0]
+        secondsPassed  = timeDifference.total_seconds()
+
+        if secondsPassed >= emailSettings[1]:
+            sendNotificationEmail()
+    else:
+        # first go, no recorded email sent before, so go ahead and send one
+        sendNotificationEmail()
+
+    return
+
+
+
+# Timed based notification check. The other email notification check
+# is based on events, but if things go quiet some update data could 
+# be stuck in the database. This gets called regularly to see if 
+# we need to send out a notification email
+def timedEmailNotificationCheck():
+    isEnabled = AppSettings.query.with_entities(AppSettings.emailEnable).filter_by(id=1).first()
+
+    if (isEnabled):
+        emailContent = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0]
+
+        if emailContent:
+            emailNotificationCheck()
+    return
+
+
+
+
+
+# Handle if we need to do new client notifivation email work
+def newClientNotificationEmail(identifier):
+    isEnabled = AppSettings.query.with_entities(AppSettings.emailEnable).filter_by(id=1).first()
+
+    if (isEnabled[0]):
+        emailText  = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0] or ""
+        clientData = Client.query.with_entities(Client.nickname, Client.tag).filter_by(uuid=identifier).first()
+
+        now       = datetime.datetime.now()
+        timeStamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        emailText += timeStamp + ": "  + str(clientData[1]) + "/" + str(clientData[0]) + " - new client\n" 
+
+        statement = (update(AppSettings).where(AppSettings.id == 1).values(emailContent=emailText))
+        db_session.execute(statement)
+        dbCommit()
+
+        # Check if it's time to send a notification email
+        emailNotificationCheck()
+    return
+
+
+
+
+# Handle if we need to do event notification email work
+def eventNotificationEmail(identifier):
+    emailSettings = AppSettings.query.with_entities(AppSettings.emailEnable, AppSettings.emailEventType).filter_by(id=1).first()
+
+    if (emailSettings[0]):
+        # Ok, email notifications are turned on, but do we want to update on events or just new clients?
+        if (str(emailSettings[1]) == 'newClientsAndEvents'):
+            # Yes, we want to know about events
+
+            emailText  = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0] or ""
+            clientData = Client.query.with_entities(Client.nickname, Client.tag, Client.ipAddress).filter_by(uuid=identifier).first()
+
+            now       = datetime.datetime.now()
+            timeStamp = now.strftime("%Y-%m-%d %H:%M:%S")
+            emailText += timeStamp + ": " + str(clientData[2]) + " - " + str(clientData[1]) + "/" + str(clientData[0]) + " - event received\n" 
+
+            statement = (update(AppSettings).where(AppSettings.id == 1).values(emailContent=emailText))
+            db_session.execute(statement)
+            dbCommit()
+
+            # Check if it's time to send a notification email
+            emailNotificationCheck()
+    return
+
+
+
+
 
 # Updates "last seen" timestamp"
 # Do not call db commit in here
 def clientSeen(identifier, ip, userAgent):
     # logger.info("!! Client seen: " + str(ip) + ', ' + userAgent)
     # logger.info("*** Starting clientSeen Update!")
+
+    backgroundExecutor.submit(eventNotificationEmail, identifier)
 
     parsedUserAgent = parse(userAgent)
     # logger.info("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
@@ -663,6 +861,7 @@ def user_loader(username):
     return User.query.filter_by(username=username).first()
 
 
+
 # Need an admin account
 def addAdminUser():
     currentAdmin = User.query.filter_by(username='admin').first()
@@ -697,7 +896,7 @@ def addAdminUser():
 
 # Initialize app defaults
 def initApplicationDefaults():
-    appSettings = AppSettings(allowNewSesssions=True)
+    appSettings = AppSettings(allowNewSessions=True, clientRefreshRate=5, emailDelay=600, emailEnable=False, emailEventType='newClients')
 
     db_session.add(appSettings)
     dbCommit()
@@ -805,6 +1004,7 @@ try:
                     FormPost.__table__.drop(engine)
                     CustomExfil.__table__.drop(engine)
                     ClientPayloadJob.__table__.drop(engine)
+                    db_session.execute(update(AppSettings).where(AppSettings.id==1).values(emailContent="", lastEmailSent=None))
                     dbCommit()
 
                     Base.metadata.create_all(engine)
@@ -847,6 +1047,12 @@ try:
         cursor.execute("PRAGMA synchronous=normal;")
         cursor.execute("PRAGMA cache_size = -20971520;") # 20MB
         cursor.close()
+
+
+    # Start our background notification email checker
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=timedEmailNotificationCheck, trigger="interval", seconds=120)    
+    scheduler.start()
 
     # Need the other threads to move on beyond the init code
     time.sleep(5)
@@ -1002,8 +1208,8 @@ def returnUUID(tag=''):
     # Check to see if we're still allowing new client connections
     appSettings = AppSettings.query.filter_by(id=1).first()
 
-    # logger.info("In UUID, app setting is: " + str(appSettings.allowNewSesssions))
-    if (appSettings.allowNewSesssions == False):
+    # logger.info("In UUID, app setting is: " + str(appSettings.allowNewSessions))
+    if (appSettings.allowNewSessions == False):
         return "No.", 401
 
     # Is this IP blocked?
@@ -1049,6 +1255,8 @@ def returnUUID(tag=''):
     for payload in payloads:
         newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
         db_session.add(newJob)
+
+    backgroundExecutor.submit(newClientNotificationEmail, token)
     dbCommit()
 
     uuidData = {'clientToken':token}
@@ -1802,15 +2010,15 @@ def searchCsrfToken(key):
 
     foundToken = False
     for htmlCode in htmlLoot:
-        print("Going to search file: " + htmlCode.fileName)
+        # print("Going to search file: " + htmlCode.fileName)
         with open(htmlCode.fileName, 'r', encoding='utf-8') as file:
             content = file.read()
 
             if (tokenValue in content):
                 if (tokenName in content):
                     foundToken = True
-                    print("Found to token in: " + htmlCode.fileName)
-                    print("URL is: " + htmlCode.url)
+                    # print("Found to token in: " + htmlCode.fileName)
+                    # print("URL is: " + htmlCode.url)
 
                     break
 
@@ -1866,7 +2074,7 @@ def searchApiAuthToken(key):
                 locationType = "NOT FOUND"
                 tokenName    = "NOT FOUND"
 
-    print("*** At end of auth token search, was found in: " + locationType)
+    # print("*** At end of auth token search, was found in: " + locationType)
 
     locationData = {'location':locationType, 'tokenName':tokenName}
 
@@ -1945,9 +2153,9 @@ def setClientStar(key):
 @app.route('/api/app/allowNewClientSessions', methods=['GET'])
 @login_required
 def getAllowNewClientSessions():
-    appSettngs = AppSettings.query.filter_by(id=1).first()
+    appSettings = AppSettings.query.filter_by(id=1).first()
 
-    newSessionData = {'newSessionsAllowed':appSettngs.allowNewSesssions}
+    newSessionData = {'newSessionsAllowed':appSettings.allowNewSessions}
 
     return jsonify(newSessionData)
 
@@ -1961,13 +2169,155 @@ def setAllowNewClientSessions(setting):
     if (setting != '0' and setting != '1'):
         return "No.", 401
     elif setting == '1':
-        appSettings.allowNewSesssions = True
+        appSettings.allowNewSessions = True
     else:
-        appSettings.allowNewSesssions = False
+        appSettings.allowNewSessions = False
 
     dbCommit()
 
     return "ok", 200
+
+
+
+@app.route('/api/app/getEmailSettings', methods=['GET'])
+@login_required
+def getEmailSettings():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    emailData = {'emailServer':escape(appSettings.emailServer), 'username':escape(appSettings.emailUsername), 'password':'*********', 'eventType': escape(appSettings.emailEventType), 'delay': escape(appSettings.emailDelay)}
+
+    return jsonify(emailData)
+
+
+
+@app.route('/api/app/saveEmailSettings', methods=['POST'])
+@login_required
+def saveEmailSettings():
+    content = request.json
+
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    appSettings.emailServer    = content['emailServer']
+    appSettings.emailUsername  = content['username']
+    appSettings.emailEventType = content['eventType']
+    appSettings.emailDelay     = content['delay']
+
+    if content['password'] != '*********':
+        # It's an actual password, not our "hide" string
+        appSettings.emailPassword  = content['password']
+    
+
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+@app.route('/api/app/enableEmailNotifications/<setting>', methods=['GET'])
+@login_required
+def changeEmailNoficiations(setting):
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    if setting == 'true':
+        appSettings.emailEnable = True
+    elif setting == 'false':
+        appSettings.emailEnable = False
+    else:
+        logger.error("Invalid true/false value in enableEmailNotifications:" + setting)
+    
+    dbCommit()
+
+    return "ok", 200
+
+
+
+@app.route('/api/app/getEmailNotificationSetting', methods=['GET'])
+@login_required
+def getEmailNotifications():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+   
+    emailEnableData = {'emailEnable': appSettings.emailEnable}
+
+    return jsonify(emailEnableData)
+
+
+
+
+
+@app.route('/api/getTargetEmails', methods=['GET'])
+@login_required
+def getTargetEmails():
+    targetEmails = NotificationEmail.query.all()
+
+    allEmails = [{'id':escape(targetEmail.id), 'address':escape(targetEmail.emailAddress)} for targetEmail in targetEmails]
+
+    return jsonify(allEmails)
+ 
+
+@app.route('/api/addTargetEmail', methods=['POST'])
+@login_required
+def addTargetEmail(): 
+    content      = request.json
+    emailAddress = content['emailAddress']
+
+    emailAddress = NotificationEmail(emailAddress=emailAddress)
+    db_session.add(emailAddress)
+    dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/deleteTargetEmail/<key>', methods=['GET'])
+@login_required
+def deleteTargetEmail(key):
+    emailAddress = NotificationEmail.query.filter_by(id=key).first()
+
+    db_session.delete(emailAddress)
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+
+@app.route('/api/sendTestEmail', methods=['GET'])
+@login_required
+def sendTestEmailEndpoint():
+    backgroundExecutor.submit(sendTestEmail)
+
+    return "ok", 200
+
+
+
+
+
+@app.route('/api/app/clientRefreshRate', methods=['GET'])
+@login_required
+def getClientRefreshRate():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    refreshData = {'clientRefreshRate':appSettings.clientRefreshRate}
+
+    return jsonify(refreshData)
+
+
+
+@app.route('/api/app/setClientRefreshRate/<rate>', methods=['GET'])
+@login_required
+def setClientRefreshRate(rate):
+    rate = int(rate)
+
+    if rate < 1 or rate > 3600:
+        return "No.", 401
+    else:
+        appSettings = AppSettings.query.filter_by(id=1).first()
+        appSettings.clientRefreshRate = rate
+        dbCommit()
+
+        return "ok", 200
+
 
 
 

@@ -1,5 +1,6 @@
 # JS-Tap
-### v2.11
+### v2.12
+
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 ## Changelogs
@@ -26,7 +27,7 @@ JS-Tap is a generic JavaScript payload and supporting software to help red teame
 
 The payload does not require the targeted user running the payload to be authenticated to the application being attacked, and it does not require any prior knowledge of the application beyond finding a way to get the JavaScript into the application. 
 
-Instead of attacking the application server itself, the base JS-Tap payload focuses on the client-side of the application and heavily instruments the client-side code. A C2 feature allows custom JavaScript payloads to be added in the Portal and sent as tasks to clients running the JS-Tap payload. JS-Tap also has an ability to automatically build custom payloads mimicking actions taken by users in the application. <br>
+Instead of attacking the application server itself, the JS-Tap payload focuses on the client-side of the application and heavily instruments the client-side code. A C2 system allows custom JavaScript payloads to be added and run as tasks on JS-Tap clients, providing a means to attack the application server directly. To facilitate faster transition to attacking the server, JS-Tap now includes a "mimic" feature to automatically generate custom payloads and hand them off to the C2 system. 
 
 The example JS-Tap payload is contained in the **telemlib.js** file in the payloads directory, however any file in this directory is served unauthenticated so you can serve multiple payloads with different configurations targeting different applications at the same time. <br> 
 
@@ -60,7 +61,7 @@ Make sure you review the configuration section below carefully before using on a
 * Custom Exfiltrated Data
 	- Data sent back from custom payloads in the C2 system
 
-Note: ability to receive copies of XHR and Fetch API calls works in trap mode. In implant mode only Fetch API can be copied currently. Intercaption of form submissions can sometimes be missed in implant mode.  
+Note: ability to receive copies of XHR and Fetch API calls works in trap mode. In implant mode only Fetch API can be copied currently. Interception of form submissions can sometimes be missed in implant mode.  
 
 ## Operating Modes
 The payload has two modes of operation. Whether the mode is **trap** or **implant** is set in the **initGlobals()** function, search for the **window.taperMode** variable.
@@ -240,7 +241,11 @@ The clients list can be sorted by time (first seen, last update received) and th
 
 Each client has an 'x' button (near the star button). This allows you to delete the session for that client, if they're sending junk or useless data, you can prevent that client from submitting future data. 
 
-When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop all new client sessions from being issues, select **Session Settings** at the top and you can disable new client sessions. You can also block specific IP addresses from receiving a session in here. 
+When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop all new client sessions from being issues, select **App Settings** at the top and you can disable new client sessions. 
+
+You can also configure email notifications in **App Settings** to notifiy on new clients, or new events for clients. This is SMTP (TLS) based only, and you can have the notification emails go to multiple recipients. An "email delay" option prevents constant email spamming, you'll get a roll-up email of all notifications that happend in the delay period. 
+
+You can change how often the client list automatically updates in the **App Settings** and you can also block specific IP addresses from receiving a JS-Tap session in here. 
 
 Each client has a "notes" feature. If you find juicy information for that particular client (credentials, API tokens, etc) you can add it to the client notes. After you've reviewed all your clients and made your notes, the **View All Notes** feature at the top allows you to export all notes from all clients at once. 
 

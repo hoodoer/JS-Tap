@@ -3,11 +3,22 @@ let tokenUrl         = "";
 let tokenLocation    = "";
 let tokenKey         = "";
 
+let clientUpdateRate = 5;
+let updateTimer = setInterval(updateClients, (clientUpdateRate * 1000));
+
+
 
 // Syntax highlighting code editor
 let codeEditor;
 let codeEditorLoaded = false;
 let codeEditorBig    = false;
+
+
+// initialized booleans
+let appSettingsEvents = false;
+
+
+
 
 function initializeCodeMirror()
 {
@@ -101,7 +112,6 @@ function blockIP()
 	var inputField = document.getElementById('ipInput');
 	var ipAddress  = inputField.value;
 
-
 	const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
 	if (ipv4Regex.test(ipAddress)) 
@@ -114,6 +124,10 @@ function blockIP()
 			headers: {
 				"Content-type": "application/json; charset=UTF-8"
 			}
+		})
+		.then(response => {
+			inputField.value = "";
+			refreshBlockedIPList();			
 		});
 	} 
 	else 
@@ -123,6 +137,40 @@ function blockIP()
 
 	inputField.value = "";
 	refreshBlockedIPList();
+}
+
+
+
+function addEmail()
+{
+	var inputField = document.getElementById('emailInput');
+	var address    = inputField.value;
+
+	const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+
+	if (emailRegex.test(address))
+	{
+		fetch('/api/addTargetEmail', {
+			method:"POST",
+			body: JSON.stringify({
+				emailAddress: address
+			}),
+			headers: {
+				"Content-type": "application/json; charset=UTF-8"
+			}
+		})
+		.then(response => {
+			inputField.value = "";
+			refreshTargetEmailList();			
+		});
+	}
+	else
+	{
+		alert("Invalid email address, please enter a valid email address.");
+	}
+
+	inputField.value = "";
+	refreshTargetEmailList();
 }
 
 
@@ -338,6 +386,45 @@ async function refreshBlockedIPList()
 }
 
 
+
+async function refreshTargetEmailList()
+{
+	var targetEmailList = document.getElementById('emailAddressList');
+
+	targetEmailList.innerHTML = '';
+
+	var req = await fetch('/api/getTargetEmails');
+	var jsonResponse = await req.json();
+
+	for (let i = 0; i < jsonResponse.length; i++)
+	{
+		id      = jsonResponse[i].id;
+		address = jsonResponse[i].address;
+
+		var targetEmail = document.createElement('li');
+		targetEmail.className   = 'list-group-item d-flex justify-content-between align-items-center'; 
+		targetEmail.textContent = address;
+		targetEmail.id          = id;
+
+		var deleteButton = document.createElement('button');
+		deleteButton.id          = id;
+		deleteButton.emailAddy   = address;
+		deleteButton.className   = 'btn btn-sm me-2';
+		deleteButton.textContent = 'Delete';
+
+
+		deleteButton.addEventListener('click', function()
+		{
+			// Run on this clients
+			deleteTargetEmail(this);
+		})
+
+		targetEmail.appendChild(deleteButton);
+		targetEmailList.appendChild(targetEmail);
+	}
+}
+
+
 async function deleteBlockedIP(button)
 {
 	await fetch('/api/deleteBlockedIP/' + button.id);
@@ -347,15 +434,79 @@ async function deleteBlockedIP(button)
 
 
 
-async function showSessionModal()
+async function deleteTargetEmail(button)
+{
+	await fetch('/api/deleteTargetEmail/' + button.id);
+
+	refreshTargetEmailList();
+}
+
+
+
+async function showAppSettingsModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
 
-		// Let's figure out if new sessions are allowed right now
-	var req = await fetch('/api/app/allowNewClientSessions');
-	var jsonResponse = await req.json()
+	// Let's figure out if new sessions are allowed right now
+	var req          = await fetch('/api/app/allowNewClientSessions');
+	var jsonResponse = await req.json();
 
-	var checkBox = document.getElementById('allowNewClientSessions');
+	// Get our current client refresh delay
+	var delayRequest  = await fetch('/api/app/clientRefreshRate');
+	var delayResponse = await delayRequest.json();
+
+	var checkBox    = document.getElementById('allowNewClientSessions');
+	var clientDelay = document.getElementById('clientRefreshDelay');
+
+
+	var saveButton      = document.getElementById('saveEmailSettings');
+	var testEmailButton = document.getElementById('sendTestEmail');
+
+	var serverString  = document.getElementById('smtpServer');
+	var emailUsername = document.getElementById('emailUsername');
+	var emailPassword = document.getElementById('emailPassword');
+	var notifyEvent   = document.getElementById('emailNotificationType');
+	var emailDelay    = document.getElementById('emailDelay');
+	var emailEnable   = document.getElementById('enableEmails');
+
+
+	var emailData     = await fetch('/api/app/getEmailSettings');
+	var emailDataJson = await emailData.json();
+
+	serverString.value  = emailDataJson.emailServer;
+	emailUsername.value = emailDataJson.username;
+	emailPassword.value = emailDataJson.password;
+	emailDelay.value    = emailDataJson.delay;
+
+
+	switch(emailDataJson.eventType)
+	{
+	case 'newClients':
+		notifyEvent.value = "newClients";
+		break;
+	case 'newClientsAndEvents':
+		notifyEvent.value = "newClientsAndEvents";
+		break;
+	case 'None':
+		notifyEvent.value = "newClients";
+		break;
+	default:
+		alert("Error parsing email notification event type." + emailDataJson.eventType);
+	}
+
+	var emailsEnabledReq  = await fetch('/api/app/getEmailNotificationSetting');
+	var emailsEnabledJson = await emailsEnabledReq.json();
+
+	if (emailsEnabledJson.emailEnable)
+	{
+		emailEnable.checked  = true;
+	}
+	else
+	{
+		emailEnable.checked = false;
+	}
+
+	clientDelay.value = delayResponse.clientRefreshRate;
 
 	if (jsonResponse.newSessionsAllowed == '1')
 	{
@@ -368,8 +519,87 @@ async function showSessionModal()
 		checkBox.checked == false;
 	}
 
-	refreshBlockedIPList();
 
+
+
+	if (!appSettingsEvents)
+	{
+		notifyEvent.addEventListener('change', function()
+		{
+			console.log("^^^^^ event type now: " + notifyEvent.value)
+		});
+
+		emailEnable.addEventListener('change', function()
+		{
+			if (emailEnable.checked)
+			{
+			// enable
+				fetch('/api/app/enableEmailNotifications/true');
+				console.log("Turning on email notifications");
+			}
+			else
+			{
+			// disabled
+				fetch('/api/app/enableEmailNotifications/false');
+				console.log("Turning off email notifications");
+			}
+		});
+
+		clientDelay.addEventListener('change', function()
+		{
+			if (clientDelay.value < 1)
+			{
+				clientDelay.value = 1;
+			}
+			else if (clientDelay.value > 3600)
+			{
+				clientDelay.value = 3600;
+			}
+
+			fetch('/api/app/setClientRefreshRate/' + clientDelay.value);
+			clientUpdateRate = clientDelay.value;
+			clearInterval(updateTimer);
+			updateTimer = setInterval(updateClients, (clientUpdateRate * 1000));
+		});
+
+
+		saveButton.addEventListener('click', function()
+		{
+
+			console.log("*** Saving email settings...");
+
+			fetch('/api/app/saveEmailSettings', {
+				method:"POST",
+				body: JSON.stringify({
+					emailServer: serverString.value,
+					username: emailUsername.value,
+					password: emailPassword.value,
+					eventType: notifyEvent.value,
+					delay: emailDelay.value
+				}),
+				headers: {
+					"Content-type": "application/json; charset=UTF-8"
+				}
+			});
+
+			saveButton.blur();
+		});
+
+
+		testEmailButton.addEventListener('click', function()
+		{
+			console.log("Sending test email...");
+			fetch('/api/sendTestEmail');
+
+			testEmailButton.blur();
+		});
+
+		appSettingsEvents = true;
+	}
+
+
+	refreshBlockedIPList();
+	refreshTargetEmailList();
 
 	modal.show();
 }
@@ -885,6 +1115,7 @@ function toggleCodeEditor()
 
 async function showCustomPayloadModal(skipClear)
 {
+	console.log("showing custom payloads...");
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadModal'));
 
 	var modalElement      = document.getElementById('customPayloadModal');
@@ -2243,8 +2474,9 @@ function filterClients()
 
 async function updateClients()
 {
+	console.log("Updating clients...");
 	// Get client info
-	var req = await fetch('/api/getClients');
+	var req         = await fetch('/api/getClients');
 	var clientsJson = await req.json();
 
 	// Start setting up the client cards
@@ -2404,6 +2636,7 @@ filterClients();
 
 
 
-setInterval(updateClients, 5000);
+// setInterval(updateClients, 5000);
+
 
 updateClients();

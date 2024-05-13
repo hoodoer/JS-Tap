@@ -69,7 +69,7 @@
 				</li>
 
 				<li class="nav-item">
-					<a class="nav-link" href="#newsessionhandler" id="newsessionLink">&nbsp;Session Settings&nbsp;</a>
+					<a class="nav-link" href="#newsessionhandler" id="newsessionLink">&nbsp;App Settings&nbsp;</a>
 				</li>
 
 				<li class="nav-item">
@@ -95,7 +95,7 @@
 					navSessionLink = document.getElementById("newsessionLink");
 					navSessionLink.addEventListener("click", function(event) {
 						event.preventDefault();
-						showSessionModal();
+						showAppSettingsModal();
 					});
 
 					customPayloadLink = document.getElementById("customPayloadLink");
@@ -472,41 +472,91 @@
 
 
 
-			<!-- New Client Session Control Modal -->
+			<!-- Application Settings Control Modal -->
 			<div id="clientSessionModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
 				<div class="modal-dialog">
 					<div class="modal-content">
 						<div class="modal-header">
-							<h5 class="modal-title">Session Settings</h5>
+							<h5 class="modal-title">App Settings</h5>
 							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
 						<div class="modal-body" id="clientFilterModalBody">
-							<div class="form-check">
-								<input class="form-check-input" type="checkbox" value="" id="allowNewClientSessions" checked>
-								<label class="form-check-label" for="flexCheckChecked">
-									Allow New Client Sessions
-								</label>
+							<div class="form-check form-switch">
+								<input class="form-check-input" type="checkbox" id="allowNewClientSessions" checked>
+								<label class="form-check-label" for="allowNewClientSessions">Disable/Enable New Client Sessions</label>
+							</div>
+							<hr>
+
+							<!-- Email Settings -->
+							<h6>Email Notifications Settings:</h6>
+							<div class="mb-3">
+								<label for="smtpServer">SMTP Server:Port</label><br>
+								<input type="text" class="form-control" id="smtpServer">
+							</div>
+							<div class="mb-3">
+								<label for="emailUsername">Username</label><br>
+								<input type="text" class="form-control" id="emailUsername">
+								
+								<label for="emailPassword">Password</label><br>
+								<input type="password" class="form-control" id="emailPassword">
 							</div>
 
-							<br><br>
-							<!-- List of Blocked IPs -->
-							<div class="modal-body">
-								<h6>Blocked IPs:</h6>
+							<!-- List of email addresses to notify -->
+							<div class="mb-3">
+								<label for="emailInput">Enter Email</label>
 
 								<div class="input-group mb-3">
+									<input id="emailInput" type="text" class="form-control" placeholder="Enter Email">
+									<button id="addEmail" class="btn btn-primary" type="button">Add</button>
+								</div>
+								<ul id="emailAddressList" class="list-group">
+								</ul>
+								<script>document.getElementById("addEmail").addEventListener('click', addEmail);</script>
+								<br>
+								<div class="form-check form-switch">
+									<input class="form-check-input" type="checkbox" id="enableEmails">
+									<label class="form-check-label" for="enableEmails">Disable/Enable Emails</label>
+								</div>
+								<div class="mb-3">
+									<br>
+									<label for="emailNotificationType">Event Type</label>
+									<select class="form-select" id="emailNotificationType">
+										<option value="newClients">Notify on new clients</option>
+										<option value="newClientsAndEvents">Notify on new clients and events</option>
+									</select>
+								</div>
+								<div class="mb-3">
+									<label for="emailDelay">Delay Between Emails (seconds)</label>
+									<input type="number" class="form-control" placeholder="Delay between emails (minutes)" id="emailDelay">
+								</div>
+								
+								<!-- Buttons for saving settings and sending test email -->
+								<div class="d-grid gap-2 d-md-flex justify-content-md-end">
+									<button class="btn btn-primary" type="button" id="saveEmailSettings">Save Email Settings</button>
+									<button class="btn btn-secondary" type="button" id="sendTestEmail">Test Email</button>
+								</div>
+								<hr>
+
+								<!-- Delay Between Client List Refresh -->
+								<div class="mb-3">
+									<label for="clientRefreshDelay">Delay Between Client List Refresh (seconds):</label><br>
+									<input type="number" class="form-control" id="clientRefreshDelay" value="5">
+								</div>
+								<hr>
+								
+								<!-- List of Blocked IPs -->
+								<h6>IPs Blocked From Running JS-Tap Client:</h6>
+								<div class="input-group mb-3">
 									<input id="ipInput" type="text" class="form-control" placeholder="Enter IP">
-									<div class="input-group-append">
-										<button id="addBlockIP" class="btn btn-primary" type="button">Add</button>
-									</div>
+									<button id="addBlockIP" class="btn btn-primary" type="button">Add</button>
 								</div>
 								<ul id="blockedIPList" class="list-group">
 								</ul>
+								<script>document.getElementById("addBlockIP").addEventListener('click', blockIP);</script>
 							</div>
-							<script>document.getElementById("addBlockIP").addEventListener('click', blockIP);</script>
-
-						</div>
-						<div class="modal-footer">
-							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
+							<div class="modal-footer">
+								<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -535,7 +585,7 @@
 							<div class="ms-auto">
 								<button id="payload-save-button" class="btn btn-primary me-2">Save</button>
 								<button id="payload-clear-button" type="button" class="btn btn-secondary">Clear All Jobs</button>
-							    <button id="payload-code-button" type="button" class="btn btn-secondary">Expand Code</button>
+								<button id="payload-code-button" type="button" class="btn btn-secondary">Expand Code</button>
 								<button id="payload-close-button" type="button" class="btn btn-secondary">Close</button>
 							</div>
 						</div>
@@ -679,7 +729,7 @@
 					</div>
 					<div>
 						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to automatically build a custom payload that will mimic this network call. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the API call uses an authorization header or token. We'll need to build a more complicated payload if the request uses such an auth token. These tokens are typically sent in an Authorization header. If you see a header like that, enter the header name and value on the right and hit search. These are often in the format:<br>Authorization: Bearer SECRETTOKEN<br><br>Do not include the Bearer string for the search, use Authorization for the token name and SECRETTOKEN as the value for the search. The payload generator will automatically add the Bearer string if needed.<br>JS-Tap will search it's previously captured storage looking for where this secret value is stored so it can build a payload to find this auth token. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
-						If there is no authorization token perhaps the API relies on cookies you can't see, and you should be able to hit the "Next" button to build the payload. 
+							If there is no authorization token perhaps the API relies on cookies you can't see, and you should be able to hit the "Next" button to build the payload. 
 						</p>
 						<hr>
 					</div>
