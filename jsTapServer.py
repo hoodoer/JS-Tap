@@ -16,6 +16,7 @@ from enum import Enum
 from user_agents import parse
 from email.mime.text import MIMEText
 from flask_executor import Executor
+from apscheduler.schedulers.background import BackgroundScheduler
 import magic
 import json
 import uuid
@@ -675,65 +676,86 @@ def sendTestEmail():
 
 
 
+# Send the actual notification email
+def sendNotificationEmail():
+    appSettings  = AppSettings.query.filter_by(id=1).first()
+    targetEmails = NotificationEmail.query.all()
+
+    fromEmail   = appSettings.emailUsername
+    password    = appSettings.emailPassword
+    toEmailList = [email.emailAddress for email in targetEmails]
+
+    message = MIMEText("JS-Tap Update:\n" + appSettings.emailContent)
+    message["Subject"] = "JS-Tap Update Notification"
+    message["From"]    = fromEmail
+    message["To"]      = ",".join(toEmailList)
+   
+    serverInfo = appSettings.emailServer
+    hostname, port = serverInfo.split(':')
+    port = int(port)
+
+    logger.info("EMAIL: Sending notification email")
+    with smtplib.SMTP(hostname, port) as emailServer:
+        emailServer.ehlo()
+        emailServer.starttls()
+        emailServer.ehlo()
+
+        emailServer.login(fromEmail, password)
+        emailServer.sendmail(fromEmail, toEmailList, message.as_string())
+
+    # logger.info("Email Text is: " )
+    # logger.info(appSettings.emailContent)
+    
+    appSettings.emailSent()
+    appSettings.emailContent = ""
+
+    dbCommit()
+    return
+
+
+
+
+
+
+
 # Check our delay time to see if we should send a notification email or not
-def emailNotification():
-    logger.info("** Top of email notification func")
+def emailNotificationCheck():
     emailSettings = AppSettings.query.with_entities(AppSettings.lastEmailSent, AppSettings.emailDelay).filter_by(id=1).first()
 
-
     if emailSettings[0] is not None:
-        now = datetime.datetime.now()
+        # We've already sent an email in the past
+        # Make sure we're waiting the delay time before firing off another
+        now = datetime.datetime.utcnow()
 
         timeDifference = now - emailSettings[0]
         secondsPassed  = timeDifference.total_seconds()
-        logger.info("In email notification, timeDiffernce is: " + str(secondsPassed))
 
         if secondsPassed >= emailSettings[1]:
-            logger.info("*** Enough time has passed, time to send email...")
-            logger.info("secondsPassed: " + str(secondsPassed) + ", delay setting: " + str(emailSettings[1]))
-        else:
-            logger.info("Not enough time has passed!")
+            sendNotificationEmail()
     else:
-        # first go, send it 
-        logger.info("First email send...")
-
-        appSettings  = AppSettings.query.filter_by(id=1).first()
-        targetEmails = NotificationEmail.query.all()
-
-        logger.info("2 Email send...")
-
-   
-        fromEmail   = appSettings.emailUsername
-        password    = appSettings.emailPassword
-        toEmailList = [email.emailAddress for email in targetEmails]
-
-        logger.info("3 Email send...")
-
-        message = MIMEText("JS-Tap Update:\n" + appSettings.emailContent)
-        message["Subject"] = "JS-Tap Update Notification"
-        message["From"]    = fromEmail
-        message["To"]      = ",".join(toEmailList)
-       
-        logger.info("4 Email send...")
-
-        serverInfo = appSettings.emailServer
-        hostname, port = serverInfo.split(':')
-        port = int(port)
-
-        logger.info("Sending email now...")
-        with smtplib.SMTP(hostname, port) as emailServer:
-            emailServer.ehlo()
-            emailServer.starttls()
-            emailServer.ehlo()
-
-            emailServer.login(fromEmail, password)
-            emailServer.sendmail(fromEmail, toEmailList, message.as_string())
-
-        appSettings.emailSent()
-        appSettings.emailContent = ""
-        dbCommit()
+        # first go, no recorded email sent before, so go ahead and send one
+        sendNotificationEmail()
 
     return
+
+
+
+# Timed based notification check. The other email notification check
+# is based on events, but if things go quiet some update data could 
+# be stuck in the database. This gets called regularly to see if 
+# we need to send out a notification email
+def timedEmailNotificationCheck():
+    isEnabled = AppSettings.query.with_entities(AppSettings.emailEnable).filter_by(id=1).first()
+
+    if (isEnabled):
+        emailContent = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0]
+
+        if emailContent:
+            emailNotificationCheck()
+    return
+
+
+
 
 
 # Handle if we need to do new client notifivation email work
@@ -741,10 +763,19 @@ def newClientNotificationEmail(identifier):
     isEnabled = AppSettings.query.with_entities(AppSettings.emailEnable).filter_by(id=1).first()
 
     if (isEnabled[0]):
-        logger.info("NEW CLIENT: Looks like we would send an email!")
-    else:
-        logger.info("NEW CLIENT: Email disabled")
+        emailText  = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0] or ""
+        clientData = Client.query.with_entities(Client.nickname, Client.tag).filter_by(uuid=identifier).first()
 
+        now       = datetime.datetime.now()
+        timeStamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        emailText += timeStamp + ": "  + str(clientData[1]) + "/" + str(clientData[0]) + " - new client\n" 
+
+        statement = (update(AppSettings).where(AppSettings.id == 1).values(emailContent=emailText))
+        db_session.execute(statement)
+        dbCommit()
+
+        # Check if it's time to send a notification email
+        emailNotificationCheck()
     return
 
 
@@ -755,44 +786,23 @@ def eventNotificationEmail(identifier):
     emailSettings = AppSettings.query.with_entities(AppSettings.emailEnable, AppSettings.emailEventType).filter_by(id=1).first()
 
     if (emailSettings[0]):
-        logger.info("NEW EVENT: Looks like we would send an email!")
-
-        logger.info("Notification type: " + str(emailSettings[1]))
-
         # Ok, email notifications are turned on, but do we want to update on events or just new clients?
         if (str(emailSettings[1]) == 'newClientsAndEvents'):
             # Yes, we want to know about events
-            logger.info("Events need notifications!")
 
             emailText  = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0] or ""
             clientData = Client.query.with_entities(Client.nickname, Client.tag, Client.ipAddress).filter_by(uuid=identifier).first()
 
-            logger.info("Email Text is: " )
-            logger.info(emailText)
-         
-
             now       = datetime.datetime.now()
             timeStamp = now.strftime("%Y-%m-%d %H:%M:%S")
-            emailText += timeStamp + ": " + str(clientData[1]) + "/" + str(clientData[0]) + "- event recorded\n" 
-            # emailText += "test\n"
-
-            logger.info("2 - Email Text is: " )
-            logger.info(emailText)
+            emailText += timeStamp + ": " + str(clientData[2]) + " - " + str(clientData[1]) + "/" + str(clientData[0]) + " - event received\n" 
 
             statement = (update(AppSettings).where(AppSettings.id == 1).values(emailContent=emailText))
             db_session.execute(statement)
             dbCommit()
 
             # Check if it's time to send a notification email
-            logger.info("About to call emailNotification...")
-            emailNotification()
-        else:
-            logger.info("Not emailing about events, mode: " + str(emailSettings[1]))
-
-        #newClientsAndEvents and newClients
-    else:
-        logger.info("NEW EVENT: Email disabled")
-
+            emailNotificationCheck()
     return
 
 
@@ -994,7 +1004,7 @@ try:
                     FormPost.__table__.drop(engine)
                     CustomExfil.__table__.drop(engine)
                     ClientPayloadJob.__table__.drop(engine)
-                    db_session.execute(update(AppSettings).where(AppSettings.id==1).values(emailContent=""))
+                    db_session.execute(update(AppSettings).where(AppSettings.id==1).values(emailContent="", lastEmailSent=None))
                     dbCommit()
 
                     Base.metadata.create_all(engine)
@@ -1037,6 +1047,12 @@ try:
         cursor.execute("PRAGMA synchronous=normal;")
         cursor.execute("PRAGMA cache_size = -20971520;") # 20MB
         cursor.close()
+
+
+    # Start our background notification email checker
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=timedEmailNotificationCheck, trigger="interval", seconds=120)    
+    scheduler.start()
 
     # Need the other threads to move on beyond the init code
     time.sleep(5)
@@ -2269,7 +2285,6 @@ def deleteTargetEmail(key):
 @app.route('/api/sendTestEmail', methods=['GET'])
 @login_required
 def sendTestEmailEndpoint():
- 
     backgroundExecutor.submit(sendTestEmail)
 
     return "ok", 200
@@ -2645,7 +2660,7 @@ if __name__ == '__main__':
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
         app.run(debug=False, host='0.0.0.0', port=8444)
     else:
-        app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
+        app.run(debug=True, host='0.0.0.0', port=8444, ssl_context='adhoc')
        
 
 
