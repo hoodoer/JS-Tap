@@ -265,6 +265,7 @@ class Client(Base):
     nickname        = Column(String(100), unique=True, nullable=False)
     tag             = Column(String(40), unique=False, nullable=True)
     uuid            = Column(String(40), unique=True, nullable=False)
+    fingerprint     = Column(String(20), nullable=True)
     sessionValid    = Column(Boolean, nullable=False, default=True)
     notes           = Column(Text, nullable=True)
     firstSeen       = Column(DateTime(timezone=True),server_default=func.now())
@@ -496,8 +497,9 @@ class AppSettings(Base):
     __tablename__ = 'appsettings'
 
     id                = Column(Integer, primary_key=True)
-    allowNewSessions = Column(Boolean, default=True)
+    allowNewSessions  = Column(Boolean, default=True)
     clientRefreshRate = Column(Integer, default=5)
+    showFingerprint   = Column(Boolean, nullable=False, default=False)
     emailServer       = Column(String(100), nullable=True)
     emailUsername     = Column(String(100), nullable=True)
     emailPassword     = Column(String(100), nullable=True)
@@ -1273,6 +1275,29 @@ def returnUUID(tag=''):
 
 
 
+
+
+# Report the client fingerprint if setup to calculate one
+@app.route('/client/fingerprint/<identifier>', methods=['POST'])
+def setFingerprint(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    content     = request.json
+    fingerprint = content['fingerprint']
+
+    client = Client.query.filter_by(uuid=identifier).first()
+    client.fingerprint = fingerprint 
+
+    db_session.add(client)
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+
 # Check for custom payload jobs for the client
 @app.route('/client/taskCheck/<identifier>', methods=['GET'])
 def returnPayloads(identifier):
@@ -1791,7 +1816,8 @@ def getClients():
 
     allClients = [{'id':escape(client.id), 'tag':escape(client.tag), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
         'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen, 'ip':escape(client.ipAddress),
-        'platform':escape(client.platform), 'browser':escape(client.browser), 'isStarred':client.isStarred, 'hasJobs':client.hasJobs} for client in clients]
+        'platform':escape(client.platform), 'browser':escape(client.browser), 'isStarred':client.isStarred, 'hasJobs':client.hasJobs, 
+        'fingerprint':client.fingerprint} for client in clients]
 
     return jsonify(allClients)
 
@@ -2184,6 +2210,37 @@ def setAllowNewClientSessions(setting):
     dbCommit()
 
     return "ok", 200
+
+
+
+
+@app.route('/api/app/showFingerprint/<setting>', methods=['GET'])
+@login_required
+def setShowFingerprint(setting):
+    appSettings = AppSettings.query.filter_by(id=1).first()
+   
+    if setting == 'true':
+        appSettings.showFingerprint = True
+    elif setting == 'false':
+        appSettings.showFingerprint = False
+    else:
+        logger.error("Invalid true/false value in showFingerprint:" + setting)
+
+    dbCommit()
+
+    return "ok", 200
+
+
+
+
+@app.route('/api/app/getShowFingerprintSetting', methods=['GET'])
+@login_required
+def getShowFingerprint():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    fingerprintData = {'fingerprintEnabled':appSettings.showFingerprint}
+
+    return jsonify(fingerprintData)
 
 
 

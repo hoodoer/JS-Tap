@@ -469,6 +469,8 @@ async function showAppSettingsModal()
 	var emailDelay    = document.getElementById('emailDelay');
 	var emailEnable   = document.getElementById('enableEmails');
 
+	var fingerprintEnable = document.getElementById('showFingerprints');
+
 
 	var emailData     = await fetch('/api/app/getEmailSettings');
 	var emailDataJson = await emailData.json();
@@ -544,6 +546,23 @@ async function showAppSettingsModal()
 				console.log("Turning off email notifications");
 			}
 		});
+
+
+
+		fingerprintEnable.addEventListener('change', function()
+		{
+			if (fingerprintEnable.checked)
+			{
+				// enable
+				fetch('/api/app/showFingerprint/true');
+			}
+			else
+			{
+				// disable
+				fetch('/api/app/showFingerprint/false');
+			}
+		});
+
 
 		clientDelay.addEventListener('change', function()
 		{
@@ -2429,10 +2448,11 @@ function filterClients()
 	var clientCards = cardStack.getElementsByClassName('card');
 
 	// Regular expressions to extract data
-	const titleRegex    = /<u>(.*?)<\/u>/;
-	const ipRegex       = /ip:<b>\s*(.*?)\s*<\/b>/;
-	const platformRegex = /platform:<b>\s*(.*?)\s*<\/b>/;
-	const browserRegex  = /browser:<b>\s*(.*?)\s*<\/b>/;
+	const titleRegex      = /<u>(.*?)<\/u>/;
+	const ipRegex          = /ip:<b>\s*(.*?)\s*<\/b>/;
+	const fingerprintRegex = /fingerprint:<b>\s*(.*?)\s*<\/b>/;
+	const platformRegex    = /platform:<b>\s*(.*?)\s*<\/b>/;
+	const browserRegex     = /browser:<b>\s*(.*?)\s*<\/b>/;
 
 
 	for (let i = 0; i < clientCards.length; i++)
@@ -2441,22 +2461,25 @@ function filterClients()
 		clientText = card.innerHTML.toLowerCase();
 
 		// Extract data using regex
-		const titleMatch    = clientText.match(titleRegex);
-		const ipMatch       = clientText.match(ipRegex);
-		const platformMatch = clientText.match(platformRegex);
-		const browserMatch  = clientText.match(browserRegex);
+		const titleMatch       = clientText.match(titleRegex);
+		const ipMatch          = clientText.match(ipRegex);
+		const fingerprintMatch = clientText.match(fingerprintRegex);
+		const platformMatch    = clientText.match(platformRegex);
+		const browserMatch     = clientText.match(browserRegex);
 
 		// Extracted data
-		var cardTitle = titleMatch ? titleMatch[1] : '';
-		var ip        = ipMatch ? ipMatch[1] : '';
-		var platform  = platformMatch ? platformMatch[1] : '';
-		var browser   = browserMatch ? browserMatch[1] : '';
+		var cardTitle   = titleMatch ? titleMatch[1] : '';
+		var ip          = ipMatch ? ipMatch[1] : '';
+		var fingerprint = fingerprintMatch ? fingerprintMatch[1] : '';
+		var platform    = platformMatch ? platformMatch[1] : '';
+		var browser     = browserMatch ? browserMatch[1] : '';
 
-		ip       = ip.replace(/&nbsp;/g, '');
-		platform = platform.replace(/&nbsp;/g, '');
-		browser  = browser.replace(/&nbsp;/g, '');
+		ip          = ip.replace(/&nbsp;/g, '');
+		fingerprint = fingerprint.replace(/&nbsp;/g, '');
+		platform    = platform.replace(/&nbsp;/g, '');
+		browser     = browser.replace(/&nbsp;/g, '');
 		
-		var cleanedString = cardTitle + ip + platform + browser;
+		var cleanedString = cardTitle + ip + fingerprint + platform + browser;
 
 		if (cleanedString.indexOf(searchTerm) !== -1)
 		{
@@ -2478,6 +2501,9 @@ async function updateClients()
 	// Get client info
 	var req         = await fetch('/api/getClients');
 	var clientsJson = await req.json();
+
+	var fingerprintReq  = await fetch('/api/app/getShowFingerprintSetting');
+	var fingerprintJson = await fingerprintReq.json();
 
 	// Start setting up the client cards
 	var cardStack = document.getElementById('client-stack');
@@ -2581,6 +2607,7 @@ async function updateClients()
 
   cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
 
+
 	//What to do about client notes?
   if (client.notes.length > 0)
   {
@@ -2591,6 +2618,12 @@ async function updateClients()
   {
   	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
   	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
+  }
+
+  // Optional display of fingerprints, turned on in app settings and an option in the payload 
+  if (fingerprintJson.fingerprintEnabled)
+  {
+  	cardText.innerHTML += "<br>Fingerprint:<b>&nbsp;&nbsp;&nbsp;" + client.fingerprint + "</b>";
   }
 
   cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";

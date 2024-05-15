@@ -1,5 +1,5 @@
 # JS-Tap
-### v2.13
+### v2.14
 
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
@@ -201,6 +201,16 @@ window.taperTaskJitterBottom = -2000;
 window.taperTaskJitterTop    = 2000;
 ```
 
+#### Client Fingerprinting
+This can be enabled to calculate a fingerprint of the client based on numerous attributes. A very short hash is created from this fingerprinting. This short hash can optionally be displayed on the client card by enabling it in **App SettingS**. The clients list filter can be filtered on this fingerprint to identify multiple JS-Tap clients that are likely to be running the on the same computer. Note that if an enterprise issues identical systems to users, they could easily end up with the same fingerprint value. 
+
+To enable fingerprint calculations in JS-Tap payload:
+```
+window.taperFingerprint = true;
+```
+
+Even if the fingerprint is being calculated, it will not show in the client cards unless the feature is enabled in **App Settings** as well. 
+
 #### Exfiltrate HTML
 true/false setting on whether a copy of the HTML code of each page viewed is exfiltrated. These exfiltrated HTML files are needed for finding CSRF token sources when autogenerating form submission custom payloads. 
 
@@ -241,7 +251,7 @@ The clients list can be sorted by time (first seen, last update received) and th
 
 Each client has an 'x' button (near the star button). This allows you to delete the session for that client, if they're sending junk or useless data, you can prevent that client from submitting future data. 
 
-When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop all new client sessions from being issues, select **App Settings** at the top and you can disable new client sessions. 
+When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. If you want to stop all new client sessions from being issues, select **App Settings** at the top and you can disable new client sessions. You can also enable the showing of client "fingerprints", which are very short hash values that should be unique to a user's browser on a particular system. This can help identify which JS-Tap clients might actually be the same individual. Note that the JS-Tap client must be configured to perform the fingerprint calculations. The client filter search bar also searches the fingerprint field, so it's easy to show clients with identical fingerprints. 
 
 You can also configure email notifications in **App Settings** to notifiy on new clients, or new events for clients. This is SMTP (TLS) based only, and you can have the notification emails go to multiple recipients. An "email delay" option prevents constant email spamming, you'll get a roll-up email of all notifications that happend in the delay period. 
 
