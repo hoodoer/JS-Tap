@@ -678,6 +678,7 @@ def sendTestEmail():
 
 # Send the actual notification email
 def sendNotificationEmail():
+    emailLock.acquire(timeout=2)
     appSettings  = AppSettings.query.filter_by(id=1).first()
     targetEmails = NotificationEmail.query.all()
 
@@ -685,31 +686,33 @@ def sendNotificationEmail():
     password    = appSettings.emailPassword
     toEmailList = [email.emailAddress for email in targetEmails]
 
-    message = MIMEText("JS-Tap Update:\n" + appSettings.emailContent)
-    message["Subject"] = "JS-Tap Update Notification"
-    message["From"]    = fromEmail
-    message["To"]      = ",".join(toEmailList)
-   
-    serverInfo = appSettings.emailServer
-    hostname, port = serverInfo.split(':')
-    port = int(port)
+    if appSettings.emailContent:
+        message = MIMEText("JS-Tap Update:\n" + appSettings.emailContent)
+        message["Subject"] = "JS-Tap Update Notification"
+        message["From"]    = fromEmail
+        message["To"]      = ",".join(toEmailList)
+       
+        serverInfo = appSettings.emailServer
+        hostname, port = serverInfo.split(':')
+        port = int(port)
 
-    logger.info("EMAIL: Sending notification email")
-    with smtplib.SMTP(hostname, port) as emailServer:
-        emailServer.ehlo()
-        emailServer.starttls()
-        emailServer.ehlo()
+        logger.info("EMAIL: Sending notification email")
+        with smtplib.SMTP(hostname, port) as emailServer:
+            emailServer.ehlo()
+            emailServer.starttls()
+            emailServer.ehlo()
 
-        emailServer.login(fromEmail, password)
-        emailServer.sendmail(fromEmail, toEmailList, message.as_string())
+            emailServer.login(fromEmail, password)
+            emailServer.sendmail(fromEmail, toEmailList, message.as_string())
 
-    # logger.info("Email Text is: " )
-    # logger.info(appSettings.emailContent)
-    
-    appSettings.emailSent()
-    appSettings.emailContent = ""
+        # logger.info("Email Text is: " )
+        # logger.info(appSettings.emailContent)
+        
+        appSettings.emailSent()
+        appSettings.emailContent = ""
 
-    dbCommit()
+        dbCommit()
+    emailLock.release()
     return
 
 
@@ -764,11 +767,11 @@ def newClientNotificationEmail(identifier):
 
     if (isEnabled[0]):
         emailText  = AppSettings.query.with_entities(AppSettings.emailContent).filter_by(id=1).first()[0] or ""
-        clientData = Client.query.with_entities(Client.nickname, Client.tag).filter_by(uuid=identifier).first()
+        clientData = Client.query.with_entities(Client.nickname, Client.tag, Client.ipAddress).filter_by(uuid=identifier).first()
 
         now       = datetime.datetime.now()
         timeStamp = now.strftime("%Y-%m-%d %H:%M:%S")
-        emailText += timeStamp + ": "  + str(clientData[1]) + "/" + str(clientData[0]) + " - new client\n" 
+        emailText += timeStamp + ": " + str(clientData[2]) + " - " + str(clientData[1]) + "/" + str(clientData[0]) + " - new client\n" 
 
         statement = (update(AppSettings).where(AppSettings.id == 1).values(emailContent=emailText))
         db_session.execute(statement)
@@ -815,8 +818,6 @@ def clientSeen(identifier, ip, userAgent):
     # logger.info("!! Client seen: " + str(ip) + ', ' + userAgent)
     # logger.info("*** Starting clientSeen Update!")
 
-    backgroundExecutor.submit(eventNotificationEmail, identifier)
-
     parsedUserAgent = parse(userAgent)
     # logger.info("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
     # logger.info("--Platform: " + parsedUserAgent.os.family)
@@ -830,6 +831,9 @@ def clientSeen(identifier, ip, userAgent):
 
     # update method touches the database lastseen timestamp
     client.update()
+
+    # Check if we need to send a notification email
+    backgroundExecutor.submit(eventNotificationEmail, identifier)
 
     # See if we have any scheduling work to do here
     scheduleRepeatTasks(client)
@@ -939,6 +943,7 @@ def generateNickname():
 # Check for existing database file
 # Make sure only one process runs this
 startupLock  = FileLock("./init.lock")
+emailLock    = FileLock("./email.lock")
 lockAcquired = False
 
 try:
@@ -1256,8 +1261,11 @@ def returnUUID(tag=''):
         newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
         db_session.add(newJob)
 
-    backgroundExecutor.submit(newClientNotificationEmail, token)
     dbCommit()
+
+    # Check if we need to send a notification email
+    backgroundExecutor.submit(newClientNotificationEmail, token)
+
 
     uuidData = {'clientToken':token}
 

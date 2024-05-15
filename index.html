@@ -668,8 +668,8 @@
 						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 					</div>
 					<div>
-						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to configure a custom payload that will mimic this form submission. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the submission uses a CSRF token. We'll need to build a more complicated payload if the request uses such a token. These tokens are a random value and the parameter name is typically related to CSRF, XSRF, or Nonce. If you see a parameter like that, enter the parameter name and value on the right and hit search. JS-Tap will search it's previously captured HTML looking for where this secret value comes from and build a payload to find and parse out this value. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
-							If there is no random CSRF value apparent in the form submission hit the "Next" button to build the payload. 
+						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to configure a custom payload to mimic a form submission. You can modify the parameters in the custom payload. <br><br>First, check if the submission uses a CSRF token. If it does, you'll need a more complex payload. CSRF tokens are random values with names related to CSRF, XSRF, or Nonce. Enter the parameter name and value on the right and hit search. JS-Tap will search its previously captured HTML to locate and parse this value, which is needed for submitting the mimicked action.<br><br>
+						If there is no CSRF token in the form submission, click "Next" to build the payload.
 						</p>
 						<hr>
 					</div>
@@ -679,15 +679,15 @@
 						<div class="row">
 
 							<!-- Form Data -->
-							<div class="col-md-5">
+							<div class="col-md-7">
 								<h4>Form Data:</h4>
 								<!-- To be filled in by JavaScript -->
 								<div id="formDataDiv"></div>
 							</div>
 
 
-							<!-- Code Editor - Right Side -->
-							<div class="col-md-7" id="csrfSelector">
+							<!-- CSRF selector - Right Side -->
+							<div class="col-md-5" id="csrfSelector">
 								<div>
 									<label for="csrfNameInput" class="form-label">CSRF Token Name:</label>
 									<input type="text" class="form-control" id="csrfNameInput" name="csrfNameInput" required><br>
@@ -728,8 +728,8 @@
 						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 					</div>
 					<div>
-						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal allows you to automatically build a custom payload that will mimic this network call. You'll be able to modify the parameters in the custom payload. <br><br>First we need to check if the API call uses an authorization header or token. We'll need to build a more complicated payload if the request uses such an auth token. These tokens are typically sent in an Authorization header. If you see a header like that, enter the header name and value on the right and hit search. These are often in the format:<br>Authorization: Bearer SECRETTOKEN<br><br>Do not include the Bearer string for the search, use Authorization for the token name and SECRETTOKEN as the value for the search. The payload generator will automatically add the Bearer string if needed.<br>JS-Tap will search it's previously captured storage looking for where this secret value is stored so it can build a payload to find this auth token. It will be needed for the part of the payload that submits the action you're mimicking.<br><br>
-							If there is no authorization token perhaps the API relies on cookies you can't see, and you should be able to hit the "Next" button to build the payload. 
+						<p style="padding-left: 40px;padding-right: 40px"><b>Instructions:</b><br>This modal helps you automatically build a custom payload to mimic a network call. You can modify the parameters. <br><br>First, check if the API call uses an authorization header or token. If it does, you'll need a more complex payload. Authorization tokens are typically sent in an Authorization header. If you see such a header, enter the header name and value on the right and hit search. Tokens are often in this format:<br>Authorization: Bearer SECRETTOKEN<br><br>Use "Authorization" for the token name and "SECRETTOKEN" as the value for the search. The payload generator will add the Bearer string if needed. JS-Tap will search its previously captured storage to find and parse this auth token, which is needed for the mimicked action.<br><br>
+						If there is no authorization token, the API might use cookies you can't see. In that case, click "Next" to build the payload.
 						</p>
 						<hr>
 					</div>
@@ -739,15 +739,15 @@
 						<div class="row">
 
 							<!-- Form Data -->
-							<div class="col-md-5">
+							<div class="col-md-7">
 								<h4>Network API Data:</h4>
 								<!-- To be filled in by JavaScript -->
 								<div id="apiDataDiv"></div>
 							</div>
 
 
-							<!-- Code Editor - Right Side -->
-							<div class="col-md-7" id="tokenSelector">
+							<!-- Auth selector - Right Side -->
+							<div class="col-md-5" id="tokenSelector">
 								<div>
 									<label for="tokenNameInput" class="form-label">Token Header Name:</label>
 									<input type="text" class="form-control" id="apiTokenNameInput" name="apiTokenNameInput" required><br>
