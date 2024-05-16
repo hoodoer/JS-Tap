@@ -108,7 +108,7 @@ function initGlobals()
 
 
 	// Should we fingerprint clients?
-	window.taperFingerprint = true;
+	window.taperFingerprint = false;
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
