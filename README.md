@@ -17,6 +17,9 @@ Short demo from ShmooCon of JS-Tap version 1:<br>
 Demo of JS-Tap version 2 at HackSpaceCon, including C2 and how to use it as a post exploitation implant:<br>
 <https://youtu.be/aWvNLJnqObQ?t=11719>
 
+Demo of the automatic payload generator, uses intercepted form posts and JavaScript network traffic as a blueprint for generating custom C2 payloads:<br>
+<https://trustedsec.com/resources/podcasts/security-noise-episode-6-21>
+
 
 ## Upgrade warning
 I do not plan on creating migration scripts for the database, and version number bumps often involve database schema changes (check the changelogs). You should probably delete your jsTap.db database on version bumps. If you have custom payloads in your JS-Tap server, make sure you export them before you delete the database files. 
