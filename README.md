@@ -18,7 +18,7 @@ Demo of JS-Tap version 2 at HackSpaceCon, including C2 and how to use it as a po
 <https://youtu.be/aWvNLJnqObQ?t=11719>
 
 Demo of the automatic payload generator, uses intercepted form posts and JavaScript network traffic as a blueprint for generating custom C2 payloads:<br>
-<https://trustedsec.com/resources/podcasts/security-noise-episode-6-21>
+<https://www.youtube.com/watch?v=cU915mxLfTo>
 
 
 ## Upgrade warning
