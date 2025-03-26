@@ -115,7 +115,6 @@
 						event.preventDefault();
 						showGuideModal();
 					});
-
 				</script>
 
 				<li class="nav-item">
@@ -135,7 +134,7 @@
 			<div class="row"> 
 
 				<!-- Client Card Stack -->
-				<div class="col-5">
+				<div class="col-5" id="scrollContainer">
 					<div class="d-flex align-items-center">
 						<label style="margin-top: 8;"><h4><b>&nbsp;&nbsp;Clients</b></h4></label>
 						<div style="width: 25px;"></div>
@@ -147,7 +146,7 @@
 				</div>
 
 				<!-- Register filter handler -->
-				<script type="text/javascript">document.getElementById('searchClientInput').addEventListener('input', filterClients);</script>
+				<script type="text/javascript">document.getElementById('searchClientInput').addEventListener('input', updateClients);</script>
 
 				<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
 				<div class="col-7">
@@ -481,6 +480,12 @@
 							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
 						<div class="modal-body" id="clientFilterModalBody">
+							<div class="form-check form-switch">
+								<input class="form-check-input" type="checkbox" id="obfuscateTraffic">
+								<label class="form-check-label" for="obfuscateTraffic">Disable/Enable Traffic Obfuscation</label>
+							</div>
+							<hr>
+
 							<div class="form-check form-switch">
 								<input class="form-check-input" type="checkbox" id="allowNewClientSessions" checked>
 								<label class="form-check-label" for="allowNewClientSessions">Disable/Enable New Client Sessions</label>

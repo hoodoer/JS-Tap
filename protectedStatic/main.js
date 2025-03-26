@@ -18,6 +18,10 @@ let codeEditorBig    = false;
 let appSettingsEvents = false;
 
 
+// Lazy loading stuff
+let clientLoadCount       = 30;
+let clientLoadExtraCount  = 0;
+let clientIncrementAmount = 20;
 
 
 function initializeCodeMirror()
@@ -447,6 +451,10 @@ async function showAppSettingsModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("clientSessionModal"));
 
+	// Is traffic obfuscation enabled?
+	var obfuscateReq      = await fetch('/api/app/obfuscateTraffic');
+	var obfuscateResponse = await obfuscateReq.json();
+
 	// Let's figure out if new sessions are allowed right now
 	var req          = await fetch('/api/app/allowNewClientSessions');
 	var jsonResponse = await req.json();
@@ -455,8 +463,9 @@ async function showAppSettingsModal()
 	var delayRequest  = await fetch('/api/app/clientRefreshRate');
 	var delayResponse = await delayRequest.json();
 
-	var checkBox    = document.getElementById('allowNewClientSessions');
-	var clientDelay = document.getElementById('clientRefreshDelay');
+	var obfuscateSwitch = document.getElementById('obfuscateTraffic');
+	var checkBox        = document.getElementById('allowNewClientSessions');
+	var clientDelay     = document.getElementById('clientRefreshDelay');
 
 
 	var saveButton      = document.getElementById('saveEmailSettings');
@@ -510,6 +519,17 @@ async function showAppSettingsModal()
 
 	clientDelay.value = delayResponse.clientRefreshRate;
 
+
+	if (obfuscateResponse.obfuscateTraffic == '1')
+	{
+		obfuscateSwitch.checked = true;
+	}
+	else
+	{
+		obfuscateSwitch.checked = false;
+	}
+
+
 	if (jsonResponse.newSessionsAllowed == '1')
 	{
 			// console.log("Server says sessions are allowed!");
@@ -526,6 +546,20 @@ async function showAppSettingsModal()
 
 	if (!appSettingsEvents)
 	{
+		obfuscateSwitch.addEventListener('change', function()
+		{
+			if (obfuscateSwitch.checked)
+			{
+				console.log("Turning on obfuscation!");
+				fetch('/api/app/setObfuscateTraffic/true');
+			}
+			else
+			{
+				console.log("Turning off obfuscation!");
+				fetch('/api/app/setObfuscateTraffic/false');
+			}
+		});
+
 		notifyEvent.addEventListener('change', function()
 		{
 			console.log("^^^^^ event type now: " + notifyEvent.value)
@@ -1171,10 +1205,10 @@ async function showCustomPayloadModal(skipClear)
 
 	modalElement.addEventListener('shown.bs.modal', function ()
 	{
-	    if (codeEditor) 
-	    {
-	        codeEditor.refresh();
-	    }
+		if (codeEditor) 
+		{
+			codeEditor.refresh();
+		}
 	});
 
 	saveButton.disabled      = false;
@@ -1200,11 +1234,11 @@ async function showCustomPayloadModal(skipClear)
 
 	codeEditor.on("change", function(cm, change) 
 	{
-	    if (change.origin === "+input" || change.origin === "paste") 
-	    {
-	        unsavedChanges = true;
+		if (change.origin === "+input" || change.origin === "paste") 
+		{
+			unsavedChanges = true;
 //	        console.log("Human-made change detected in Code Editor.");
-	    } 
+		} 
 	});
 
 
@@ -2437,60 +2471,76 @@ function sortClients(clientsJson)
 }
 
 
-
-// Search bar filtering. Shows any card 
-// whose innterHTML contains the string
-function filterClients()
+function filterClients(clientsJson)
 {
 	var searchBar   = document.getElementById('searchClientInput');
 	var searchTerm  = searchBar.value.toLowerCase();
 	var cardStack   = document.getElementById('client-stack');
 	var clientCards = cardStack.getElementsByClassName('card');
 
-	// Regular expressions to extract data
-	const titleRegex      = /<u>(.*?)<\/u>/;
-	const ipRegex          = /ip:<b>\s*(.*?)\s*<\/b>/;
-	const fingerprintRegex = /fingerprint:<b>\s*(.*?)\s*<\/b>/;
-	const platformRegex    = /platform:<b>\s*(.*?)\s*<\/b>/;
-	const browserRegex     = /browser:<b>\s*(.*?)\s*<\/b>/;
+	var notSearch = false;
 
-
-	for (let i = 0; i < clientCards.length; i++)
+	if (searchTerm.startsWith('!'))
 	{
-		const card = clientCards[i];
-		clientText = card.innerHTML.toLowerCase();
+		notSearch = true;
+		searchTerm = searchTerm.slice(1);
+	}
 
-		// Extract data using regex
-		const titleMatch       = clientText.match(titleRegex);
-		const ipMatch          = clientText.match(ipRegex);
-		const fingerprintMatch = clientText.match(fingerprintRegex);
-		const platformMatch    = clientText.match(platformRegex);
-		const browserMatch     = clientText.match(browserRegex);
 
-		// Extracted data
-		var cardTitle   = titleMatch ? titleMatch[1] : '';
-		var ip          = ipMatch ? ipMatch[1] : '';
-		var fingerprint = fingerprintMatch ? fingerprintMatch[1] : '';
-		var platform    = platformMatch ? platformMatch[1] : '';
-		var browser     = browserMatch ? browserMatch[1] : '';
+	for (let i = clientsJson.length - 1; i >= 0; i--)
+	{
+		var clientTag         = clientsJson[i].tag.toLowerCase();
+		var clientName        = clientsJson[i].nickname.toLowerCase();
+		var clientIP          = clientsJson[i].ip;
+		var clientFingerprint = clientsJson[i].fingerprint?.toLowerCase() || ""; // sometimes null
+		var clientPlatform    = clientsJson[i].platform.toLowerCase();
+		var clientBrowser     = clientsJson[i].browser.toLowerCase();
 
-		ip          = ip.replace(/&nbsp;/g, '');
-		fingerprint = fingerprint.replace(/&nbsp;/g, '');
-		platform    = platform.replace(/&nbsp;/g, '');
-		browser     = browser.replace(/&nbsp;/g, '');
-		
-		var cleanedString = cardTitle + ip + fingerprint + platform + browser;
+		var cleanedString = clientTag + clientName + clientIP + clientFingerprint + clientPlatform + clientBrowser;
 
-		if (cleanedString.indexOf(searchTerm) !== -1)
+		if (notSearch)
 		{
-			card.style.display="block";
+			// Hide the client if it DOES match the search term
+			if (cleanedString.includes(searchTerm))
+			{
+				clientsJson.splice(i, 1);
+			}
 		}
 		else
 		{
-			card.style.display="none";
+			// Hide the client if it doesn't match the search term
+			if (cleanedString.indexOf(searchTerm) == -1)
+			{
+				// We need to whack this one
+				clientsJson.splice(i, 1);
+			}
 		}
 	}
+
+	return clientsJson;
 }
+
+
+
+// Throttle helper: ensures a function is only called at most once every delay milliseconds.
+function throttle(func, delay) {
+  let lastCall = 0;
+  return function(...args) {
+    const now = Date.now();
+    if (now - lastCall < delay) {
+      return;
+    }
+    lastCall = now;
+    return func(...args);
+  };
+}
+
+
+const throttledUpdateClients = throttle(() => {
+  clientLoadExtraCount += clientIncrementAmount;
+  updateClients();
+}, 2000);
+
 
 
 
@@ -2508,18 +2558,40 @@ async function updateClients()
 	// Start setting up the client cards
 	var cardStack = document.getElementById('client-stack');
 
+
+
+
 	// First clear out our existing cards
 	while (cardStack.firstChild)
 	{
 		cardStack.firstChild.remove();
 	}
 
+	// Add our top observer for lazy loading
+	var topObserverElement = document.createElement('div');
+	topObserverElement.setAttribute("id", "topScrollObserver");
+	topObserverElement.style.minHeight = "1px";
+	topObserverElement.style.flexShrink = "0";
+	cardStack.appendChild(topObserverElement);
 
+
+	// Sort the clients
 	var jsonResponse = await sortClients(clientsJson);
 
+	// We need to filter the clients here too
+	jsonResponse = filterClients(jsonResponse);
+
+	var topCount = parseInt(clientLoadCount) + parseInt(clientLoadExtraCount);
+
+	// console.log("$$$$ From: " + 0 + ", to: " + topCount);
+	if (topCount > jsonResponse.length)
+	{
+		topCount = jsonResponse.length;
+	}
+	// console.log("$$$$ From: " + 0 + ", to: " + topCount);
 
 	// let's layout our clients
-	for (let i = 0; i < jsonResponse.length; i++)
+	for (let i = 0; i < topCount; i++)
 	{
 		client = jsonResponse[i];
 
@@ -2661,15 +2733,89 @@ async function updateClients()
   };
 
   cardStack.appendChild(card);
+
 }
 
-filterClients();
+
+
+var bottomObserverElement = document.createElement('div');
+bottomObserverElement.style.minHeight = "1px";
+bottomObserverElement.style.flexShrink = "0";
+bottomObserverElement.setAttribute("id", "bottomScrollObserver");
+cardStack.appendChild(bottomObserverElement);
+
+
+
+let isLoading    = false;
+let bottomInView = false;
+
+let loadMoreTrigger     = document.getElementById('bottomScrollObserver');
+let loadPrevioustrigger = document.getElementById('topScrollObserver');
+
+
+// Observer for scrolling back up to the top of client list
+const topObserver = new IntersectionObserver((entries, observer) => {
+	entries.forEach(entry => {
+		if (entry.isIntersecting && !isLoading && !bottomInView) {
+			isLoading = true;
+			//console.log("-*-*-*-*- Time to reset extra count!");
+			clientLoadExtraCount = 0;
+			// updateClients();
+			isLoading = false;
+		}
+	});
+}, {
+	root: cardStack,
+  threshold: 0.1  // Adjust threshold as needed
+});
+
+
+
+
+
+// Observer for scrolling to bottom of client list
+const bottomObserver = new IntersectionObserver((entries, observer) => {
+	for (const entry of entries) {
+		bottomInView = entry.isIntersecting;
+		if (entry.isIntersecting && !isLoading) {
+			isLoading = true;
+			// console.log("@@@@@@ Time to load more!");
+			clientLoadExtraCount += clientIncrementAmount;
+			// If the bottom is in view we can't just keep calling updateClients, it clobbers things
+			throttledUpdateClients();
+			isLoading = false;
+		}
+	}
+}, {
+	root: cardStack,
+  threshold: 0.1  // Adjust threshold as needed
+});
+
+
+
+// Disconnect our observers used for lazy loading
+if (topObserver) 
+{
+  topObserver.disconnect();
+}
+if (bottomObserver) 
+{
+  bottomObserver.disconnect();
+}
+
+
+bottomObserver.observe(loadMoreTrigger);
+topObserver.observe(loadPrevioustrigger);
+
+// End update clients
 }
 
 
 
 
-// setInterval(updateClients, 5000);
+
 
 
 updateClients();
+
+

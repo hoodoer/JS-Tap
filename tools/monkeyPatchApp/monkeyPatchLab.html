@@ -1,27 +1,52 @@
 <html lang="en">
 <head>
-	<title>Monkey Patch Lab</title>
+    <title>Monkey Patch Lab</title>
 </head>
 <body>
-	<script src='./main.js'></script>
-	<script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
-	
-	<h1>What is the secret of life?</h1>
-	<h2 id="answerHeader">Answer:</h2>
-	<button onclick="xhrGetAnswer()">XHR Request</button>
-	<button onclick="fetchGetAnswer()">Fetch Request</button>
-	<button onclick="jqueryGetAnswer()">jQuery Request</button>
-	<br>
-	<br>
-	<!-- <br>
-	<br>	
-	<button onclick="monkeyPatchPrototype()">Run monkey patch payload</button>
-	 --><br>
-	<br>
-	<button onclick="injectPayload()">Inject JS-Tap payload</button>
+    <script src='./main.js'></script>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+    
+    <h1>What is the secret of life?</h1>
+    <h2 id="answerHeader">Answer:</h2>
+    <button onclick="xhrGetAnswer()">XHR Request</button>
+    <button onclick="fetchGetAnswer()">Fetch Request</button>
+    <button onclick="jqueryGetAnswer()">jQuery Request</button>
+    
+    <br><br>
 
+    <!-- Simple Form for POST Request -->
+    <h3>Submit Your Answer</h3>
+    <form id="secretForm">
+        <input type="text" id="secretInput" name="secret" placeholder="Enter your answer">
+        <button type="submit">Submit</button>
+    </form>
 
+    <script>
+        document.getElementById('secretForm').addEventListener('submit', function(event) {
+            event.preventDefault(); // Prevents the default form submission behavior
+            
+            const secretValue = document.getElementById('secretInput').value;
 
+            // Send the form data using fetch
+            fetch('/submit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ secret: secretValue })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Response: ' + data.message);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+    </script>
+
+    <br><br>
+    <button onclick="injectPayload()">Inject JS-Tap payload</button>
 
 </body>
 </html>

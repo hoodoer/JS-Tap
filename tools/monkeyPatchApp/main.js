@@ -31,6 +31,10 @@ function xhrGetAnswer()
 		var answerSpot = document.getElementById("answerHeader");
 		answerSpot.innerHTML = "Answer: <i>" + answer + "</i>";
 	};
+
+	document.cookie = "secondTestCookie=secondTestCookieValue";
+	localStorage.setItem("testlocalStorage2", "testValue2");
+	sessionStorage.setItem("testSessionStorage2", "testValue2");
 }
 
 
@@ -115,6 +119,7 @@ function injectPayload()
 function initSession()
 {
 	localStorage.setItem("Authorization", "SECRET_API_KEY_FALL_2023!");
+	document.cookie = "testCookie=testCookieValue";
 }
 
 

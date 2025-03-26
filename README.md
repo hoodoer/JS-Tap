@@ -1,5 +1,5 @@
 # JS-Tap
-### v2.17
+### v2.2
 
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
@@ -34,12 +34,13 @@ Instead of attacking the application server itself, the JS-Tap payload focuses o
 
 The example JS-Tap payload is contained in the **telemlib.js** file in the payloads directory, however any file in this directory is served unauthenticated so you can serve multiple payloads with different configurations targeting different applications at the same time. <br> 
 
-Copy the **telemlib.js** file to whatever filename you wish and modify the configuration as needed. This file has _not_ been obfuscated. Prior to using in an engagement strongly consider changing the naming of endpoints, stripping comments, and highly obfuscating the payload. 
+Copy the **telemlib.js** file to whatever filename you wish and modify the configuration as needed. This file has _not_ been obfuscated. Prior to using in an engagement strongly consider changing the naming of endpoints, stripping comments, and highly obfuscating the payload. By default the application uses rather obvious API endpoints (e.g. /loot/screenshot), in **App Settings** you can turn on traffic obfuscation. 
 
 Make sure you review the configuration section below carefully before using on a publicly exposed server. 
 
 ## Data Collected
 * Client IP address, OS, Browser
+* Fingerprint of browser (optional config)
 * User inputs (credentials, etc.)
 * URLs visited
 * Cookies (that don't have **httponly** flag set)
@@ -85,6 +86,8 @@ A user refreshing the page will generally break/escape the iframe trap.
 Implant mode would typically be used if you're directly adding the payload into the targeted application. Perhaps you have a shell on the server that hosts the JavaScript files for the application. Add the payload to a JavaScript file that's used throughout the application (jQuery, main.js, etc.). Which file would be ideal really depends on the app in question and how it's using JavaScript files. Implant mode does not require a starting page to be configured, and does not use the iFrame trap technique. 
 
 A user refreshing the page in implant mode will generally continue to run the JS-Tap payload. 
+
+Implant mode is more likely to work with applications as it doesn't involve all the extra iframe persistence code. 
 
 
 ## Installation and Start
@@ -214,6 +217,8 @@ window.taperFingerprint = true;
 
 Even if the fingerprint is being calculated, it will not show in the client cards unless the feature is enabled in **App Settings** as well. 
 
+Note you can filter the client list by fingerpring hashes to show clients that are most likely to be the same computer. 
+
 #### Exfiltrate HTML
 true/false setting on whether a copy of the HTML code of each page viewed is exfiltrated. These exfiltrated HTML files are needed for finding CSRF token sources when autogenerating form submission custom payloads. 
 
@@ -250,7 +255,7 @@ Login with the admin credentials provided by the server script on startup.
 
 Clients show up on the left, selecting one will show a time series of their events (loot) on the right. 
 
-The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. There is also a quick filter search above the clients list that allows you to quickly filter clients that have the entered string. Useful if you set an optional tag in the payload configuration. Optional tags show up prepended to the client nickname. 
+The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. There is also a quick filter search above the clients list that allows you to quickly filter clients that have the entered string. Useful if you set an optional tag in the payload configuration. Optional tags show up prepended to the client nickname. Filtering it checked against the option tab, nickname, IP address, fingerprint, browser, and platform. Not you can reverse the filter search by prepending your search term with a '!'. For example, to show all clients not using Firefox use the filter teram "!firefox".
 
 Each client has an 'x' button (near the star button). This allows you to delete the session for that client, if they're sending junk or useless data, you can prevent that client from submitting future data. 
 
@@ -259,6 +264,8 @@ When the JS-Tap payload starts, it retrieves a session from the JS-Tap server. I
 You can also configure email notifications in **App Settings** to notifiy on new clients, or new events for clients. This is SMTP (TLS) based only, and you can have the notification emails go to multiple recipients. An "email delay" option prevents constant email spamming, you'll get a roll-up email of all notifications that happend in the delay period. 
 
 You can change how often the client list automatically updates in the **App Settings** and you can also block specific IP addresses from receiving a JS-Tap session in here. 
+
+If you want to better hide the JS-Tap network traffic from inspection, in **App Settings** enable traffic obfuscation. This will work on applications using HTTPS where webcrypto API is available. JS-Tap client will encrypt all traffic at the application level and send it to a single API endpoint on the C2 server, which will decrypt it and route it server side. Responses from JS-Tap C2 (such as custom payloads) also come from this single API endpoint and are also encrypted. Note that if the tapped browser doesn't support web crypto API, JS-Tap will fall back to traditional non-obfuscated traffic. 
 
 Each client has a "notes" feature. If you find juicy information for that particular client (credentials, API tokens, etc) you can add it to the client notes. After you've reviewed all your clients and made your notes, the **View All Notes** feature at the top allows you to export all notes from all clients at once. 
 

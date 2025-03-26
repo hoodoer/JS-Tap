@@ -56,6 +56,28 @@ def sendjQueryAnswer():
 	return jsonify(responseData)
 
 
+@app.route('/submit', methods=['POST'])
+def catchFormPost():
+    try:
+	    # Try to get JSON data from the request
+	    data = request.get_json()
+	    if data:
+	        print("Received JSON data:", data)
+	        secret_value = data.get("secret", "No secret provided")
+	    else:
+	        # If no JSON data, try form-encoded data
+	        secret_value = request.form.get("secret", "No secret provided")
+	        print("Received Form Data:", request.form)
+
+	    # Respond to the client
+	    return jsonify({"message": f"Received: {secret_value}"}), 200
+
+    except Exception as e:
+        print("Error handling request:", e)
+        return jsonify({"error": "Something went wrong"}), 500
+
+
+
 
 if __name__ == '__main__':
 	app.run(debug=False, host='0.0.0.0', port=8443, ssl_context='adhoc')

