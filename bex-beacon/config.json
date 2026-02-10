@@ -3,12 +3,19 @@
     "domain": "127.0.0.1",
     "port": 8444
   },
-  "heartbeat_interval": 5,
+  "heartbeat": {
+    "base_interval": 5,
+    "jitter_percent": 30
+  },
   "domain_scoping": {
-    "mode": "all_domains",
+    "whitelist_enabled": false,
     "whitelist": [
       "https://*.example.com/*",
       "http://localhost:8000/*"
     ]
+  },
+  "sidecar": {
+    "enabled": true,
+    "host_name": "com.jstap.sidecar"
   }
 }

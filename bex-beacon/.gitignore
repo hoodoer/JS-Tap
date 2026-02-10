@@ -31,3 +31,16 @@ dist/
 
 # typescript
 .tsbuildinfo
+
+# Python virtual environment
+bin/
+lib/
+lib64
+include/
+pyvenv.cfg
+__pycache__/
+*.pyc
+
+# WXT generated
+.wxt/
+.output/

@@ -4,9 +4,13 @@ import shutil
 
 def main():
     """
-    Builds the Chrome and Firefox extensions based on the settings in config.json.
+    Builds the legacy Chrome and Firefox extensions based on the settings in config.json.
+    Processes the src-chrome-extension/ and src-firefox-extension/ template directories.
+
+    For the WXT-based build, use: npx wxt build
+    For the Sidecar build, use: python3 ../sidecar/build.py (or cd sidecar && python3 build.py)
     """
-    print("Starting extension build process...")
+    print("Starting legacy extension build process...")
 
     # Load configuration
     with open('config.json', 'r') as f:
@@ -14,15 +18,16 @@ def main():
 
     js_tap_server = config.get('js_tap_server', {})
     domain_scoping = config.get('domain_scoping', {})
+    sidecar_config = config.get('sidecar', {})
     build_dir = 'build'
 
     # Determine domain permissions
-    if domain_scoping.get('mode') == 'whitelist':
+    if domain_scoping.get('whitelist_enabled', False):
         permissions = domain_scoping.get('whitelist', [])
-        print(f"Domain mode: Whitelist. Using {len(permissions)} domains.")
+        print(f"Domain scoping: Whitelist enabled. Using {len(permissions)} domains.")
     else:
         permissions = ["<all_urls>"]
-        print("Domain mode: All Domains.")
+        print("Domain scoping: All Domains.")
 
     if not permissions:
         raise ValueError("Permissions list cannot be empty. Check your config.json whitelist.")
@@ -66,6 +71,15 @@ def main():
             manifest['permissions'] = final_perms
             print(f"Final Firefox permissions set to: {final_perms}")
 
+        # Add nativeMessaging permission if sidecar is enabled
+        if sidecar_config.get('enabled', False):
+            if 'permissions' in manifest:
+                if 'nativeMessaging' not in manifest['permissions']:
+                    manifest['permissions'].append('nativeMessaging')
+            else:
+                manifest['permissions'] = ['nativeMessaging']
+            print(f"Added nativeMessaging permission to {ext_name}")
+
         if 'content_scripts' in manifest:
             for script in manifest['content_scripts']:
                 # Prepend config.js so it loads first
@@ -80,7 +94,7 @@ def main():
 
         # 3. Modify Chrome's rules.json if it exists
         rules_path = os.path.join(dest_dir, 'rules.json')
-        if os.path.exists(rules_path) and domain_scoping.get('mode') == 'whitelist':
+        if os.path.exists(rules_path) and domain_scoping.get('whitelist_enabled', False):
             with open(rules_path, 'r') as f:
                 rules = json.load(f)
 
@@ -103,7 +117,10 @@ def main():
                 json.dump(rules, f, indent=2)
             print(f"Updated rules.json for {ext_name} with whitelisted domains.")
 
-    print("\nBuild process completed successfully.")
+    print("\nLegacy extension build completed successfully.")
     print(f"Configured extensions are located in the '{build_dir}' directory.")
+    print("\nNote: To build the Sidecar, run: cd ../sidecar && python3 build.py")
+
+
 if __name__ == '__main__':
     main()

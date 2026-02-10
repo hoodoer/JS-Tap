@@ -1,24 +1,14 @@
 
-import { CONFIG } from '@/utils/config';
+import { CONFIG, isUrlWhitelisted } from '@/utils/config';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_start',
   main() {
     // Domain scoping check
-    const mode = CONFIG.domainScoping.mode;
-    const whitelist = CONFIG.domainScoping.whitelist;
-    const currentUrl = location.href;
-
-    if (mode === 'whitelist') {
-      const isWhitelisted = whitelist.some(pattern => {
-        const regex = new RegExp(pattern.replace(/\*/g, '.*'));
-        return regex.test(currentUrl);
-      });
-      if (!isWhitelisted) {
-        console.log("BEX: Domain not whitelisted, skipping.");
-        return;
-      }
+    if (!isUrlWhitelisted(location.href)) {
+      console.log("BEX: Domain not whitelisted, skipping.");
+      return;
     }
 
     console.log("BEX: Content script running on", location.href);

@@ -8,3 +8,18 @@ loot/
 static/node_modules/bootstrap/dist/css/bootstrap.css.orig
 static/node_modules/bootstrap/dist/css/gunmetal-bootstrap.css
 static/node_modules/jquery/
+
+# Python virtual environment
+bin/
+lib/
+lib64
+include/
+pyvenv.cfg
+
+# Runtime artifacts
+*.db-shm
+*.db-wal
+adminCreds.txt
+init.lock
+lootFiles/
+logs.txt

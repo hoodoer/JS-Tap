@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <!-- Hat Crown: Touching the top edge -->
   <path d="M30 30 L40 0 L60 0 L70 30 Z" fill="black"/>
-  
+
   <!-- Hat Brim: Spanning the full 100% width -->
   <path d="M0 45 L100 45 L50 30 Z" fill="black"/>
-  
+
   <!-- Face / Beak: Pointing all the way to the bottom edge -->
   <path d="M20 45 L50 100 L80 45 Z" fill="black"/>
-  
+
   <!-- Eyes: Positioned right at the brim line for maximum visibility -->
   <circle cx="42" cy="48" r="6" fill="white"/>
   <circle cx="58" cy="48" r="6" fill="white"/>
