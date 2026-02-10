@@ -1,0 +1,14 @@
+{
+  "js_tap_server": {
+    "domain": "127.0.0.1",
+    "port": 8444
+  },
+  "heartbeat_interval": 5,
+  "domain_scoping": {
+    "mode": "all_domains",
+    "whitelist": [
+      "https://*.example.com/*",
+      "http://localhost:8000/*"
+    ]
+  }
+}

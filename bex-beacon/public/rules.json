@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "priority": 9999,
+    "action": {
+      "type": "modifyHeaders",
+      "responseHeaders": [
+        { "header": "X-Frame-Options", "operation": "remove" },
+        { "header": "Content-Security-Policy", "operation": "remove" },
+        { "header": "Content-Security-Policy-Report-Only", "operation": "remove" },
+        { "header": "X-Content-Security-Policy", "operation": "remove" },
+        { "header": "X-WebKit-CSP", "operation": "remove" }
+      ]
+    },
+    "condition": {
+      "urlFilter": "*",
+      "resourceTypes": ["main_frame", "sub_frame"]
+    }
+  }
+]
