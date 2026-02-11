@@ -497,14 +497,14 @@ def create_deploy_bundles(config, crx_path, xpi_path, include_sidecar):
             )
 
         # Copy sidecar binary
-        if sidecar_enabled and sidecar_bin:
+        if sidecar_enabled:
             if os_type == 'mac':
                 # macOS: include both architectures
                 for arch_bin in [f'{binary_name}-darwin-amd64', f'{binary_name}-darwin-arm64']:
                     src = os.path.join(sidecar_binaries_dir, arch_bin)
                     if os.path.exists(src):
                         shutil.copy2(src, os.path.join(bundle_dir, arch_bin))
-            else:
+            elif sidecar_bin:
                 src = os.path.join(sidecar_binaries_dir, sidecar_bin)
                 if os.path.exists(src):
                     shutil.copy2(src, os.path.join(bundle_dir, sidecar_bin))
@@ -538,13 +538,13 @@ def create_deploy_bundles(config, crx_path, xpi_path, include_sidecar):
             )
 
         # Copy sidecar binary
-        if sidecar_enabled and sidecar_bin:
+        if sidecar_enabled:
             if os_type == 'mac':
                 for arch_bin in [f'{binary_name}-darwin-amd64', f'{binary_name}-darwin-arm64']:
                     src = os.path.join(sidecar_binaries_dir, arch_bin)
                     if os.path.exists(src):
                         shutil.copy2(src, os.path.join(bundle_dir, arch_bin))
-            else:
+            elif sidecar_bin:
                 src = os.path.join(sidecar_binaries_dir, sidecar_bin)
                 if os.path.exists(src):
                     shutil.copy2(src, os.path.join(bundle_dir, sidecar_bin))
@@ -595,7 +595,7 @@ def _gen_chrome_unix_script(bundle_dir, config, os_type, has_crx, sidecar_enable
     host_name = sidecar_cfg.get('host_name', 'com.jstap.sidecar')
     binary_name = sidecar_cfg.get('binary_name', 'sidecar')
 
-    crx_store_dir = f'/opt/{dirname}' if os_type == 'linux' else f'/Library/Application Support/{dirname}'
+    crx_store_dir = f'/opt/{dirname}'
     sidecar_dest = f'$HOME/.local/bin/{binary_name}'
 
     if os_type == 'linux':
@@ -651,21 +651,51 @@ echo "  CRX: {crx_store_dir}/extension.crx"
 echo "  Policy: {policy_dir}/{dirname}_extension.json"
 '''
         else:
-            # macOS: use external extensions (no GUI popup issue on macOS)
+            # macOS: use enterprise policy via managed preferences plist
+            if browser_label == 'Chrome':
+                plist_bundle_id = 'com.google.Chrome'
+            else:
+                plist_bundle_id = 'org.chromium.Chromium'
+            plist_dir = '/Library/Managed Preferences'
+            plist_path = f'{plist_dir}/{plist_bundle_id}.plist'
             ext_section = f'''
-# --- Install Extension (requires sudo) ---
-echo "Installing {browser_label} extension via external extensions..."
+# --- Install Extension via Enterprise Policy (requires sudo) ---
+echo "Installing {browser_label} extension via enterprise policy..."
 sudo mkdir -p "{crx_store_dir}"
 sudo cp "$SCRIPT_DIR/extension.crx" "{crx_store_dir}/extension.crx"
-sudo mkdir -p "{ext_json_dir}"
-sudo tee "{ext_json_dir}/{chrome_id}.json" > /dev/null << EXT_JSON_EOF
-{{
-  "external_crx": "{crx_store_dir}/extension.crx",
-  "external_version": "{ext_version}"
-}}
-EXT_JSON_EOF
+
+# Write Omaha-style update manifest pointing to local CRX
+sudo tee "{crx_store_dir}/updates.xml" > /dev/null << 'UPDATE_EOF'
+<?xml version='1.0' encoding='UTF-8'?>
+<gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
+  <app appid='{chrome_id}'>
+    <updatecheck codebase='file://{crx_store_dir}/extension.crx' version='{ext_version}' />
+  </app>
+</gupdate>
+UPDATE_EOF
+
+# Write managed preferences plist that force-installs the extension
+sudo mkdir -p "{plist_dir}"
+sudo tee "{plist_path}" > /dev/null << 'PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>ExtensionSettings</key>
+    <dict>
+        <key>{chrome_id}</key>
+        <dict>
+            <key>installation_mode</key>
+            <string>force_installed</string>
+            <key>update_url</key>
+            <string>file://{crx_store_dir}/updates.xml</string>
+        </dict>
+    </dict>
+</dict>
+</plist>
+PLIST_EOF
 echo "  CRX: {crx_store_dir}/extension.crx"
-echo "  JSON: {ext_json_dir}/{chrome_id}.json"
+echo "  Policy: {plist_path}"
 '''
     else:
         if os_type == 'linux':
@@ -708,17 +738,10 @@ echo "  Manifest: $NM_DIR/{host_name}.json"
 
     # Final instructions
     if has_crx and chrome_id and ext_json_dir:
-        if os_type == 'linux':
-            instructions = f'''
+        instructions = f'''
 echo ""
 echo "Installation complete."
 echo "Restart {browser_label}. The extension will be force-installed via enterprise policy."
-'''
-        else:
-            instructions = f'''
-echo ""
-echo "Installation complete."
-echo "Restart {browser_label}. Click 'Keep' when prompted about the extension."
 '''
     else:
         instructions = f'''
@@ -748,7 +771,7 @@ def _gen_chrome_unix_uninstall(bundle_dir, config, os_type, has_crx, sidecar_ena
     host_name = sidecar_cfg.get('host_name', 'com.jstap.sidecar')
     binary_name = sidecar_cfg.get('binary_name', 'sidecar')
 
-    crx_store_dir = f'/opt/{dirname}' if os_type == 'linux' else f'/Library/Application Support/{dirname}'
+    crx_store_dir = f'/opt/{dirname}'
     sidecar_dest = f'$HOME/.local/bin/{binary_name}'
 
     # Extension removal
@@ -766,12 +789,18 @@ sudo rm -rf "{crx_store_dir}"
 echo "  Removed enterprise policy and CRX."
 '''
         else:
+            # macOS: remove managed preferences plist
+            if browser_label == 'Chrome':
+                plist_bundle_id = 'com.google.Chrome'
+            else:
+                plist_bundle_id = 'org.chromium.Chromium'
+            plist_path = f'/Library/Managed Preferences/{plist_bundle_id}.plist'
             ext_section = f'''
 # --- Remove Extension (requires sudo) ---
 echo "Removing {browser_label} extension..."
-sudo rm -f "{ext_json_dir}/{chrome_id}.json"
+sudo rm -f "{plist_path}"
 sudo rm -rf "{crx_store_dir}"
-echo "  Removed external extension JSON and CRX."
+echo "  Removed enterprise policy plist and CRX."
 '''
     else:
         if os_type == 'linux':
