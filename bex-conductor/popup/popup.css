@@ -1,0 +1,162 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 380px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  color: #e0e0e0;
+  background: #1a1a2e;
+}
+
+.container {
+  padding: 12px;
+}
+
+h1 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #5bc0de;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 8px;
+}
+
+h2 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.section {
+  margin-bottom: 14px;
+}
+
+textarea {
+  width: 100%;
+  height: 72px;
+  background: #16213e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #e0e0e0;
+  padding: 8px;
+  font-size: 12px;
+  font-family: monospace;
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #5bc0de;
+}
+
+.btn {
+  display: inline-block;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.btn-import {
+  background: #5bc0de;
+  color: #1a1a2e;
+}
+
+.btn-import:hover {
+  background: #46a5c0;
+}
+
+.btn-open {
+  background: #0f3460;
+  color: #e0e0e0;
+  font-size: 11px;
+  padding: 3px 8px;
+  margin: 0;
+}
+
+.btn-open:hover {
+  background: #1a5276;
+}
+
+.btn-clear {
+  background: #5c1a1a;
+  color: #e0e0e0;
+  font-size: 11px;
+  padding: 3px 8px;
+  margin: 0;
+}
+
+.btn-clear:hover {
+  background: #7a2020;
+}
+
+.status {
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.status.success {
+  background: #1b4332;
+  color: #95d5b2;
+  border: 1px solid #2d6a4f;
+}
+
+.status.error {
+  background: #3d1212;
+  color: #f5a5a5;
+  border: 1px solid #6b2020;
+}
+
+.ticket-list .empty {
+  color: #555;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.ticket-card {
+  background: #16213e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.ticket-card .domain {
+  font-weight: 600;
+  color: #5bc0de;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.ticket-card .badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.badge {
+  display: inline-block;
+  background: #0f3460;
+  color: #a0c4e8;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.ticket-card .actions {
+  display: flex;
+  gap: 6px;
+}

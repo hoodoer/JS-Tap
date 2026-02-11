@@ -2453,6 +2453,25 @@ function toggleBexInjection(beaconID, domain, isActive) {
 }
 
 
+// ---- Ticket Functions ----
+
+async function generateBexTicket(domainID) {
+    try {
+        var resp = await fetch('/api/bex/ticket/' + domainID);
+        if (!resp.ok) {
+            showToast('Failed to generate ticket', 'danger');
+            return;
+        }
+        var ticket = await resp.json();
+        var text = btoa(JSON.stringify(ticket));
+        await navigator.clipboard.writeText(text);
+        showToast('BEX ticket copied to clipboard');
+    } catch (err) {
+        showToast('Failed to copy ticket: ' + err.message, 'danger');
+    }
+}
+
+
 // ---- Sidecar Functions ----
 
 var _sidecarLastReadContent = null;
@@ -3132,6 +3151,13 @@ async function getClientDetails(id)
                     captureBtn.textContent = 'View Details';
                     captureBtn.onclick = function() { toggleDomainDetails(d.id, this); };
                     controlsArea.appendChild(captureBtn);
+
+                    const ticketBtn = document.createElement('button');
+                    ticketBtn.style.minWidth = "120px";
+                    ticketBtn.className = 'btn btn-outline-info btn-sm';
+                    ticketBtn.innerHTML = '<i class="bi bi-clipboard-check"></i> BEX Ticket';
+                    ticketBtn.onclick = function() { generateBexTicket(d.id); };
+                    controlsArea.appendChild(ticketBtn);
                 }
 
                 // 4. Update Children Summary

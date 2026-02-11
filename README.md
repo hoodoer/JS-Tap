@@ -1,7 +1,7 @@
 # JS-Tap
 ### v3.0beta
 
-## This tool is intended to be used on systems you are authorized to attack. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
+## This tool is intended to be used on systems you are authorized to attack and for legal and educational purposes. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
 ## Changelogs
 Major changes are documented in the project Announcements:<br>
@@ -52,6 +52,8 @@ JS-Tap has three client types that connect to the same server:
 | **Sidecar** | A native Go binary that runs on the target's OS. Provides file system browsing, file reading, and command execution. | Installed alongside the BEX Beacon via native messaging. Requires the BEX Beacon to relay commands. |
 
 All three report back to the same JS-Tap server portal, where loot is viewed and C2 commands are issued.
+
+A companion tool, **BEX Conductor**, runs on the operator's Firefox. It imports session data captured by the BEX Beacon (as a "BEX Ticket") and replays it — setting cookies, injecting headers, populating storage, and spoofing the User-Agent — so the operator can browse as the victim. See [BEX Tickets & BEX Conductor](#bex-tickets--bex-conductor-session-cloning) below.
 
 ### How They Work Together
 
@@ -646,6 +648,59 @@ When viewing a Beacon's domain intelligence, you can click **Inject JS-Tap** to 
 * The nickname of the spawned implant will be automatically linked and displayed on the domain card and the beacon's sidebar card.
 * Injections happen immediately if the user is currently on the target domain, or upon the next visit.
 
+### BEX Tickets & BEX Conductor (Session Cloning)
+
+The BEX Beacon captures cookies (including httpOnly), localStorage, sessionStorage, and authorization headers for every domain the target visits. **BEX Tickets** let you export all of that session data as a portable blob, and **BEX Conductor** replays it in your own browser so you can browse as the victim.
+
+#### Generating a BEX Ticket
+
+1. In the JS-Tap portal, select a BEX Beacon client and expand its domain list.
+2. Click the **BEX Ticket** button on the domain card you want to clone.
+3. The ticket is copied to your clipboard as a base64-encoded string.
+
+A ticket contains:
+- All cookies for the domain (with httpOnly, secure, sameSite, path, domain, and expiration metadata)
+- Captured request headers (Authorization, x-api-key, etc.)
+- localStorage and sessionStorage key/value pairs
+- The victim's raw User-Agent string, platform, and browser
+- Visited URLs for the domain (most recent first)
+
+**Important:** Make sure you generate the ticket from the correct domain entry. For example, `reddit.com` and `www.reddit.com` are separate domain entries in the beacon's data — pick the one that holds the authentication cookies.
+
+#### Installing BEX Conductor
+
+BEX Conductor is a standalone Firefox MV2 extension. It **must be Firefox** — it relies on Firefox's MV2 `webRequestBlocking` API to inject headers into outgoing requests, which Chrome MV3 does not support.
+
+To load it as a temporary extension:
+
+1. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
+2. Click **"Load Temporary Add-on..."**
+3. Browse to the `bex-conductor/` directory and select `manifest.json`
+
+The BEX Conductor icon (the JS-Tap logo) will appear in the Firefox toolbar. Temporary extensions persist until Firefox is closed — you'll need to re-load after a restart.
+
+#### Using BEX Conductor
+
+1. Click the BEX Conductor icon in the toolbar to open the popup.
+2. Paste the BEX ticket into the text area and click **Import**.
+3. BEX Conductor will:
+   - **Set all cookies** for the domain, including httpOnly cookies (extensions have this privilege).
+   - **Register header injection** — Authorization headers and other captured headers are injected into every matching request via `webRequest.onBeforeSendHeaders`.
+   - **Spoof User-Agent** — The victim's User-Agent string replaces yours in all outgoing request headers for that domain.
+   - **Populate storage** — localStorage and sessionStorage entries are written when you navigate to the domain.
+   - **Spoof navigator APIs** — Even though you're running Firefox, `navigator.userAgent`, `navigator.platform`, and `navigator.appVersion` are monkeypatched in the page's JavaScript context to return the victim's values. This defeats client-side UA checks.
+4. Click **Open** on the imported ticket to navigate to the first captured URL, or browse to the domain manually.
+5. You should now be browsing as the victim's session.
+
+The popup shows all active tickets with badge counts for cookies, headers, localStorage, and sessionStorage items. Use **Clear** to remove a ticket and its cookies when you're done.
+
+#### Verifying It Works
+
+- **Cookies:** Open Firefox DevTools → Storage → Cookies. You should see all imported cookies, including httpOnly ones.
+- **Headers:** Open DevTools → Network tab. Check that Authorization and User-Agent headers on outgoing requests match the victim's values.
+- **Storage:** Open DevTools → Storage → Local Storage / Session Storage. Verify the imported keys are present.
+- **Navigator spoofing:** Open the browser console and type `navigator.userAgent` — it should return the victim's UA string, not Firefox's.
+
 ### Using the Sidecar Panel
 
 When a BEX Beacon client has the Sidecar connected, the client detail view will show a **Sidecar** panel above the domain list. The panel has two tabs:
@@ -715,6 +770,12 @@ JS-Tap/
 ├── login.html              # Login page
 ├── protectedStatic/
 │   └── main.js             # All dashboard UI logic
+├── bex-conductor/          # Session replay Firefox extension (standalone MV2)
+│   ├── manifest.json       # Firefox MV2 manifest
+│   ├── icon.svg            # Extension icon (JS-Tap logo)
+│   ├── background/         # Cookie setting, header injection, UA spoofing
+│   ├── content/            # Storage injection, navigator property spoofing
+│   └── popup/              # Ticket import UI
 ├── bex-beacon/             # Browser extension (WXT + legacy)
 │   ├── config.json         # Central configuration (extensions, IDs, sidecar)
 │   ├── wxt.config.ts       # WXT build config

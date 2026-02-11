@@ -508,7 +508,7 @@ export default defineBackground(() => {
       });
     },
     headerUrlFilter,
-    ['requestHeaders']
+    ['requestHeaders', 'extraHeaders']
   );
 
   console.log("BEX Background loaded.");
