@@ -99,6 +99,9 @@ function escapeHTML(string)
 }
 
 
+// Data stores for safe onclick lookups (avoids embedding data in onclick attributes)
+var _mimicData = {};
+var _clientData = {};
 
 
 function showToast(message, type) {
@@ -405,7 +408,7 @@ async function showExfilViewer(eventKey)
 
 	var modal = new bootstrap.Modal(document.getElementById('customPayloadExfilModal'));
 
-
+	document.getElementById("exfil-viewer-title").innerText = "Custom Exfiltration Viewer";
 	modalContent = document.getElementById("exfil-data-viewer");
 
 	prettyPrintCode = window.html_beautify(atob(exfilDataJson.data), {indent_size: 2});
@@ -414,6 +417,29 @@ async function showExfilViewer(eventKey)
 }
 
 
+function showFormPostViewer(eventKey)
+{
+	var entry = _mimicData[eventKey];
+	if (!entry || !entry.data) return;
+
+	var formData = entry.data;
+	var modal = new bootstrap.Modal(document.getElementById('customPayloadExfilModal'));
+
+	document.getElementById("exfil-viewer-title").innerText = "Form Submission Viewer";
+	var modalContent = document.getElementById("exfil-data-viewer");
+
+	var text = '';
+	text += 'URL: ' + (formData.url || '') + '\n';
+	text += 'Form Name: ' + (formData.name || '') + '\n';
+	text += 'Action: ' + (formData.action ? atob(formData.action) : '') + '\n';
+	text += 'Method: ' + (formData.method || '') + '\n\n';
+	text += 'Data:\n' + (formData.data ? atob(formData.data) : '');
+
+	modalContent.value = text;
+	modalContent.innerHTML = '';
+	modalContent.textContent = text;
+	modal.show();
+}
 
 
 
@@ -1538,7 +1564,7 @@ function showNoteEditor(event, client, nickname, notes)
 	};
 
 
-	noteTitle.innerHTML = '<u>' + nickname + '</u> notes:';
+	noteTitle.innerHTML = '<u>' + escapeHTML(nickname) + '</u> notes:';
 	noteEditor.value = atob(notes);
 	modal.show();
 
@@ -1611,9 +1637,10 @@ async function searchCSRFToken(eventKey, tokenName, tokenValue)
 
 	var searchData = document.createElement('p');
 
-	searchData.innerHTML  = '<b>CSRF Token URL:</b><br>' + tokenSearchJson.url + '<br><br>';
-	searchData.innerHTML += '<b>CSRF Token file:</b><br>' + tokenSearchJson.fileName + '<br><br>';
-	searchData.innerHTML += '<button type="button" class="btn btn-primary" onclick=downloadHtmlCode(' + `'` + tokenSearchJson.fileName + `'`+ ')>Download Code</button><br><br>';
+	searchData.innerHTML  = '<b>CSRF Token URL:</b><br>' + escapeHTML(tokenSearchJson.url) + '<br><br>';
+	searchData.innerHTML += '<b>CSRF Token file:</b><br>' + escapeHTML(tokenSearchJson.fileName) + '<br><br>';
+	window._csrfTokenFileName = tokenSearchJson.fileName;
+	searchData.innerHTML += '<button type="button" class="btn btn-primary" onclick="downloadHtmlCode(window._csrfTokenFileName)">Download Code</button><br><br>';
 	searchData.innerHTML += '<b>Click "Next" to build payload</b>';
 	tokenUrl = tokenSearchJson.url;
 	searchDataDiv.appendChild(searchData);
@@ -1651,8 +1678,8 @@ async function searchAuthToken(eventKey, tokenValue, apiType)
 	}
 	else
 	{
-		searchData.innerHTML  = '<b>Auth Token Location:</b><br>' + tokenSearchJson.location + '<br><br>';
-		searchData.innerHTML += '<b>Token Key:</b><br>' + tokenSearchJson.tokenName + '<br><br>';
+		searchData.innerHTML  = '<b>Auth Token Location:</b><br>' + escapeHTML(tokenSearchJson.location) + '<br><br>';
+		searchData.innerHTML += '<b>Token Key:</b><br>' + escapeHTML(tokenSearchJson.tokenName) + '<br><br>';
 		searchData.innerHTML += '<b>Click "Next" to build payload</b>';		
 	}
 
@@ -1664,6 +1691,32 @@ async function searchAuthToken(eventKey, tokenValue, apiType)
 
 
 
+
+
+function showMimicApiModalFromStore(eventKey) {
+	var entry = _mimicData[eventKey];
+	if (entry) showMimicApiModal(eventKey, JSON.stringify(entry.data), entry.type);
+}
+
+function showMimicFormModalFromStore(eventKey) {
+	var entry = _mimicData[eventKey];
+	if (entry) showMimicFormModal(eventKey, JSON.stringify(entry.data));
+}
+
+function toggleStarFromStore(imgObject, event, clientId) {
+	var d = _clientData[clientId];
+	toggleStar(imgObject, event, clientId, d ? d.nickname : '');
+}
+
+function blockClientFromStore(imgObject, event, clientId) {
+	var d = _clientData[clientId];
+	blockClient(imgObject, event, clientId, d ? d.nickname : '');
+}
+
+function showNoteEditorFromStore(event, clientId) {
+	var d = _clientData[clientId];
+	showNoteEditor(event, clientId, d ? d.nickname : '', d ? d.notes : '');
+}
 
 
 async function showMimicApiModal(eventKey, apiCallDataString, apiType)
@@ -2269,7 +2322,7 @@ async function toggleDomainDetails(domainID, btnElement) {
     }
 
 
-    // Fetch Captures
+    // Fetch Captures — organized into sub-tabs by type
 	try {
 		var resp = await fetch('/api/bex/captures/' + domainID);
 		var captures = await resp.json();
@@ -2278,33 +2331,97 @@ async function toggleDomainDetails(domainID, btnElement) {
 		if (captures.length === 0) {
 			captureContent.innerHTML = '<div class="alert alert-secondary">No captures found for this domain.</div>';
 		} else {
-			var tableHtml = `
-				<div class="table-responsive">
-					<table class="table table-sm table-striped table-bordered">
-						<thead class="table-light">
-							<tr>
-								<th>Type</th>
-								<th>Name</th>
-								<th>Value</th>
-							</tr>
-						</thead>
-						<tbody>
+			// Categorize captures by type
+			var cookieCaptures = captures.filter(function(c) { return c.type === 'cookie'; });
+			var headerCaptures = captures.filter(function(c) { return c.type === 'header'; });
+			var localStorageCaptures = captures.filter(function(c) { return c.type === 'local_storage' || c.type === 'storage'; });
+			var sessionStorageCaptures = captures.filter(function(c) { return c.type === 'session_storage'; });
+
+			var subTabsHtml = `
+				<ul class="nav nav-pills nav-fill mb-3" id="capture-subtabs-${domainID}" role="tablist">
+					<li class="nav-item" role="presentation">
+						<button class="nav-link active" id="cookies-subtab-${domainID}" data-bs-toggle="pill" data-bs-target="#cookies-subcontent-${domainID}" type="button" role="tab" aria-selected="true">Cookies <span class="badge bg-light text-dark">${cookieCaptures.length}</span></button>
+					</li>
+					<li class="nav-item" role="presentation">
+						<button class="nav-link" id="headers-subtab-${domainID}" data-bs-toggle="pill" data-bs-target="#headers-subcontent-${domainID}" type="button" role="tab" aria-selected="false">Headers <span class="badge bg-light text-dark">${headerCaptures.length}</span></button>
+					</li>
+					<li class="nav-item" role="presentation">
+						<button class="nav-link" id="lstorage-subtab-${domainID}" data-bs-toggle="pill" data-bs-target="#lstorage-subcontent-${domainID}" type="button" role="tab" aria-selected="false">Local Storage <span class="badge bg-light text-dark">${localStorageCaptures.length}</span></button>
+					</li>
+					<li class="nav-item" role="presentation">
+						<button class="nav-link" id="sstorage-subtab-${domainID}" data-bs-toggle="pill" data-bs-target="#sstorage-subcontent-${domainID}" type="button" role="tab" aria-selected="false">Session Storage <span class="badge bg-light text-dark">${sessionStorageCaptures.length}</span></button>
+					</li>
+				</ul>
+				<div class="tab-content" id="capture-subtab-content-${domainID}">
 			`;
-			
-			for (let c of captures) {
-				tableHtml += `
-					<tr>
-						<td><span class="badge bg-secondary">${escapeHTML(c.type)}</span></td>
-						<td>${escapeHTML(c.name)}</td>
-						<td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">${escapeHTML(c.value)}</td>
-					</tr>
-				`;
+
+			// --- Cookies sub-tab ---
+			subTabsHtml += `<div class="tab-pane fade show active" id="cookies-subcontent-${domainID}" role="tabpanel">`;
+			if (cookieCaptures.length === 0) {
+				subTabsHtml += '<div class="alert alert-secondary">No cookies captured.</div>';
+			} else {
+				subTabsHtml += `<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Name</th><th>Value</th><th>HttpOnly</th><th>Secure</th><th>SameSite</th><th>Path</th></tr></thead><tbody>`;
+				for (var i = 0; i < cookieCaptures.length; i++) {
+					var c = cookieCaptures[i];
+					var meta = null;
+					try { if (c.metadata) meta = JSON.parse(c.metadata); } catch(e) {}
+					var httpOnlyBadge = meta && meta.httpOnly ? '<span class="badge bg-danger">Yes</span>' : '<span class="badge bg-secondary">No</span>';
+					var secureBadge = meta && meta.secure ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>';
+					var sameSiteVal = meta ? escapeHTML(meta.sameSite || 'unspecified') : '-';
+					var pathVal = meta ? escapeHTML(meta.path || '/') : '-';
+					subTabsHtml += '<tr><td>' + escapeHTML(c.name) + '</td><td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">' + escapeHTML(c.value) + '</td><td>' + httpOnlyBadge + '</td><td>' + secureBadge + '</td><td>' + sameSiteVal + '</td><td>' + pathVal + '</td></tr>';
+				}
+				subTabsHtml += '</tbody></table></div>';
 			}
-			tableHtml += `</tbody></table></div>`;
-			captureContent.innerHTML = tableHtml;
+			subTabsHtml += '</div>';
+
+			// --- Headers sub-tab ---
+			subTabsHtml += `<div class="tab-pane fade" id="headers-subcontent-${domainID}" role="tabpanel">`;
+			if (headerCaptures.length === 0) {
+				subTabsHtml += '<div class="alert alert-secondary">No headers captured.</div>';
+			} else {
+				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Header Name</th><th>Value</th></tr></thead><tbody>';
+				for (var i = 0; i < headerCaptures.length; i++) {
+					var c = headerCaptures[i];
+					subTabsHtml += '<tr><td>' + escapeHTML(c.name) + '</td><td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">' + escapeHTML(c.value) + '</td></tr>';
+				}
+				subTabsHtml += '</tbody></table></div>';
+			}
+			subTabsHtml += '</div>';
+
+			// --- Local Storage sub-tab ---
+			subTabsHtml += `<div class="tab-pane fade" id="lstorage-subcontent-${domainID}" role="tabpanel">`;
+			if (localStorageCaptures.length === 0) {
+				subTabsHtml += '<div class="alert alert-secondary">No local storage captured.</div>';
+			} else {
+				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+				for (var i = 0; i < localStorageCaptures.length; i++) {
+					var c = localStorageCaptures[i];
+					subTabsHtml += '<tr><td>' + escapeHTML(c.name) + '</td><td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">' + escapeHTML(c.value) + '</td></tr>';
+				}
+				subTabsHtml += '</tbody></table></div>';
+			}
+			subTabsHtml += '</div>';
+
+			// --- Session Storage sub-tab ---
+			subTabsHtml += `<div class="tab-pane fade" id="sstorage-subcontent-${domainID}" role="tabpanel">`;
+			if (sessionStorageCaptures.length === 0) {
+				subTabsHtml += '<div class="alert alert-secondary">No session storage captured.</div>';
+			} else {
+				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+				for (var i = 0; i < sessionStorageCaptures.length; i++) {
+					var c = sessionStorageCaptures[i];
+					subTabsHtml += '<tr><td>' + escapeHTML(c.name) + '</td><td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">' + escapeHTML(c.value) + '</td></tr>';
+				}
+				subTabsHtml += '</tbody></table></div>';
+			}
+			subTabsHtml += '</div>';
+
+			subTabsHtml += '</div>'; // close tab-content
+			captureContent.innerHTML = subTabsHtml;
 		}
 	} catch (e) {
-		captureContent.innerHTML = '<div class="alert alert-danger">Error loading captures.</div>';
+		document.getElementById('captures-content-' + domainID).innerHTML = '<div class="alert alert-danger">Error loading captures.</div>';
 	}
 }
 
@@ -2927,14 +3044,21 @@ async function getClientDetails(id)
             var children = clients.filter(c => c.parentUUID === client.uuid);
 
             if (domains.length === 0 && !client.sidecarAvailable) {
-                cardStack.innerHTML = `
-                    <div class="mt-4 p-5 bg-dark text-white rounded text-center">
-                        <h3>No Domains Recorded</h3>
-                        <p class="text-white-50">This beacon has not reported any domain intelligence yet.</p>
-                    </div>
-                `;
+                // Only insert placeholder if not already present (avoids duplication on refresh)
+                if (!cardStack.querySelector('#bex-no-domains-placeholder')) {
+                    cardStack.innerHTML = `
+                        <div id="bex-no-domains-placeholder" class="mt-4 p-5 bg-dark text-white rounded text-center">
+                            <h3>No Domains Recorded</h3>
+                            <p class="text-white-50">This beacon has not reported any domain intelligence yet.</p>
+                        </div>
+                    `;
+                }
                 return;
             }
+
+            // Remove placeholder if it exists (domains have arrived since last render)
+            var placeholder = cardStack.querySelector('#bex-no-domains-placeholder');
+            if (placeholder) placeholder.remove();
 
             // Sort domains by last seen
             var newestFirst = document.getElementById('lootSortNewest').checked;
@@ -3103,9 +3227,9 @@ async function getClientDetails(id)
                 cookieJson = await cookieReq.json();
 
                 cardTitle.innerHTML = "Cookie";
-                cardText.innerHTML  = "Cookie Name: <b>" + cookieJson.cookieName + "</b>";
+                cardText.innerHTML  = "Cookie Name: <b>" + escapeHTML(cookieJson.cookieName) + "</b>";
                 cardText.innerHTML += "<br>";
-                cardText.innerHTML += "Cookie Value: <b>" + cookieJson.cookieValue + "</b>";
+                cardText.innerHTML += "Cookie Value: <b>" + escapeHTML(cookieJson.cookieValue) + "</b>";
             }
             break;
 
@@ -3119,9 +3243,9 @@ async function getClientDetails(id)
                 // console.log("*** Local storage api call received: ");
                 // console.log(JSON.stringify(localStorageJson));
                 cardTitle.innerHTML = "Local Storage";
-                cardText.innerHTML  = "Key: <b>" + localStorageJson.localStorageKey + "</b>";
+                cardText.innerHTML  = "Key: <b>" + escapeHTML(localStorageJson.localStorageKey) + "</b>";
                 cardText.innerHTML += "<br>";
-                cardText.innerHTML += "Value: <b>" + localStorageJson.localStorageValue + "</b>";
+                cardText.innerHTML += "Value: <b>" + escapeHTML(localStorageJson.localStorageValue) + "</b>";
             }
             break;
 
@@ -3133,9 +3257,9 @@ async function getClientDetails(id)
                 sessionStorageJson = await sessionStorageReq.json();
 
                 cardTitle.innerHTML = "Session Storage";
-                cardText.innerHTML  = "Key: <b>" + sessionStorageJson.sessionStorageKey + "</b>";
+                cardText.innerHTML  = "Key: <b>" + escapeHTML(sessionStorageJson.sessionStorageKey) + "</b>";
                 cardText.innerHTML += "<br>";
-                cardText.innerHTML += "Value: <b>" + sessionStorageJson.sessionStorageValue + "</b>";
+                cardText.innerHTML += "Value: <b>" + escapeHTML(sessionStorageJson.sessionStorageValue) + "</b>";
             }
             break;
 
@@ -3147,7 +3271,7 @@ async function getClientDetails(id)
                 urlVisitedJson = await urlVisitedReq.json();
 
                 cardTitle.innerHTML = "URL Visited";
-                cardText.innerHTML  = "URL: <b>" + urlVisitedJson.url + "</b>";
+                cardText.innerHTML  = "URL: <b>" + escapeHTML(urlVisitedJson.url) + "</b>";
             }
             break;
 
@@ -3169,7 +3293,7 @@ async function getClientDetails(id)
                 screenshotJson = await screenshotReq.json();
 
                 cardTitle.innerHTML = "Screenshot";
-                cardText.innerHTML  = '<img src="' + screenshotJson.fileName + '" class="img-fluid" alt="Responsive image">';
+                cardText.innerHTML  = '<a href="' + escapeHTML(screenshotJson.fileName) + '" target="_blank"><img src="' + escapeHTML(screenshotJson.fileName) + '" class="img-thumbnail"></a>';
             }
             break;
 
@@ -3181,9 +3305,9 @@ async function getClientDetails(id)
                 userInputJson = await userInputReq.json();
 
                 cardTitle.innerHTML = "User Input";
-                cardText.innerHTML  = "Input Name: <b>" + userInputJson.inputName + "</b>";
+                cardText.innerHTML  = "Input Name: <b>" + escapeHTML(userInputJson.inputName) + "</b>";
                 cardText.innerHTML += "<br>";
-                cardText.innerHTML += "Input Value: <b>" + userInputJson.inputValue + "</b>";
+                cardText.innerHTML += "Input Value: <b>" + escapeHTML(userInputJson.inputValue) + "</b>";
             }
             break;
 
@@ -3191,13 +3315,14 @@ async function getClientDetails(id)
             if (document.getElementById('formPostEvents').checked == true)
             {
                 activeEvent = true;
-                formPostReq  = await fetch('/api/clientFormPostDetail/' + eventKey);
+                formPostReq  = await fetch('/api/clientFormPosts/' + eventKey);
                 formPostJson = await formPostReq.json();
 
                 cardTitle.innerHTML = "Network Form Submission";
                 cardText.innerHTML  = "Form submission intercepted from browser networking API.<br><br>";
-                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm me-2" onclick=showExfilViewer(' + `'` + eventKey + `'`+ ')>View Submission</button>';
-                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick=showMimicFormModal(' + `'` + eventKey + `','` + JSON.stringify(formPostJson) + `'` + ')>Create Mimic Payload</button>';
+                _mimicData[eventKey] = { data: formPostJson, type: 'FORM' };
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm me-2" onclick="showFormPostViewer(\'' + escapeHTML(eventKey) + '\')">View Submission</button>';
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick="showMimicFormModalFromStore(\'' + escapeHTML(eventKey) + '\')">Create Mimic Payload</button>';
             }
             break;
 
@@ -3210,11 +3335,12 @@ async function getClientDetails(id)
 
                 cardTitle.innerHTML = "Network API Call (XHR)";
                 cardText.innerHTML  = "Network API call intercepted via XHR monkeypatching.<br><br>";
-                cardText.innerHTML += "URL: <b>" + xhrCallJson.url + "</b><br>";
-                cardText.innerHTML += "Method: <b>" + xhrCallJson.method + "</b><br>";
-                cardText.innerHTML += "Status Code: <b>" + xhrCallJson.responseStatus + "</b><br><br>";
+                cardText.innerHTML += "URL: <b>" + escapeHTML(xhrCallJson.url) + "</b><br>";
+                cardText.innerHTML += "Method: <b>" + escapeHTML(xhrCallJson.method) + "</b><br>";
+                cardText.innerHTML += "Status Code: <b>" + escapeHTML(xhrCallJson.responseStatus) + "</b><br><br>";
                 cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm me-2" onclick=showReqRespViewer(' + `'` + eventKey + `','XHR'`+ ')>View Details</button>';
-                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick=showMimicApiModal(' + `'` + eventKey + `','` + JSON.stringify(xhrCallJson) + `','XHR'` + ')>Create Mimic Payload</button>';
+                _mimicData[eventKey] = { data: xhrCallJson, type: 'XHR' };
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick="showMimicApiModalFromStore(\'' + escapeHTML(eventKey) + '\')">Create Mimic Payload</button>';
             }
             break;
 
@@ -3227,11 +3353,12 @@ async function getClientDetails(id)
 
                 cardTitle.innerHTML = "Network API Call (Fetch)";
                 cardText.innerHTML  = "Network API call intercepted via Fetch monkeypatching.<br><br>";
-                cardText.innerHTML += "URL: <b>" + fetchCallJson.url + "</b><br>";
-                cardText.innerHTML += "Method: <b>" + fetchCallJson.method + "</b><br>";
-                cardText.innerHTML += "Status Code: <b>" + fetchCallJson.responseStatus + "</b><br><br>";
+                cardText.innerHTML += "URL: <b>" + escapeHTML(fetchCallJson.url) + "</b><br>";
+                cardText.innerHTML += "Method: <b>" + escapeHTML(fetchCallJson.method) + "</b><br>";
+                cardText.innerHTML += "Status Code: <b>" + escapeHTML(fetchCallJson.responseStatus) + "</b><br><br>";
                 cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm me-2" onclick=showReqRespViewer(' + `'` + eventKey + `','FETCH'`+ ')>View Details</button>';
-                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick=showMimicApiModal(' + `'` + eventKey + `','` + JSON.stringify(fetchCallJson) + `','FETCH'` + ')>Create Mimic Payload</button>';
+                _mimicData[eventKey] = { data: fetchCallJson, type: 'FETCH' };
+                cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" onclick="showMimicApiModalFromStore(\'' + escapeHTML(eventKey) + '\')">Create Mimic Payload</button>';
             }
             break;
 
@@ -3626,51 +3753,52 @@ async function updateClients()
   var clientName = "";
   if (client.tag != "")
   {
-  	clientName = client.tag + "/" + client.nickname;
+  	clientName = escapeHTML(client.tag) + "/" + escapeHTML(client.nickname);
   }
   else
   {
-  	clientName = client.nickname;
+  	clientName = escapeHTML(client.nickname);
   }
 
   cardTitle.innerHTML = "<u>" + clientName + "</u>";
 
+  // Store client data for safe onclick lookups
+  _clientData[client.id] = { nickname: client.nickname, notes: client.notes };
+
   if (client.isStarred)
   {
-  	cardTitle.innerHTML += '<img src="/protectedStatic/star-fill.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+  	cardTitle.innerHTML += '<img src="/protectedStatic/star-fill.svg" style="float: right;" onclick="toggleStarFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
   }
   else
   {
-  	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStar(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+  	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStarFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
   }
 
 
-  cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClient(this, event,' + `'` + client.id + `','` + client.nickname + `')">`;
+  cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClientFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
   cardTitle.innerHTML += '&nbsp;&nbsp;&nbsp';
 
-  cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + client.ip + "</b>";
+  cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.ip) + "</b>";
 
 
 	//What to do about client notes?
   if (client.notes.length > 0)
   {
-  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
-  	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Edit Notes</button>';
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick="showNoteEditorFromStore(event, \'' + escapeHTML(client.id) + '\')">Edit Notes</button>';
   }
   else
   {
-  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick=showNoteEditor(event,' + `'` 
-  	+ client.id + `','` + client.nickname  + `','` + client.notes + `'`+ ')>Add Notes</button>';
+  	cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;" onclick="showNoteEditorFromStore(event, \'' + escapeHTML(client.id) + '\')">Add Notes</button>';
   }
 
-  // Optional display of fingerprints, turned on in app settings and an option in the payload 
+  // Optional display of fingerprints, turned on in app settings and an option in the payload
   if (fingerprintJson.fingerprintEnabled)
   {
-  	cardText.innerHTML += "<br>Fingerprint:<b>&nbsp;&nbsp;&nbsp;" + client.fingerprint + "</b>";
+  	cardText.innerHTML += "<br>Fingerprint:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.fingerprint) + "</b>";
   }
 
-  cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + client.platform + "</b><br>";
-  cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + client.browser + "</b>";
+  cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.platform) + "</b><br>";
+  cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.browser) + "</b>";
 
   if (client.clientType !== 'bex-beacon') {
     if (client.hasJobs)
@@ -3690,7 +3818,7 @@ async function updateClients()
   cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
 
   if (client.clientType !== 'bex-beacon' && client.domain) {
-      cardSubtitle.innerHTML += "<br>Domain: <b>" + client.domain + "</b>";
+      cardSubtitle.innerHTML += "<br>Domain: <b>" + escapeHTML(client.domain) + "</b>";
   }
 
   cardBody.appendChild(cardTitle);

