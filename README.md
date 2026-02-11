@@ -48,7 +48,7 @@ JS-Tap has three client types that connect to the same server:
 | Client Type | What It Is | How It Gets There |
 |---|---|---|
 | **JS-Tap Implant** (telemlib.js) | A JavaScript payload injected into a web page. Instruments the DOM, captures user activity, screenshots, network calls. | XSS vulnerability, or directly added to the target app's JavaScript files (post-exploitation). |
-| **BEX Beacon** | A browser extension (Chrome MV3 / Firefox MV2). Monitors all browsing activity, captures cookies and navigation events. Can inject JS-Tap implants into specific domains on command. | Installed in the target's browser (social engineering, physical access, policy push, etc.). |
+| **BEX Beacon** | A browser extension (Chrome MV3 / Firefox MV2). Monitors all browsing activity, captures cookies (including httpOnly), localStorage, sessionStorage, and request headers. Can inject JS-Tap implants into specific domains on command. | Installed in the target's browser (social engineering, physical access, policy push, etc.). |
 | **Sidecar** | A native Go binary that runs on the target's OS. Provides file system browsing, file reading, and command execution. | Installed alongside the BEX Beacon via native messaging. Requires the BEX Beacon to relay commands. |
 
 All three report back to the same JS-Tap server portal, where loot is viewed and C2 commands are issued.
@@ -57,7 +57,7 @@ All three report back to the same JS-Tap server portal, where loot is viewed and
 
 1. **Standalone implant:** The JS-Tap payload (telemlib.js) works independently. Inject it via XSS or implant it in the target's JS files. It calls home to the JS-Tap server on its own.
 
-2. **BEX Beacon as a dropper:** The BEX Beacon monitors browsing and collects passive intelligence (cookies, localStorage, navigation). From the JS-Tap portal, you can command the beacon to inject a full JS-Tap implant into a specific domain. The implant spawned by a beacon gets high-quality screenshots via the extension's `captureVisibleTab` API (the "BEX-Assist" mode).
+2. **BEX Beacon as a dropper:** The BEX Beacon monitors browsing and collects passive intelligence (cookies, localStorage, sessionStorage, request headers, navigation). From the JS-Tap portal, you can command the beacon to inject a full JS-Tap implant into a specific domain. The implant spawned by a beacon gets high-quality screenshots via the extension's `captureVisibleTab` API (the "BEX-Assist" mode).
 
 3. **Sidecar for OS access:** When installed, the Sidecar binary gives the BEX Beacon access to the underlying operating system. Commands are sent from the JS-Tap portal, relayed through the beacon's encrypted channel to the native binary, and results are sent back. This turns a browser extension into a foothold for file system access and command execution.
 
@@ -95,9 +95,9 @@ Note: ability to receive copies of XHR and Fetch API calls works in trap mode. I
 
 ### BEX Beacons
 * Domains visited (with timestamps)
-* Cookies for visited domains (including httponly via extension APIs)
+* Cookies for visited domains (including httpOnly via `browser.cookies.getAll()`, with metadata: httpOnly, secure, sameSite, path, domain, expiration)
 * localStorage and sessionStorage
-* Response headers (for whitelisted domains)
+* Request headers (authorization, x-api-key, cookie, set-cookie) for monitored domains
 * Can inject JS-Tap implants on command (which then collect everything above)
 
 ### Sidecar (via BEX Beacon)
@@ -130,7 +130,7 @@ Implant mode is more likely to work with applications as it doesn't involve all 
 
 #### BEX Beacon (Browser Extension)
 The **BEX Beacon** is a browser extension version of JS-Tap. It serves two primary purposes:
-1. **Passive Intelligence:** It monitors all browsing activity across all domains (configurable via whitelist), capturing cookies, localStorage, and navigation events without requiring an XSS vulnerability.
+1. **Passive Intelligence:** It monitors all browsing activity across all domains (configurable via whitelist), capturing cookies (including httpOnly with full metadata), localStorage, sessionStorage, request headers, and navigation events without requiring an XSS vulnerability.
 2. **Active Dropper:** It can be tasked via the JS-Tap portal to inject a full JS-Tap implant into specific domains. This allows you to turn a simple browser extension into a delivery vehicle for full post-exploitation implants.
 
 The BEX Beacon uses app-layer encrypted communication (AES-GCM) with the JS-Tap server. All telemetry and task responses are encrypted end-to-end through a single endpoint, making network traffic harder to fingerprint.
@@ -504,7 +504,7 @@ When the whitelist is enabled, the beacon enforces it at multiple layers:
 - **Content script injection** — only injected into pages matching whitelist patterns
 - **Telemetry reporting** — domains not on the whitelist are not reported to the server
 - **JS-Tap injection tasks** — injection is blocked for domains not on the whitelist
-- **Header capture** — response headers are only captured for whitelisted domains
+- **Header capture** — request headers are only captured for whitelisted domains
 
 This is critical for red team engagements with strict scoping requirements. Setting `whitelist_enabled: true` ensures the beacon will not interact with out-of-scope domains.
 
@@ -608,14 +608,6 @@ Enable monkeypatching of XHR and Fetch APIs. This works in trap mode. In implant
 
 ```
 window.monkeyPatchAPIs = true;
-```
-
-#### Screenshot after API calls
-By default JS-Tap will capture a new screenshot after the user navigates to a new page. Some applications do not change their path when new data is loaded, which would cause missed screenshots. JS-Tap can be configured to capture a new screenshot after an XHR or Fetch API call is made. These API calls are often used to retrieve new data to display. Two settings are offered, one to enable the "after API call screenshot", and a delay in milliseconds. X milliseconds after the API call JS-Tap will capture the new screenshot.
-
-```
-window.postApiCallScreenshot = true;
-window.screenshotDelay       = 1000;
 ```
 
 ## JS-Tap Portal
@@ -733,6 +725,7 @@ JS-Tap/
 │   │   └── content/        # Content script (DOM instrumentation)
 │   ├── utils/
 │   │   ├── config.ts       # Config translation + whitelist helpers
+│   │   ├── crypto.ts       # AES-GCM encryption/decryption helpers
 │   │   └── sidecar.ts      # Native messaging module
 │   ├── src-chrome-extension/   # Legacy Chrome MV3 template
 │   └── src-firefox-extension/  # Legacy Firefox MV2 template
