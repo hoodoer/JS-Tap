@@ -788,6 +788,37 @@
 				</div>
 			</div>
 
+			<!-- Target Rule Modal -->
+			<div id="targetRuleModal" class="modal fade" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title">Add Target Rule</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body">
+							<label class="form-label">Filter Query:</label>
+							<div class="input-group mb-3">
+								<input type="text" class="form-control" id="targetRuleFilterInput"
+								       placeholder="e.g. linux && chrome && !bex">
+								<button class="btn btn-secondary" id="targetRulePreviewBtn">Preview</button>
+							</div>
+							<div id="targetRulePreviewResults" style="display: none;">
+								<div class="d-flex align-items-center mb-2">
+									<span>Matching Clients:</span>
+									<span id="targetRulePreviewCount" class="badge bg-secondary ms-2">0</span>
+								</div>
+								<ul id="targetRulePreviewList" class="list-group"
+								    style="max-height: 200px; overflow-y: auto; font-size: 0.85em;"></ul>
+							</div>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+							<button type="button" class="btn btn-primary" id="targetRuleSaveBtn">Save Rule</button>
+						</div>
+					</div>
+				</div>
+			</div>
 
 
 			<!-- Custom Payload Modal - Single Client -->

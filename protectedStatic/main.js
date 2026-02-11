@@ -16,7 +16,6 @@ let codeEditor;
 let codeEditorLoaded = false;
 let codeEditorBig    = false;
 
-
 // initialized booleans
 let appSettingsEvents = false;
 
@@ -901,6 +900,8 @@ async function selectPayload(payload)
 }
 
 
+
+
 async function autorunPayload(autorunToggle)
 {
 	var autorun = false;
@@ -1173,6 +1174,12 @@ async function refreshSavedPayloadList()
 	var req = await fetch('/api/getSavedPayloads');
 	var jsonResponse = await req.json();
 
+	// Fire all target rule fetches in parallel
+	var rulePromises = jsonResponse.map(function(p) {
+		return fetch('/api/payload/' + p.id + '/targetRules').then(function(r) { return r.json(); });
+	});
+	var allRules = await Promise.all(rulePromises);
+
 	for (let i = 0; i < jsonResponse.length; i++)
 	{
 		id          = jsonResponse[i].id;
@@ -1186,7 +1193,7 @@ async function refreshSavedPayloadList()
 		payload.name        = name;
 		payload.id          = id;
 
-		payload.addEventListener('click', function() 
+		payload.addEventListener('click', function()
 		{
 			selectPayload(this);
 		});
@@ -1201,7 +1208,7 @@ async function refreshSavedPayloadList()
 		autorunToggle.setAttribute('title', 'Automatically Run Payload on All New Clients Once');
 
 
-		autorunToggle.addEventListener('click', function() 
+		autorunToggle.addEventListener('click', function()
 		{
 			autorunPayload(this);
 		});
@@ -1254,8 +1261,17 @@ async function refreshSavedPayloadList()
 			repeatPayloadToggle.style.borderColor = 'green';
 		}
 
-
-
+		var matchButton         = document.createElement('button');
+		matchButton.className   = 'btn btn-sm me-2';
+		matchButton.textContent = 'Match';
+		matchButton.setAttribute('data-toggle', 'tooltip');
+		matchButton.setAttribute('title', 'Add a target matching rule for this Payload');
+		matchButton.addEventListener('click', (function(pid) {
+			return function(e) {
+				e.stopPropagation();
+				showTargetRuleModal(pid);
+			};
+		})(id));
 
 		var deletePayloadButton         = document.createElement('button');
 		deletePayloadButton.id          = id;
@@ -1279,9 +1295,233 @@ async function refreshSavedPayloadList()
 		payload.appendChild(autorunToggle);
 		payload.appendChild(repeatPayloadToggle);
 		payload.appendChild(executePayloadButton);
+		payload.appendChild(matchButton);
 		payload.appendChild(deletePayloadButton);
 		savedPayloadsList.appendChild(payload);
+
+		// Render nested target rules for this payload
+		var rules = allRules[i];
+		for (var r = 0; r < rules.length; r++)
+		{
+			var rule = rules[r];
+			var ruleLi = document.createElement('li');
+			ruleLi.className = 'list-group-item d-flex justify-content-between align-items-center py-1 px-2';
+			ruleLi.style.marginLeft = '25px';
+			ruleLi.style.fontSize = '0.85em';
+
+			var querySpan = document.createElement('span');
+			querySpan.style.fontFamily = 'monospace';
+			querySpan.style.overflow = 'hidden';
+			querySpan.style.textOverflow = 'ellipsis';
+			querySpan.style.whiteSpace = 'nowrap';
+			querySpan.style.maxWidth = '180px';
+			querySpan.title = rule.filterQuery;
+			querySpan.textContent = rule.filterQuery;
+
+			var ruleBtnGroup = document.createElement('div');
+			ruleBtnGroup.className = 'd-flex gap-1';
+
+			// Autorun toggle
+			var autorunBtn = document.createElement('button');
+			autorunBtn.className = 'btn btn-sm me-2';
+			autorunBtn.textContent = 'Autorun';
+			autorunBtn.setAttribute('data-toggle', 'tooltip');
+			autorunBtn.setAttribute('title', 'Automatically Run on Matching New Clients Once');
+			if (rule.active)
+			{
+				autorunBtn.classList.add('active');
+				autorunBtn.style.borderWidth = '2px';
+				autorunBtn.style.borderColor = 'green';
+			}
+			autorunBtn.addEventListener('click', (function(ruleId) {
+				return function(e) {
+					e.stopPropagation();
+					fetch('/api/payload/targetRule/' + ruleId + '/toggle', {method: 'POST'})
+					.then(function() { refreshSavedPayloadList(); });
+				};
+			})(rule.id));
+
+			// Repeat toggle
+			var ruleRepeatBtn = document.createElement('button');
+			ruleRepeatBtn.className = 'btn btn-sm me-2';
+			ruleRepeatBtn.textContent = 'Repeat';
+			ruleRepeatBtn.setAttribute('data-toggle', 'tooltip');
+			ruleRepeatBtn.setAttribute('title', 'Repeatedly Rerun on Matching Clients');
+			if (rule.repeatrun)
+			{
+				ruleRepeatBtn.classList.add('active');
+				ruleRepeatBtn.style.borderWidth = '2px';
+				ruleRepeatBtn.style.borderColor = 'green';
+			}
+			ruleRepeatBtn.addEventListener('click', (function(ruleId) {
+				return function(e) {
+					e.stopPropagation();
+					fetch('/api/payload/targetRule/' + ruleId + '/repeat', {method: 'POST'})
+					.then(function() { refreshSavedPayloadList(); });
+				};
+			})(rule.id));
+
+			// Run button
+			var ruleRunBtn = document.createElement('button');
+			ruleRunBtn.className = 'btn btn-sm me-2';
+			ruleRunBtn.textContent = 'Run';
+			ruleRunBtn.setAttribute('data-toggle', 'tooltip');
+			ruleRunBtn.setAttribute('title', 'Run Payload on All Matching Clients Once');
+			ruleRunBtn.addEventListener('click', (function(ruleId) {
+				return function(e) {
+					e.stopPropagation();
+					fetch('/api/payload/targetRule/' + ruleId + '/run', {method: 'POST'})
+					.then(function(r) { return r.json(); })
+					.then(function(data) {
+						showToast('Ran on ' + data.matched + ' matching client(s)');
+					});
+				};
+			})(rule.id));
+
+			// Edit button
+			var ruleEditBtn = document.createElement('button');
+			ruleEditBtn.className = 'btn btn-sm me-2';
+			ruleEditBtn.textContent = 'Edit';
+			ruleEditBtn.setAttribute('data-toggle', 'tooltip');
+			ruleEditBtn.setAttribute('title', 'Edit This Target Rule');
+			ruleEditBtn.addEventListener('click', (function(ruleId, ruleQuery, pid) {
+				return function(e) {
+					e.stopPropagation();
+					showTargetRuleModal(pid, ruleId, ruleQuery);
+				};
+			})(rule.id, rule.filterQuery, id));
+
+			// Delete button
+			var ruleDeleteBtn = document.createElement('button');
+			ruleDeleteBtn.className = 'btn btn-sm';
+			ruleDeleteBtn.textContent = 'Delete';
+			ruleDeleteBtn.setAttribute('data-toggle', 'tooltip');
+			ruleDeleteBtn.setAttribute('title', 'Delete This Target Rule');
+			ruleDeleteBtn.addEventListener('click', (function(ruleId) {
+				return function(e) {
+					e.stopPropagation();
+					fetch('/api/payload/targetRule/' + ruleId, {method: 'DELETE'})
+					.then(function() { refreshSavedPayloadList(); });
+				};
+			})(rule.id));
+
+			ruleBtnGroup.appendChild(autorunBtn);
+			ruleBtnGroup.appendChild(ruleRepeatBtn);
+			ruleBtnGroup.appendChild(ruleRunBtn);
+			ruleBtnGroup.appendChild(ruleEditBtn);
+			ruleBtnGroup.appendChild(ruleDeleteBtn);
+
+			ruleLi.appendChild(querySpan);
+			ruleLi.appendChild(ruleBtnGroup);
+			savedPayloadsList.appendChild(ruleLi);
+		}
 	}
+}
+
+
+function showTargetRuleModal(payloadId, editRuleId, existingQuery)
+{
+	var modalEl = document.getElementById('targetRuleModal');
+	var modalTitle = modalEl.querySelector('.modal-title');
+	var filterInput = document.getElementById('targetRuleFilterInput');
+	var previewBtn = document.getElementById('targetRulePreviewBtn');
+	var previewResults = document.getElementById('targetRulePreviewResults');
+	var previewCount = document.getElementById('targetRulePreviewCount');
+	var previewList = document.getElementById('targetRulePreviewList');
+	var saveBtn = document.getElementById('targetRuleSaveBtn');
+
+	// Set title and pre-fill for edit vs add
+	var isEdit = !!editRuleId;
+	modalTitle.textContent = isEdit ? 'Edit Target Rule' : 'Add Target Rule';
+	filterInput.value = isEdit ? existingQuery : '';
+	saveBtn.textContent = isEdit ? 'Update Rule' : 'Save Rule';
+	previewResults.style.display = 'none';
+	previewCount.textContent = '0';
+	previewList.innerHTML = '';
+
+	var modal = new bootstrap.Modal(modalEl);
+
+	// Clone buttons to remove old listeners
+	var newPreviewBtn = previewBtn.cloneNode(true);
+	previewBtn.parentNode.replaceChild(newPreviewBtn, previewBtn);
+
+	var newSaveBtn = saveBtn.cloneNode(true);
+	saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+
+	// Wire Preview button
+	newPreviewBtn.addEventListener('click', function() {
+		var query = filterInput.value.trim();
+		if (!query)
+		{
+			showToast('Enter a filter query', 'warning');
+			return;
+		}
+		fetch('/api/payload/targetRule/preview', {
+			method: 'POST',
+			body: JSON.stringify({filterQuery: query}),
+			headers: {'Content-type': 'application/json; charset=UTF-8'}
+		})
+		.then(function(r) { return r.json(); })
+		.then(function(data) {
+			previewResults.style.display = 'block';
+			previewCount.textContent = data.matched;
+			previewList.innerHTML = '';
+			for (var i = 0; i < data.clients.length; i++)
+			{
+				var c = data.clients[i];
+				var li = document.createElement('li');
+				li.className = 'list-group-item py-1 px-2';
+				li.textContent = c.nickname + ' \u2014 ' + c.platform + ' / ' + c.browser + ' (' + c.ip + ')';
+				previewList.appendChild(li);
+			}
+			if (data.clients.length === 0)
+			{
+				var li = document.createElement('li');
+				li.className = 'list-group-item py-1 px-2 text-muted';
+				li.textContent = 'No matching clients';
+				previewList.appendChild(li);
+			}
+		});
+	});
+
+	// Wire Save button
+	newSaveBtn.addEventListener('click', function() {
+		var query = filterInput.value.trim();
+		if (!query)
+		{
+			showToast('Enter a filter query', 'warning');
+			return;
+		}
+
+		var url, successMsg;
+		if (isEdit)
+		{
+			url = '/api/payload/targetRule/' + editRuleId + '/update';
+			successMsg = 'Target rule updated';
+		}
+		else
+		{
+			url = '/api/payload/' + payloadId + '/targetRule';
+			successMsg = 'Target rule added';
+		}
+
+		fetch(url, {
+			method: 'POST',
+			body: JSON.stringify({filterQuery: query}),
+			headers: {'Content-type': 'application/json; charset=UTF-8'}
+		})
+		.then(function(response) {
+			if (response.ok)
+			{
+				modal.hide();
+				refreshSavedPayloadList();
+				showToast(successMsg);
+			}
+		});
+	});
+
+	modal.show();
+	setTimeout(function() { filterInput.focus(); }, 300);
 }
 
 
@@ -1310,8 +1550,8 @@ function toggleCodeEditor()
 		codeEditor.setSize(null, "300px");
 		codeEditor.refresh();
 		codeEditorBig = false;
-	} 
-	else 
+	}
+	else
 	{
 		this.textContent = "Shrink Code";
 		editorCol.classList.remove('col-md-6');
@@ -1494,14 +1734,14 @@ async function showCustomPayloadModal(skipClear)
 	}
 
 
-	exportButton.onclick = function(event) 
+	exportButton.onclick = function(event)
 	{
 		console.log("Export button pressed");
 		exportAllPayloads(this);
 	}
 
 	modal.show();
-	codeEditor.refresh();	
+	codeEditor.refresh();
 }
 
 
@@ -3145,19 +3385,19 @@ async function getClientDetails(id)
                     injectBtn.onclick = function() { toggleBexInjection(id, d.domain, !!activeMap[d.domain]); };
                     controlsArea.appendChild(injectBtn);
 
-                    const captureBtn = document.createElement('button');
-                    captureBtn.style.minWidth = "120px";
-                    captureBtn.className = 'btn btn-primary btn-sm';
-                    captureBtn.textContent = 'View Details';
-                    captureBtn.onclick = function() { toggleDomainDetails(d.id, this); };
-                    controlsArea.appendChild(captureBtn);
-
                     const ticketBtn = document.createElement('button');
                     ticketBtn.style.minWidth = "120px";
                     ticketBtn.className = 'btn btn-outline-info btn-sm';
                     ticketBtn.innerHTML = '<i class="bi bi-clipboard-check"></i> BEX Ticket';
                     ticketBtn.onclick = function() { generateBexTicket(d.id); };
                     controlsArea.appendChild(ticketBtn);
+
+                    const captureBtn = document.createElement('button');
+                    captureBtn.style.minWidth = "120px";
+                    captureBtn.className = 'btn btn-primary btn-sm';
+                    captureBtn.textContent = 'View Details';
+                    captureBtn.onclick = function() { toggleDomainDetails(d.id, this); };
+                    controlsArea.appendChild(captureBtn);
                 }
 
                 // 4. Update Children Summary

