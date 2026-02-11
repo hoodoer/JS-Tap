@@ -26,6 +26,40 @@ let clientLoadCount       = 30;
 let clientLoadExtraCount  = 0;
 let clientIncrementAmount = 20;
 
+// Client arrival tracking
+let _prevAppCount = -1;
+let _prevBrowserCount = -1;
+let _soundEnabled = localStorage.getItem('jstap_sound_notifications') !== 'false';
+
+function playChime(type) {
+    if (!_soundEnabled) return;
+    try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        gain.gain.value = 0.15;
+        if (type === 'app') {
+            // Two-tone rising chime for app clients
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(660, ctx.currentTime);
+            osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
+        } else {
+            // Three-tone descending chime for browser clients
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            osc.frequency.setValueAtTime(740, ctx.currentTime + 0.1);
+            osc.frequency.setValueAtTime(660, ctx.currentTime + 0.2);
+        }
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+        osc.onended = function() { ctx.close(); };
+    } catch(e) { /* AudioContext not available */ }
+}
+
 
 function initializeCodeMirror()
 {
@@ -65,6 +99,61 @@ function escapeHTML(string)
 }
 
 
+
+
+function showToast(message, type) {
+    type = type || 'success';
+    var container = document.getElementById('toast-container');
+    if (!container) return;
+    var bgClass = type === 'success' ? 'bg-success' : type === 'danger' ? 'bg-danger' : type === 'warning' ? 'bg-warning text-dark' : 'bg-info';
+    var toastEl = document.createElement('div');
+    toastEl.className = 'toast align-items-center text-white border-0 ' + bgClass;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.innerHTML = '<div class="d-flex"><div class="toast-body">' + escapeHTML(message) + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+    container.appendChild(toastEl);
+    var toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+    toast.show();
+    toastEl.addEventListener('hidden.bs.toast', function() { toastEl.remove(); });
+}
+
+
+function showConfirmModal(title, message, callback) {
+    var modalEl = document.getElementById('confirmModal');
+    document.getElementById('confirmModalTitle').textContent = title;
+    document.getElementById('confirmModalBody').textContent = message;
+    var okBtn = document.getElementById('confirmModalOk');
+    var modal = new bootstrap.Modal(modalEl);
+    var newOk = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOk, okBtn);
+    newOk.addEventListener('click', function() {
+        modal.hide();
+        callback(true);
+    });
+    modalEl.addEventListener('hidden.bs.modal', function handler() {
+        modalEl.removeEventListener('hidden.bs.modal', handler);
+    });
+    modal.show();
+}
+
+
+function showPromptModal(title, message, defaultValue, callback) {
+    var modalEl = document.getElementById('promptModal');
+    document.getElementById('promptModalTitle').textContent = title;
+    document.getElementById('promptModalBody').textContent = message;
+    var input = document.getElementById('promptModalInput');
+    input.value = defaultValue || '';
+    var okBtn = document.getElementById('promptModalOk');
+    var modal = new bootstrap.Modal(modalEl);
+    var newOk = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOk, okBtn);
+    newOk.addEventListener('click', function() {
+        var val = input.value;
+        modal.hide();
+        if (val) callback(val);
+    });
+    modal.show();
+    setTimeout(function() { input.focus(); input.select(); }, 300);
+}
 
 
 function showClientFilterModal()
@@ -134,12 +223,13 @@ function blockIP()
 		})
 		.then(response => {
 			inputField.value = "";
-			refreshBlockedIPList();			
+			refreshBlockedIPList();
+			showToast('IP ' + ipAddress + ' blocked');
 		});
-	} 
-	else 
+	}
+	else
 	{
-		alert('Invalid IPv4 address. Please enter a valid IPv4 address.');
+		showToast('Invalid IPv4 address', 'warning');
 	}
 
 	inputField.value = "";
@@ -168,12 +258,13 @@ function addEmail()
 		})
 		.then(response => {
 			inputField.value = "";
-			refreshTargetEmailList();			
+			refreshTargetEmailList();
+			showToast('Email recipient added');
 		});
 	}
 	else
 	{
-		alert("Invalid email address, please enter a valid email address.");
+		showToast('Invalid email address', 'warning');
 	}
 
 	inputField.value = "";
@@ -187,18 +278,10 @@ function blockClient(imgObject, event, client, nickname)
 	console.log("Blocking client: " + nickname);
 	console.log("Client id: " + client);
 
-	var userConfirmed = window.confirm('Do you want to block ' + nickname 
-		+ ' from uploading additional events?\n\nThis will invalidate their "session"');
-
-	if (userConfirmed)
-	{
-		console.log("Yeah, screw that asshole");
+	showConfirmModal('Block Client', 'Do you want to block ' + nickname + ' from uploading additional events? This will invalidate their session.', function() {
+		console.log("Blocking client session");
 		fetch('/api/blockClientSession/' + client);
-	}
-	else
-	{
-		console.log("Nah, keep the client session...");
-	}
+	});
 
 	// Block resetting of loot card stack
 	event.stopPropagation();
@@ -215,6 +298,7 @@ function selectAllEvents()
 	{
 		checkbox.checked = true;
 	});
+	updateEventFilterDot();
 }
 
 
@@ -227,6 +311,7 @@ function selectNoEvents()
 	{
 		checkbox.checked = false;
 	});
+	updateEventFilterDot();
 }
 
 
@@ -237,8 +322,44 @@ function showEventFilterModal()
 }
 
 
+function updateEventFilterDot() {
+	var btn = document.getElementById('eventFilterBtn');
+	if (!btn) return;
+	var existing = btn.querySelector('.filter-dot');
+	var filterModal = document.getElementById('eventFilterModal');
+	var checkboxes = filterModal.querySelectorAll('input[type="checkbox"]');
+	var anyUnchecked = false;
+	checkboxes.forEach(function(cb) { if (!cb.checked) anyUnchecked = true; });
+	var sortChanged = document.getElementById('lootSortNewest').checked;
+	var isNonDefault = anyUnchecked || sortChanged;
+	if (isNonDefault && !existing) {
+		var dot = document.createElement('span');
+		dot.className = 'filter-dot';
+		btn.appendChild(dot);
+	} else if (!isNonDefault && existing) {
+		existing.remove();
+	}
+}
+
+function updateClientFilterDot() {
+	var btn = document.getElementById('clientFilterBtn');
+	if (!btn) return;
+	var existing = btn.querySelector('.filter-dot');
+	var isDefault = document.getElementById('lastSeenDescending').checked && !document.getElementById('onlyStarredClients').checked;
+	if (!isDefault && !existing) {
+		var dot = document.createElement('span');
+		dot.className = 'filter-dot';
+		btn.appendChild(dot);
+	} else if (isDefault && existing) {
+		existing.remove();
+	}
+}
+
+
 function updateEvents()
-{	
+{
+	updateEventFilterDot();
+
 	// Remove detail cards
 	detailCardStack = document.getElementById('detail-stack');
 	while (detailCardStack.firstChild)
@@ -482,7 +603,10 @@ async function showAppSettingsModal()
 	var emailEnable   = document.getElementById('enableEmails');
 
 	var fingerprintEnable = document.getElementById('showFingerprints');
+	var soundToggle       = document.getElementById('enableSoundNotifications');
 
+	// Sound notifications are client-side (localStorage)
+	soundToggle.checked = _soundEnabled;
 
 	var emailData     = await fetch('/api/app/getEmailSettings');
 	var emailDataJson = await emailData.json();
@@ -505,7 +629,7 @@ async function showAppSettingsModal()
 		notifyEvent.value = "newClients";
 		break;
 	default:
-		alert("Error parsing email notification event type." + emailDataJson.eventType);
+		showToast("Error parsing email notification event type: " + emailDataJson.eventType, 'danger');
 	}
 
 	var emailsEnabledReq  = await fetch('/api/app/getEmailNotificationSetting');
@@ -600,6 +724,12 @@ async function showAppSettingsModal()
 			}
 		});
 
+		soundToggle.addEventListener('change', function()
+		{
+			_soundEnabled = soundToggle.checked;
+			localStorage.setItem('jstap_sound_notifications', _soundEnabled ? 'true' : 'false');
+		});
+
 
 		clientDelay.addEventListener('change', function()
 		{
@@ -636,6 +766,8 @@ async function showAppSettingsModal()
 				headers: {
 					"Content-type": "application/json; charset=UTF-8"
 				}
+			}).then(function() {
+				showToast('Email settings saved');
 			});
 
 			saveButton.blur();
@@ -645,7 +777,9 @@ async function showAppSettingsModal()
 		testEmailButton.addEventListener('click', function()
 		{
 			console.log("Sending test email...");
-			fetch('/api/sendTestEmail');
+			fetch('/api/sendTestEmail').then(function() {
+				showToast('Test email sent');
+			});
 
 			testEmailButton.blur();
 		});
@@ -689,7 +823,7 @@ function importPayloads(event)
 		}
 		catch (error)
 		{
-			alert("Error parsing payloads file. See README for formatting.");
+			showToast("Error parsing payloads file. See README for formatting.", 'danger');
 			console.error('An error occurred:', error);
 			console.log('Error name:', error.name);
 			console.log('Error message:', error.message);
@@ -1249,24 +1383,12 @@ async function showCustomPayloadModal(skipClear)
 	{
 		if (unsavedChanges)
 		{
-			console.log("Oh no! unsaved changes on close!");
-
-			var userConfirmed = window.confirm('You have unsaved changes, close anyway?');
-
-			if (userConfirmed)
-			{
-				console.log("Don't care, lose my changes");
+			showConfirmModal('Unsaved Changes', 'You have unsaved changes, close anyway?', function() {
 				modal.hide();
-			}
-			else
-			{
-				event.stopPropagation();
-				console.log("NO! I need to SAVE!");
-			}
+			});
 		}
 		else
 		{
-			console.log("No unsaved changes, close away..");
 			modal.hide();
 		}
 	}
@@ -1319,17 +1441,13 @@ async function showCustomPayloadModal(skipClear)
 
 	clearJobsButton.onclick = function(event)
 	{
-		var userConfirmed = window.confirm('Do you want to clear all custom payload jobs from all clients\nand disable all auto/repeat run jobs?');
-
-		if (userConfirmed)
-		{
-			console.log("Clearing all jobs!");
+		showConfirmModal('Clear All Jobs', 'Do you want to clear all custom payload jobs from all clients and disable all auto/repeat run jobs?', function() {
 			fetch('/api/clearAllPayloadJobs')
 			.then(response => {
 				refreshSavedPayloadList();
+				showToast('All payload jobs cleared');
 			});
-		}
-
+		});
 		clearJobsButton.blur();
 	}
 
@@ -1370,11 +1488,15 @@ function updateClientSessions()
 
 	if (checkBox.checked == true)
 	{
-		fetch('/api/app/setAllowNewClientSessions/1');
+		fetch('/api/app/setAllowNewClientSessions/1').then(function() {
+			showToast('New client sessions enabled');
+		});
 	}
 	else
 	{
-		fetch('/api/app/setAllowNewClientSessions/0');
+		fetch('/api/app/setAllowNewClientSessions/0').then(function() {
+			showToast('New client sessions disabled');
+		});
 	}
 }
 
@@ -1407,6 +1529,8 @@ function showNoteEditor(event, client, nickname, notes)
 			headers: {
 				"Content-type": "application/json; charset=UTF-8"
 			}
+		}).then(function() {
+			showToast('Notes saved');
 		});
 
 		modal.hide();
@@ -1710,7 +1834,7 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 			if (tokenSearch)
 			{
 				// Only matters if we're trying to search for a token
-				alert('Authentication token not found.');
+				showToast('Authentication token not found.', 'warning');
 			}
 		}
 
@@ -2019,7 +2143,7 @@ async function showMimicFormModal(eventKey, formDataString)
 		else
 		{
 			console.log("*** Error, this encoding type not handled yet");
-			alert('Error in mimic generator, unhandled form encoding type:\n' + formEncType);
+			showToast('Error in mimic generator, unhandled form encoding type: ' + formEncType, 'danger');
 		}
 
 		payload += "		})\n";
@@ -2185,27 +2309,29 @@ async function toggleDomainDetails(domainID, btnElement) {
 }
 
 
-async function toggleBexInjection(beaconID, domain, isActive) {
+function toggleBexInjection(beaconID, domain, isActive) {
     if (isActive) {
-        if (confirm('Stop injecting JS-Tap into ' + domain + '?')) {
-            await fetch('/api/bex/stop_inject', {
+        showConfirmModal('Stop Injection', 'Stop injecting JS-Tap into ' + domain + '?', function() {
+            fetch('/api/bex/stop_inject', {
                 method: 'POST',
                 body: JSON.stringify({ beaconID: beaconID, domain: domain }),
                 headers: { "Content-type": "application/json; charset=UTF-8" }
+            }).then(function() {
+                showToast('Injection stopped for ' + domain);
+                getClientDetails(beaconID);
             });
-            getClientDetails(beaconID); // Refresh
-        }
+        });
     } else {
-        var tag = prompt("Enter a tag for the injected client:", "bex-injected");
-        if (tag) {
-            await fetch('/api/bex/inject', {
+        showPromptModal('Inject JS-Tap', 'Enter a tag for the injected client:', 'bex-injected', function(tag) {
+            fetch('/api/bex/inject', {
                 method: 'POST',
                 body: JSON.stringify({ beaconID: beaconID, domain: domain, tag: tag }),
                 headers: { "Content-type": "application/json; charset=UTF-8" }
+            }).then(function() {
+                showToast('Injection queued for ' + domain);
+                getClientDetails(beaconID);
             });
-            // alert("Injection queued. It will start on the next beacon heartbeat.");
-            getClientDetails(beaconID); // Refresh
-        }
+        });
     }
 }
 
@@ -2503,7 +2629,7 @@ function sidecarShellKeyHandler(event, beaconId) {
 
 function sidecarPopOutShell(beaconId) {
     var popWin = window.open('about:blank', '_blank', 'width=800,height=600,menubar=no,toolbar=no,location=no,status=no');
-    if (!popWin) { alert('Pop-up blocked. Please allow pop-ups for this site.'); return; }
+    if (!popWin) { showToast('Pop-up blocked. Please allow pop-ups for this site.', 'warning'); return; }
 
     var titleText = 'Sidecar Shell - ' + (_sidecarShellNickname || beaconId);
     var transferState = {
@@ -2723,13 +2849,13 @@ async function getClientDetails(id)
                     sidecarPanel.setAttribute('data-beacon-id', id);
                     sidecarPanel.className = 'card mb-3 border-secondary';
                     sidecarPanel.innerHTML = `
-                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sidecar-collapse" aria-expanded="true" aria-controls="sidecar-collapse">
+                        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sidecar-collapse" aria-expanded="false" aria-controls="sidecar-collapse">
                             <span><b>Sidecar</b> <span class="badge bg-success">Connected</span></span>
-                            <svg id="sidecar-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease;">
+                            <svg id="sidecar-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(-90deg);">
                                 <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
                             </svg>
                         </div>
-                        <div class="collapse show" id="sidecar-collapse">
+                        <div class="collapse" id="sidecar-collapse">
                         <div class="card-body p-2">
                             <ul class="nav nav-tabs" role="tablist">
                                 <li class="nav-item">
@@ -2778,10 +2904,13 @@ async function getClientDetails(id)
                             var chev = document.getElementById('sidecar-chevron');
                             if (chev) chev.style.transform = 'rotate(0deg)';
                         });
-                    }
 
-                    // Auto-browse home directory on panel creation
-                    sidecarBrowse(id);
+                        // Browse home directory on first expand
+                        collapseEl.addEventListener('show.bs.collapse', function browseOnce() {
+                            collapseEl.removeEventListener('show.bs.collapse', browseOnce);
+                            sidecarBrowse(id);
+                        });
+                    }
                 }
             }
 
@@ -2807,8 +2936,13 @@ async function getClientDetails(id)
                 return;
             }
 
-            // Sort domains by last seen (most recent first)
-            domains.sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+            // Sort domains by last seen
+            var newestFirst = document.getElementById('lootSortNewest').checked;
+            if (newestFirst) {
+                domains.sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+            } else {
+                domains.sort((a, b) => new Date(a.lastSeen) - new Date(b.lastSeen));
+            }
 
             for (let d of domains) {
                 // Look for existing card to update in-place
@@ -2917,6 +3051,10 @@ async function getClientDetails(id)
         var req = await fetch('/api/clientEvents/' + id);
         var jsonResponse = await req.json();
 
+        // Apply loot sort order (API returns oldest first)
+        if (document.getElementById('lootSortNewest').checked) {
+            jsonResponse.reverse();
+        }
 
         // Let's get event details for each event
         for (let i = 0; i < jsonResponse.length; i++)
@@ -3229,48 +3367,48 @@ function sortClients(clientsJson)
 
 function filterClients(clientsJson)
 {
-	var searchBar   = document.getElementById('searchClientInput');
-	var searchTerm  = searchBar.value.toLowerCase();
-	var cardStack   = document.getElementById('client-stack');
-	var clientCards = cardStack.getElementsByClassName('card');
+	var searchBar  = document.getElementById('searchClientInput');
+	var rawQuery   = searchBar.value.trim();
 
-	var notSearch = false;
+	if (!rawQuery) return clientsJson;
 
-	if (searchTerm.startsWith('!'))
-	{
-		notSearch = true;
-		searchTerm = searchTerm.slice(1);
-	}
+	// Split on && to get individual terms, each can be negated with leading !
+	var terms = rawQuery.split('&&').map(function(t) {
+		t = t.trim().toLowerCase();
+		if (!t) return null;
+		var negate = false;
+		if (t.charAt(0) === '!') {
+			negate = true;
+			t = t.slice(1).trim();
+		}
+		return t ? { term: t, negate: negate } : null;
+	}).filter(Boolean);
 
+	if (terms.length === 0) return clientsJson;
 
 	for (let i = clientsJson.length - 1; i >= 0; i--)
 	{
-		var clientTag         = clientsJson[i].tag.toLowerCase();
-		var clientName        = clientsJson[i].nickname.toLowerCase();
-		var clientIP          = clientsJson[i].ip;
-		var clientFingerprint = clientsJson[i].fingerprint?.toLowerCase() || ""; // sometimes null
-		var clientPlatform    = clientsJson[i].platform.toLowerCase();
-		var clientBrowser     = clientsJson[i].browser.toLowerCase();
+		var c = clientsJson[i];
+		// Build searchable string from all client fields
+		var haystack = [
+			c.tag, c.nickname, c.ip,
+			c.fingerprint || '',
+			c.platform, c.browser,
+			c.clientType || '',
+			c.domain || '',
+			c.uuid || ''
+		].join(' ').toLowerCase();
 
-		var cleanedString = clientTag + clientName + clientIP + clientFingerprint + clientPlatform + clientBrowser;
-
-		if (notSearch)
-		{
-			// Hide the client if it DOES match the search term
-			if (cleanedString.includes(searchTerm))
-			{
-				clientsJson.splice(i, 1);
+		var keep = true;
+		for (var j = 0; j < terms.length; j++) {
+			var found = haystack.indexOf(terms[j].term) !== -1;
+			if (terms[j].negate ? found : !found) {
+				keep = false;
+				break;
 			}
 		}
-		else
-		{
-			// Hide the client if it doesn't match the search term
-			if (cleanedString.indexOf(searchTerm) == -1)
-			{
-				// We need to whack this one
-				clientsJson.splice(i, 1);
-			}
-		}
+
+		if (!keep) clientsJson.splice(i, 1);
 	}
 
 	return clientsJson;
@@ -3303,6 +3441,8 @@ const throttledUpdateClients = throttle(() => {
 
 async function updateClients()
 {
+	updateClientFilterDot();
+
 	console.log("Updating clients...");
 	// Get client info
 	var req         = await fetch('/api/getClients');
@@ -3317,6 +3457,26 @@ async function updateClients()
     const statsEl = document.getElementById('client-stats');
     if (statsEl) {
         statsEl.innerHTML = `Apps: <b>${appCount}</b> &nbsp;|&nbsp; Browsers: <b>${browserCount}</b>`;
+
+        // Detect new arrivals (skip first load when _prev is -1)
+        var newApp = _prevAppCount >= 0 && appCount > _prevAppCount;
+        var newBrowser = _prevBrowserCount >= 0 && browserCount > _prevBrowserCount;
+        if (newApp || newBrowser) {
+            // Animate stats
+            statsEl.classList.remove('stats-pulse', 'stats-flash-app', 'stats-flash-browser');
+            void statsEl.offsetWidth; // force reflow to restart animation
+            statsEl.classList.add(newApp ? 'stats-flash-app' : 'stats-flash-browser');
+            statsEl.addEventListener('animationend', function handler() {
+                statsEl.classList.remove('stats-pulse', 'stats-flash-app', 'stats-flash-browser');
+                statsEl.removeEventListener('animationend', handler);
+            });
+
+            // Play chime
+            if (newApp) playChime('app');
+            else playChime('browser');
+        }
+        _prevAppCount = appCount;
+        _prevBrowserCount = browserCount;
     }
 
 	// Start setting up the client cards
@@ -3343,6 +3503,8 @@ async function updateClients()
 	var jsonResponse = await sortClients(clientsJson);
 
     const showBeacons = document.getElementById('toggleBrowsers').checked;
+
+    // Always show loot options button (sort applies to both app and browser loot)
 
     // Auto-Select Logic: When switching types, load the last selected client of that type
     if (showBeacons) {

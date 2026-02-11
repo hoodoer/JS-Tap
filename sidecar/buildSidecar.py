@@ -17,17 +17,33 @@ def main():
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # Load sidecar config
+    # Load sidecar config — try local first, fall back to central config
     config_path = os.path.join(base_dir, 'config.json')
-    if not os.path.exists(config_path):
-        print("ERROR: config.json not found in sidecar directory.")
-        print("  Create sidecar/config.json with host_name and extension IDs.")
+    central_config_path = os.path.join(base_dir, '..', 'bex-beacon', 'config.json')
+
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+    elif os.path.exists(central_config_path):
+        print("No local config.json found, deriving from ../bex-beacon/config.json")
+        with open(central_config_path, 'r') as f:
+            central = json.load(f)
+        ext_ids = central.get('extension_ids', {})
+        sidecar_cfg = central.get('sidecar', {})
+        config = {
+            'host_name': sidecar_cfg.get('host_name', 'com.jstap.sidecar'),
+            'binary_name': sidecar_cfg.get('binary_name', 'sidecar'),
+            'chrome_extension_id': ext_ids.get('chrome_extension_id', ''),
+            'firefox_extension_id': ext_ids.get('firefox_extension_id', ''),
+        }
+    else:
+        print("ERROR: No config.json found in sidecar directory or ../bex-beacon/.")
+        print("  Create sidecar/config.json with host_name and extension IDs,")
+        print("  or run the unified build from the project root.")
         return
 
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-
     host_name = config.get('host_name', 'com.jstap.sidecar')
+    binary_name = config.get('binary_name', 'sidecar')
     chrome_ext_id = config.get('chrome_extension_id', '')
     firefox_ext_id = config.get('firefox_extension_id', '')
 
@@ -52,10 +68,10 @@ def main():
 
     # 1. Cross-compile Go binary for all platforms
     targets = [
-        ('windows', 'amd64', 'sidecar-windows-amd64.exe'),
-        ('linux',   'amd64', 'sidecar-linux-amd64'),
-        ('darwin',  'amd64', 'sidecar-darwin-amd64'),
-        ('darwin',  'arm64', 'sidecar-darwin-arm64'),
+        ('windows', 'amd64', f'{binary_name}-windows-amd64.exe'),
+        ('linux',   'amd64', f'{binary_name}-linux-amd64'),
+        ('darwin',  'amd64', f'{binary_name}-darwin-amd64'),
+        ('darwin',  'arm64', f'{binary_name}-darwin-arm64'),
     ]
 
     print("\nCross-compiling sidecar binary...")
@@ -108,7 +124,7 @@ def main():
 
     # 3. Generate install scripts
     print("\nGenerating install scripts...")
-    generate_install_scripts(install_dir, host_name, chrome_ext_id, firefox_ext_id)
+    generate_install_scripts(install_dir, host_name, binary_name, chrome_ext_id, firefox_ext_id)
 
     # Summary
     print("\nSidecar build complete.")
@@ -121,7 +137,7 @@ def main():
         print("  WARNING: firefox_extension_id is empty in config.json.")
 
 
-def generate_install_scripts(install_dir, host_name, chrome_ext_id, firefox_ext_id):
+def generate_install_scripts(install_dir, host_name, binary_name, chrome_ext_id, firefox_ext_id):
     """Generate platform-specific install scripts for both Chrome and Firefox."""
 
     # --- Linux Chrome ---
@@ -130,11 +146,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY_DIR="$SCRIPT_DIR/../binaries"
-BINARY_SRC="$BINARY_DIR/sidecar-linux-amd64"
+BINARY_SRC="$BINARY_DIR/{binary_name}-linux-amd64"
 
 INSTALL_DIR="$HOME/.local/bin"
 MANIFEST_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
-BINARY_DEST="$INSTALL_DIR/sidecar"
+BINARY_DEST="$INSTALL_DIR/{binary_name}"
 
 mkdir -p "$INSTALL_DIR" "$MANIFEST_DIR"
 cp "$BINARY_SRC" "$BINARY_DEST"
@@ -161,11 +177,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY_DIR="$SCRIPT_DIR/../binaries"
-BINARY_SRC="$BINARY_DIR/sidecar-linux-amd64"
+BINARY_SRC="$BINARY_DIR/{binary_name}-linux-amd64"
 
 INSTALL_DIR="$HOME/.local/bin"
 MANIFEST_DIR="$HOME/.config/chromium/NativeMessagingHosts"
-BINARY_DEST="$INSTALL_DIR/sidecar"
+BINARY_DEST="$INSTALL_DIR/{binary_name}"
 
 mkdir -p "$INSTALL_DIR" "$MANIFEST_DIR"
 cp "$BINARY_SRC" "$BINARY_DEST"
@@ -195,14 +211,14 @@ BINARY_DIR="$SCRIPT_DIR/../binaries"
 
 ARCH="$(uname -m)"
 if [ "$ARCH" = "arm64" ]; then
-    BINARY_SRC="$BINARY_DIR/sidecar-darwin-arm64"
+    BINARY_SRC="$BINARY_DIR/{binary_name}-darwin-arm64"
 else
-    BINARY_SRC="$BINARY_DIR/sidecar-darwin-amd64"
+    BINARY_SRC="$BINARY_DIR/{binary_name}-darwin-amd64"
 fi
 
 INSTALL_DIR="$HOME/.local/bin"
 MANIFEST_DIR="$HOME/Library/Application Support/Chromium/NativeMessagingHosts"
-BINARY_DEST="$INSTALL_DIR/sidecar"
+BINARY_DEST="$INSTALL_DIR/{binary_name}"
 
 mkdir -p "$INSTALL_DIR" "$MANIFEST_DIR"
 cp "$BINARY_SRC" "$BINARY_DEST"
@@ -229,11 +245,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY_DIR="$SCRIPT_DIR/../binaries"
-BINARY_SRC="$BINARY_DIR/sidecar-linux-amd64"
+BINARY_SRC="$BINARY_DIR/{binary_name}-linux-amd64"
 
 INSTALL_DIR="$HOME/.local/bin"
 MANIFEST_DIR="$HOME/.mozilla/native-messaging-hosts"
-BINARY_DEST="$INSTALL_DIR/sidecar"
+BINARY_DEST="$INSTALL_DIR/{binary_name}"
 
 mkdir -p "$INSTALL_DIR" "$MANIFEST_DIR"
 cp "$BINARY_SRC" "$BINARY_DEST"
@@ -264,14 +280,14 @@ BINARY_DIR="$SCRIPT_DIR/../binaries"
 # Detect architecture
 ARCH="$(uname -m)"
 if [ "$ARCH" = "arm64" ]; then
-    BINARY_SRC="$BINARY_DIR/sidecar-darwin-arm64"
+    BINARY_SRC="$BINARY_DIR/{binary_name}-darwin-arm64"
 else
-    BINARY_SRC="$BINARY_DIR/sidecar-darwin-amd64"
+    BINARY_SRC="$BINARY_DIR/{binary_name}-darwin-amd64"
 fi
 
 INSTALL_DIR="$HOME/.local/bin"
 MANIFEST_DIR="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
-BINARY_DEST="$INSTALL_DIR/sidecar"
+BINARY_DEST="$INSTALL_DIR/{binary_name}"
 
 mkdir -p "$INSTALL_DIR" "$MANIFEST_DIR"
 cp "$BINARY_SRC" "$BINARY_DEST"
@@ -301,14 +317,14 @@ BINARY_DIR="$SCRIPT_DIR/../binaries"
 
 ARCH="$(uname -m)"
 if [ "$ARCH" = "arm64" ]; then
-    BINARY_SRC="$BINARY_DIR/sidecar-darwin-arm64"
+    BINARY_SRC="$BINARY_DIR/{binary_name}-darwin-arm64"
 else
-    BINARY_SRC="$BINARY_DIR/sidecar-darwin-amd64"
+    BINARY_SRC="$BINARY_DIR/{binary_name}-darwin-amd64"
 fi
 
 INSTALL_DIR="$HOME/.local/bin"
 MANIFEST_DIR="$HOME/Library/Application Support/Mozilla/NativeMessagingHosts"
-BINARY_DEST="$INSTALL_DIR/sidecar"
+BINARY_DEST="$INSTALL_DIR/{binary_name}"
 
 mkdir -p "$INSTALL_DIR" "$MANIFEST_DIR"
 cp "$BINARY_SRC" "$BINARY_DEST"
@@ -334,9 +350,9 @@ echo "  Manifest: $MANIFEST_DIR/{host_name}.json"
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
-set "BINARY_SRC=%SCRIPT_DIR%..\\binaries\\sidecar-windows-amd64.exe"
+set "BINARY_SRC=%SCRIPT_DIR%..\\binaries\\{binary_name}-windows-amd64.exe"
 set "INSTALL_DIR=%LOCALAPPDATA%\\JSTap"
-set "BINARY_DEST=%INSTALL_DIR%\\sidecar.exe"
+set "BINARY_DEST=%INSTALL_DIR%\\{binary_name}.exe"
 set "MANIFEST_DIR=%LOCALAPPDATA%\\Google\\Chrome\\User Data\\NativeMessagingHosts"
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
@@ -367,9 +383,9 @@ pause
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
-set "BINARY_SRC=%SCRIPT_DIR%..\\binaries\\sidecar-windows-amd64.exe"
+set "BINARY_SRC=%SCRIPT_DIR%..\\binaries\\{binary_name}-windows-amd64.exe"
 set "INSTALL_DIR=%LOCALAPPDATA%\\JSTap"
-set "BINARY_DEST=%INSTALL_DIR%\\sidecar.exe"
+set "BINARY_DEST=%INSTALL_DIR%\\{binary_name}.exe"
 set "MANIFEST_DIR=%APPDATA%\\Mozilla\\NativeMessagingHosts"
 
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"

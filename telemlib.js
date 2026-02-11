@@ -1825,6 +1825,12 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
     				// We're ready to trap all the things now
 						takeOver();
 
+						// Immediately check for tasks (autorun payloads)
+						if (window.taperTaskCheck) {
+							window.taperTaskUpdateScheduled = true;
+							checkTasks();
+						}
+
 						// console.log("------- Before fingerprinting code...");
 						getFingerprintHash().then(hash => {
 							if (window.taperMetricsBox)
@@ -1865,6 +1871,10 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 		// need to check for obfuscation again
 			await checkMetrics(sessionStorage.getItem('taperSessionUUID'));
 			takeOver();
+			if (window.taperTaskCheck) {
+				window.taperTaskUpdateScheduled = true;
+				checkTasks();
+			}
 			sendScreenshot();
 		}
 	})();

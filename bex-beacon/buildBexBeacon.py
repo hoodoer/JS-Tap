@@ -8,7 +8,7 @@ def main():
     Processes the src-chrome-extension/ and src-firefox-extension/ template directories.
 
     For the WXT-based build, use: npx wxt build
-    For the Sidecar build, use: python3 ../sidecar/build.py (or cd sidecar && python3 build.py)
+    For the Sidecar build, use: python3 ../sidecar/buildSidecar.py (or cd sidecar && python3 buildSidecar.py)
     """
     print("Starting legacy extension build process...")
 
@@ -19,6 +19,8 @@ def main():
     js_tap_server = config.get('js_tap_server', {})
     domain_scoping = config.get('domain_scoping', {})
     sidecar_config = config.get('sidecar', {})
+    ext_meta = config.get('extension', {})
+    ext_ids = config.get('extension_ids', {})
     build_dir = 'build'
 
     # Determine domain permissions
@@ -80,6 +82,32 @@ def main():
                 manifest['permissions'] = ['nativeMessaging']
             print(f"Added nativeMessaging permission to {ext_name}")
 
+        # Apply extension metadata from config
+        if ext_meta.get('name'):
+            manifest['name'] = ext_meta['name']
+        if ext_meta.get('version'):
+            manifest['version'] = ext_meta['version']
+        if ext_meta.get('description'):
+            manifest['description'] = ext_meta['description']
+        if ext_meta.get('short_name'):
+            manifest['short_name'] = ext_meta['short_name']
+        if ext_meta.get('author'):
+            manifest['author'] = ext_meta['author']
+        if ext_meta.get('homepage_url'):
+            manifest['homepage_url'] = ext_meta['homepage_url']
+        print(f"Applied extension metadata: {ext_meta.get('name', 'default')} v{ext_meta.get('version', '1.0')}")
+
+        # Inject extension IDs for static ID support
+        if ext_name == 'src-chrome-extension' and ext_ids.get('chrome_key'):
+            manifest['key'] = ext_ids['chrome_key']
+            print(f"Injected Chrome key for static extension ID")
+        if ext_name == 'src-firefox-extension' and ext_ids.get('firefox_extension_id'):
+            manifest.setdefault('browser_specific_settings', {})
+            manifest['browser_specific_settings']['gecko'] = {
+                'id': ext_ids['firefox_extension_id']
+            }
+            print(f"Injected Firefox extension ID: {ext_ids['firefox_extension_id']}")
+
         if 'content_scripts' in manifest:
             for script in manifest['content_scripts']:
                 # Prepend config.js so it loads first
@@ -119,7 +147,8 @@ def main():
 
     print("\nLegacy extension build completed successfully.")
     print(f"Configured extensions are located in the '{build_dir}' directory.")
-    print("\nNote: To build the Sidecar, run: cd ../sidecar && python3 build.py")
+    print("\nNote: This is the legacy build. For a full build (WXT + sidecar + deploy bundles),")
+    print("run from the project root: python3 buildAll.py")
 
 
 if __name__ == '__main__':

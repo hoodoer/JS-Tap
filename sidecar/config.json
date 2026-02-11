@@ -1,5 +1,6 @@
 {
   "host_name": "com.jstap.sidecar",
-  "chrome_extension_id": "lildbdaiofanohicnicaoenkddplbnob",
-  "firefox_extension_id": ""
+  "binary_name": "sidecar",
+  "chrome_extension_id": "aflmaidaankhajpoepfiibaicpclnile",
+  "firefox_extension_id": "bex-beacon@jstap"
 }

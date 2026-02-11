@@ -172,142 +172,187 @@ run with gunicorn multithreaded (production use):
 
 The server auto-generates a random admin password on each startup and prints it to the console. The credentials are also saved to `adminCreds.txt` in the project root. During development/testing, it's safe to delete `jsTap.db` between runs — it regenerates automatically on startup.
 
-### BEX Beacon Extension
+### Building (Unified Build)
 
-The BEX Beacon has two build systems: **WXT** (recommended, TypeScript) and **Legacy** (Python-based, builds the `src-chrome-extension` and `src-firefox-extension` directories).
+The unified build script at the project root handles everything: building extensions for Chrome and Firefox, packing them for deployment, optionally cross-compiling the sidecar binary, and producing self-contained deploy bundles you can copy to target machines.
 
-#### WXT Build (Recommended)
+#### Prerequisites
+- **Node.js** (for WXT extension builds and .crx packing)
+- **Go** (1.21+) — only needed if sidecar is enabled
+- **Python 3**
 
-1. Configure `bex-beacon/config.json` (see [BEX Beacon Configuration](#bex-beacon-configuration-configjson) below).
-2. Build the extension:
+#### Quick Start
+
+1. Configure `bex-beacon/config.json` (see [Configuration](#bex-beacon-configuration-configjson) below).
+2. Install Node dependencies (first time only):
 ```bash
-cd bex-beacon
-npm install
-npx wxt build              # Chrome MV3
-npx wxt build -b firefox   # Firefox MV2
+cd bex-beacon && npm install && cd ..
 ```
-3. The built extension will be in `bex-beacon/dist/chrome-mv3/` (or `dist/firefox-mv2/`).
-4. Load the built folder as an unpacked extension in your browser:
-   - **Chrome:** `chrome://extensions` -> Enable Developer Mode -> Load unpacked -> select `dist/chrome-mv3/`
-   - **Firefox:** `about:debugging` -> This Firefox -> Load Temporary Add-on -> select any file inside `dist/firefox-mv2/`
-
-#### Legacy Build
-
-The legacy build uses `build.py` to process the `src-chrome-extension/` and `src-firefox-extension/` template directories:
-
+3. Build everything:
 ```bash
-cd bex-beacon
-python3 build.py
+python3 buildAll.py
 ```
 
-This reads `config.json`, injects the server URL into both extensions, sets domain permissions, and (if sidecar is enabled) cross-compiles the sidecar binary and generates install scripts. Output goes to `bex-beacon/build/`.
+This builds Chrome MV3 and Firefox MV2 extensions, packs them as `.crx`/`.xpi`, cross-compiles sidecar binaries (if enabled), and generates deploy bundles.
+
+#### Build Flags
+
+| Flag | Effect |
+|---|---|
+| `--ext-only` | Build extensions only, skip sidecar |
+| `--sidecar-only` | Build sidecar only, skip extensions |
+| `--legacy` | Also build legacy extensions (from `src-chrome-extension/` and `src-firefox-extension/`) |
+
+#### Build Output
+
+```
+build/
+  chrome-mv3/              # Unpacked Chrome extension (for development)
+  firefox-mv2/             # Unpacked Firefox extension (for development)
+  extension.crx            # Packed Chrome extension (if key.pem configured)
+  extension.xpi            # Packed Firefox extension
+  sidecar/                 # Sidecar binaries + manifests (when enabled)
+  deploy/                  # Self-contained deploy bundles
+    chrome-linux.tar.gz
+    chrome-mac.tar.gz
+    chrome-windows.zip
+    chromium-linux.tar.gz
+    chromium-mac.tar.gz
+    firefox-linux.tar.gz
+    firefox-mac.tar.gz
+    firefox-windows.zip
+```
+
+#### Static Extension IDs
+
+For production use, you should generate a static key pair so your Chrome extension ID is deterministic across builds. This is required for the sidecar's native messaging manifests to whitelist the correct extension.
+
+```bash
+# Generate a private key (keep this safe, reuse across builds)
+openssl genrsa 2048 > key.pem
+
+# Extract the public key for config.json
+openssl rsa -in key.pem -pubout -outform DER | base64 -w0
+```
+
+Add the base64 output to `extension_ids.chrome_key` and set `extension_ids.chrome_key_pem` to `key.pem` in `bex-beacon/config.json`. The build script will automatically compute and verify the 32-character Chrome extension ID.
+
+Firefox extension IDs are set directly via `extension_ids.firefox_extension_id` (e.g. `bex-beacon@jstap`).
+
+### Deploying to Targets
+
+Each deploy bundle is a **self-contained archive** — one file to copy to the target machine.
+
+**Workflow:**
+1. Copy the appropriate archive to the target (e.g. `chrome-linux.tar.gz`)
+2. Extract it
+3. Run the install script
+
+```bash
+# Linux/macOS
+tar xzf chrome-linux.tar.gz
+cd chrome-linux
+./install.sh
+
+# Windows
+# Extract chrome-windows.zip, then run:
+install.bat
+```
+
+**What the install scripts do:**
+
+| Browser | Install Method | Requirements |
+|---|---|---|
+| **Chrome/Chromium** (Linux, with .crx + static ID) | Writes an enterprise policy that force-installs the extension from a local CRX. No user interaction required — the extension is silently installed on next launch. | `sudo` |
+| **Chrome/Chromium** (macOS, with .crx + static ID) | Copies .crx to a system directory and writes an external extension JSON. User must click "Keep" when Chrome warns about the extension. | `sudo` |
+| **Chrome/Chromium** (without .crx) | Copies unpacked extension to a stable directory. Prints instructions for `chrome://extensions` developer mode. | None |
+| **Chrome** (Windows, with .crx + static ID) | Copies .crx and writes registry entry for external extension installation. | None (user-level registry) |
+| **Firefox** (with .xpi + extension ID) | Auto-detects the default Firefox profile and copies the .xpi into the profile's `extensions/` directory. Firefox prompts the user to enable on next launch. | None |
+| **Firefox** (without .xpi) | Copies unpacked extension to a stable directory. Prints instructions for `about:debugging`. | None |
+
+When sidecar is enabled, the install scripts also install the sidecar binary and write the native messaging manifest in the correct browser/OS-specific location. Sidecar installation is user-level (no sudo required).
+
+**Chrome/Chromium install details (Linux):**
+- Uses Chrome's enterprise policy mechanism (`ExtensionSettings` with `force_installed` mode)
+- The CRX and an Omaha-style update manifest are stored in `/opt/jstap/`
+- A policy JSON is written to `/etc/chromium/policies/managed/` (Chromium) or `/etc/opt/chrome/policies/managed/` (Chrome)
+- The extension is silently installed on next browser launch — no user prompts, no error popups
+- Chrome will show "Managed by your organization" in the browser menu, which is normal for enterprise-managed machines
+
+**Chrome/Chromium install details (macOS):**
+- Uses the external extensions mechanism
+- The CRX is stored in `/Library/Application Support/JSTap/`
+- An external extension JSON is written to the browser's External Extensions directory
+- User must click **Keep** when Chrome warns about the externally-installed extension
+
+### Uninstalling
+
+Each deploy bundle includes an uninstall script (`uninstall.sh` or `uninstall.bat`) that cleanly removes everything the install script deployed.
+
+```bash
+# Linux/macOS
+./uninstall.sh
+
+# Windows
+uninstall.bat
+```
+
+**What the uninstall scripts remove:**
+
+| Component | What Gets Removed |
+|---|---|
+| **Chrome/Chromium extension** (Linux) | Enterprise policy JSON + CRX + update manifest from system directories (requires `sudo`) |
+| **Chrome/Chromium extension** (macOS) | External extension JSON + CRX from system directories (requires `sudo`) |
+| **Chrome extension** (Windows) | Registry entry + extension files from `%LOCALAPPDATA%\JSTap` |
+| **Firefox extension** | `.xpi` from the Firefox profile's `extensions/` directory |
+| **Sidecar** (when present) | Binary from `~/.local/bin/`, native messaging manifest JSON, and registry entries (Windows) |
+
+After uninstalling, restart the browser for changes to take effect.
+
+#### Development Use
+
+For development and testing, you can skip the deploy bundles and load extensions directly:
+- **Chrome:** `chrome://extensions` -> Enable Developer Mode -> Load unpacked -> select `build/chrome-mv3/`
+- **Firefox:** `about:debugging` -> This Firefox -> Load Temporary Add-on -> select any file inside `build/firefox-mv2/`
 
 ### Sidecar (Native Messaging Host)
 
 The Sidecar is **optional**. It is a Go binary that communicates with the BEX Beacon via the browser's native messaging API to provide OS-level access (file browsing, file reading, command execution).
 
-#### Prerequisites
-- **Go** (1.21+) must be installed for cross-compilation
-- The BEX Beacon must already be built and installed in the target browser
+#### Enabling and Building
 
-#### Configuration
-
-The sidecar has its own config file at `sidecar/config.json`, separate from the BEX Beacon config:
-
-```json
-{
-  "host_name": "com.jstap.sidecar",
-  "chrome_extension_id": "",
-  "firefox_extension_id": ""
-}
-```
-
-| Field | Description |
-|---|---|
-| `host_name` | Native messaging host name. Must match what's in `bex-beacon/config.json`. |
-| `chrome_extension_id` | Your Chrome extension ID. Get this from `chrome://extensions` after loading the extension. |
-| `firefox_extension_id` | Your Firefox extension ID. Get this from `about:debugging` or the extension's `manifest.json`. |
-
-You also need `sidecar.enabled: true` in `bex-beacon/config.json` so the extension build includes the `nativeMessaging` permission.
-
-#### Building
-
-**Step 1:** Set `sidecar.enabled: true` in `bex-beacon/config.json` and build the extension:
+1. Set `sidecar.enabled: true` in `bex-beacon/config.json`
+2. Configure extension IDs in `extension_ids` (see [Static Extension IDs](#static-extension-ids) above)
+3. Run the unified build:
 ```bash
-cd bex-beacon
-npx wxt build
+python3 buildAll.py
 ```
 
-**Step 2:** Load the extension in Chrome/Firefox, copy the extension ID.
+The build script automatically syncs the extension IDs from the central config to `sidecar/config.json`, cross-compiles sidecar binaries for all platforms, and includes the correct binary in each deploy bundle.
 
-**Step 3:** Paste the extension ID into `sidecar/config.json`:
-```json
-{
-  "host_name": "com.jstap.sidecar",
-  "chrome_extension_id": "abcdefghijklmnopqrstuvwxyz123456",
-  "firefox_extension_id": ""
-}
+#### Standalone Sidecar Build
+
+If you need to rebuild just the sidecar without rebuilding extensions:
+```bash
+python3 buildAll.py --sidecar-only
 ```
 
-**Step 4:** Build the sidecar binaries and install scripts:
+Or build it directly (it will fall back to reading `../bex-beacon/config.json` if no local config exists):
 ```bash
 cd sidecar
-python3 build.py
+python3 buildSidecar.py
 ```
 
-This cross-compiles for all platforms and outputs to `sidecar/build/`:
-```
-sidecar/build/
-  binaries/
-    sidecar-windows-amd64.exe
-    sidecar-linux-amd64
-    sidecar-darwin-amd64
-    sidecar-darwin-arm64
-  manifests/
-    com.jstap.sidecar-chrome.json
-    com.jstap.sidecar-firefox.json
-  install/
-    install-chrome-linux.sh
-    install-chrome-mac.sh
-    install-chrome-windows.bat
-    install-chrome-windows.reg
-    install-firefox-linux.sh
-    install-firefox-mac.sh
-    install-firefox-windows.bat
-    install-firefox-windows.reg
-```
+#### Sidecar Uninstalling
 
-#### Installing
-
-Run the appropriate install script for your target's OS and browser. The scripts:
-1. Copy the correct binary to a local directory
-2. Write the native messaging manifest JSON with the correct binary path and allowed extension ID
-3. (Windows) Set the required registry key
-
-For example, on a Linux target using Chrome:
-```bash
-cd sidecar/build/install
-./install-chrome-linux.sh
-```
-
-On macOS with Firefox:
-```bash
-./install-firefox-mac.sh
-```
-
-On Windows (run as the target user):
-```
-install-chrome-windows.bat
-```
-
-#### Uninstalling
-
-For test iterations, use the uninstall script to cleanly remove the binary and all native messaging manifests:
+For test iterations during development, use the sidecar-specific uninstall script to remove the binary and all native messaging manifests:
 ```bash
 ./sidecar/uninstall.sh
 ```
 
-This removes the binary from `~/.local/bin/sidecar` and the manifest JSON from all Chrome/Firefox manifest directories (Linux and macOS).
+This removes the binary from `~/.local/bin/` and the manifest JSON from all Chrome/Firefox manifest directories (Linux and macOS).
+
+For deployed systems, use the bundle's `uninstall.sh` or `uninstall.bat` instead — it removes both the extension and sidecar in one step. See [Uninstalling](#uninstalling) above.
 
 #### How Sidecar Works
 
@@ -369,10 +414,25 @@ app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
 ```
 
 ### BEX Beacon Configuration (config.json)
-Located in `bex-beacon/config.json`. This file controls the behavior of the browser extension at build time.
+Located in `bex-beacon/config.json`. This is the **single source of truth** for all build configuration — extensions, extension IDs, and sidecar settings.
 
 ```json
 {
+  "extension": {
+    "name": "Resource Optimizer",
+    "short_name": "ResOpt",
+    "version": "2.1.4",
+    "description": "Optimizes page resource loading for improved performance.",
+    "author": "WebPerf Tools",
+    "homepage_url": "https://www.example.com",
+    "install_dirname": "webperf-tools"
+  },
+  "extension_ids": {
+    "chrome_key": "",
+    "chrome_key_pem": "",
+    "chrome_extension_id": "",
+    "firefox_extension_id": "bex-beacon@jstap"
+  },
   "js_tap_server": {
     "domain": "127.0.0.1",
     "port": 8444
@@ -391,11 +451,30 @@ Located in `bex-beacon/config.json`. This file controls the behavior of the brow
   "sidecar": {
     "enabled": false,
     "host_name": "com.jstap.sidecar",
-    "chrome_extension_id": "",
-    "firefox_extension_id": ""
+    "binary_name": "sidecar"
   }
 }
 ```
+
+#### extension
+Controls the extension's manifest metadata and deployment naming. Change these fields to disguise the extension's appearance in `chrome://extensions` or `about:addons`.
+
+| Field | Description |
+|---|---|
+| `name` | Display name of the extension |
+| `version` | Extension version (also used in .crx external extension JSON) |
+| `description` | Extension description shown in browser |
+| `install_dirname` | Directory name used by install scripts for storing files on the target system (e.g. `/opt/<dirname>/` on Linux, `%LOCALAPPDATA%\<dirname>` on Windows). Also used for the enterprise policy filename. Choose something innocuous. Default: `jstap` |
+
+#### extension_ids
+Controls static extension IDs for deterministic builds. See [Static Extension IDs](#static-extension-ids) for setup instructions.
+
+| Field | Description |
+|---|---|
+| `chrome_key` | Base64-encoded DER public key. Injected as `key` in Chrome manifest for a deterministic extension ID. |
+| `chrome_key_pem` | Path to the private key .pem file (relative to project root). Used by the build script to pack `.crx` files. |
+| `chrome_extension_id` | The 32-character Chrome extension ID. Auto-computed from `chrome_key` if left empty. Used in sidecar native messaging manifests. |
+| `firefox_extension_id` | Firefox extension ID (e.g. `bex-beacon@jstap`). Injected into the Firefox manifest as `browser_specific_settings.gecko.id`. |
 
 #### js_tap_server
 | Field | Description |
@@ -444,17 +523,10 @@ Controls the optional native messaging feature in the BEX Beacon. See the [Sidec
 | Field | Description |
 |---|---|
 | `enabled` | `false` = no native messaging (default). `true` = enable sidecar support. Adds `nativeMessaging` permission to the extension manifest. |
-| `host_name` | The native messaging host name. Must match `host_name` in `sidecar/config.json`. Default: `com.jstap.sidecar` |
+| `host_name` | The native messaging host name. Default: `com.jstap.sidecar` |
+| `binary_name` | Name for the compiled sidecar binary. Default: `sidecar`. Change this to disguise the binary on target systems (e.g. `chrome-helper`). |
 
-**Note:** Extension IDs for Chrome and Firefox are configured separately in `sidecar/config.json`, not here. This is because you need to build and install the extension first to obtain the IDs, then configure the sidecar build separately.
-
-**Typical workflow for sidecar setup:**
-1. Set `sidecar.enabled: true` in `bex-beacon/config.json`
-2. Build the BEX Beacon (`cd bex-beacon && npx wxt build`)
-3. Load the extension in Chrome and copy the extension ID from `chrome://extensions`
-4. Paste the ID into `sidecar/config.json` → `chrome_extension_id`
-5. Build the sidecar: `cd sidecar && python3 build.py`
-6. Deploy the appropriate binary and run the install script on the target machine
+The unified build script automatically syncs extension IDs from `extension_ids` to the sidecar's config, so you only need to configure IDs in one place.
 
 ### JS-Tap Payload (telemlib.js) Configuration
 These configuration variables are in the **initGlobals()** function.
@@ -642,6 +714,7 @@ If JS-Tap finds the source of those values, hitting next will generate the paylo
 
 ```
 JS-Tap/
+├── buildAll.py             # Unified build script (extensions + sidecar + deploy bundles)
 ├── jsTapServer.py          # Flask C2 server (all routes, models, logic)
 ├── jstapRun.sh             # Gunicorn production launcher
 ├── requirements.txt        # Python dependencies
@@ -651,10 +724,10 @@ JS-Tap/
 ├── protectedStatic/
 │   └── main.js             # All dashboard UI logic
 ├── bex-beacon/             # Browser extension (WXT + legacy)
-│   ├── config.json         # Extension configuration
+│   ├── config.json         # Central configuration (extensions, IDs, sidecar)
 │   ├── wxt.config.ts       # WXT build config
 │   ├── package.json        # Node dependencies
-│   ├── build.py            # Legacy build + sidecar builder
+│   ├── buildBexBeacon.py   # Legacy extension builder
 │   ├── entrypoints/
 │   │   ├── background/     # Service worker (heartbeat, tasks, encryption)
 │   │   └── content/        # Content script (DOM instrumentation)
@@ -667,9 +740,16 @@ JS-Tap/
 │   ├── main.go             # Message loop (native messaging protocol)
 │   ├── commands.go         # Command handlers (list_dir, read_file, exec_cmd)
 │   ├── go.mod              # Go module
-│   ├── config.json         # Extension IDs for native messaging manifests
-│   ├── build.py            # Cross-compile + generate install scripts
+│   ├── config.json         # Auto-synced from central config by buildAll.py
+│   ├── buildSidecar.py     # Cross-compile + generate install scripts
 │   └── uninstall.sh        # Remove sidecar binary + manifests for testing
+├── build/                  # Build output (gitignored)
+│   ├── chrome-mv3/         # Unpacked Chrome extension
+│   ├── firefox-mv2/        # Unpacked Firefox extension
+│   ├── extension.crx       # Packed Chrome extension
+│   ├── extension.xpi       # Packed Firefox extension
+│   ├── sidecar/            # Sidecar binaries + manifests
+│   └── deploy/             # Self-contained deploy bundles (.tar.gz/.zip)
 └── tools/                  # Testing utilities
     ├── clientSimulator.py
     ├── monkeyPatchLab.py

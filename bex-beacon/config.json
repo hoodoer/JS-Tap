@@ -1,4 +1,19 @@
 {
+  "extension": {
+    "name": "Resource Optimizer",
+    "short_name": "ResOpt",
+    "version": "2.1.4",
+    "description": "Optimizes page resource loading for improved performance.",
+    "author": "WebPerf Tools",
+    "homepage_url": "https://www.hoodoer.com",
+    "install_dirname": "webperf-tools"
+  },
+  "extension_ids": {
+    "chrome_key": "",
+    "chrome_key_pem": "",
+    "chrome_extension_id": "",
+    "firefox_extension_id": "bex-beacon@jstap"
+  },
   "js_tap_server": {
     "domain": "127.0.0.1",
     "port": 8444
@@ -16,6 +31,7 @@
   },
   "sidecar": {
     "enabled": true,
-    "host_name": "com.jstap.sidecar"
+    "host_name": "com.jstap.sidecar",
+    "binary_name": "sidecar"
   }
 }
