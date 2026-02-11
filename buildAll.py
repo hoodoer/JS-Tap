@@ -800,6 +800,8 @@ echo "  Removed enterprise policy and CRX."
 echo "Removing {browser_label} extension..."
 sudo rm -f "{plist_path}"
 sudo rm -rf "{crx_store_dir}"
+# Flush macOS preferences cache so the policy removal takes effect immediately
+sudo killall cfprefsd 2>/dev/null || true
 echo "  Removed enterprise policy plist and CRX."
 '''
     else:
