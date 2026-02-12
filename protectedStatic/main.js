@@ -475,19 +475,39 @@ async function showAllNotesModal()
 
 	noteArea.innerHTML = "";
 
-	noteArea.innerHTML += "*******************************************\n";
+	if (jsonResponse.length === 0) {
+		noteArea.innerHTML = "No clients have notes.";
+	}
 
 	for (let i = 0; i < jsonResponse.length; i++)
 	{
-		console.log("Note loop: " + i);
-		console.log("Nickname:" + jsonResponse[i].client);
-		console.log("Notes:" + jsonResponse[i].note);
+		var entry = jsonResponse[i];
+		var typeLabel = entry.clientType === 'bex-beacon' ? 'Browser (BEX Beacon)' : 'App (JS Implant)';
 
-		noteArea.innerHTML += "Client:\n" + jsonResponse[i].client + "\n";
-		noteArea.innerHTML += "\nNotes:\n";
-		noteArea.innerHTML += atob(jsonResponse[i].note);
+		noteArea.innerHTML += "===========================================\n";
+
+		// Header line: type + tag (if set)
+		var header = typeLabel;
+		if (entry.tag) {
+			header += "  |  Tag: " + entry.tag;
+		}
+		noteArea.innerHTML += header + "\n";
+
+		noteArea.innerHTML += "Nickname:   " + entry.nickname + "\n";
+		noteArea.innerHTML += "IP:         " + (entry.ipAddress || 'unknown') + "\n";
+		noteArea.innerHTML += "Platform:   " + (entry.platform || 'unknown') + "\n";
+		noteArea.innerHTML += "Browser:    " + (entry.browser || 'unknown') + "\n";
+		noteArea.innerHTML += "First Seen: " + (entry.firstSeen || 'unknown') + "\n";
+		noteArea.innerHTML += "Last Seen:  " + (entry.lastSeen || 'unknown') + "\n";
+
+		// Domains for beacon clients
+		if (entry.domains && entry.domains.length > 0) {
+			noteArea.innerHTML += "Domains:    " + entry.domains.join(', ') + "\n";
+		}
+
+		noteArea.innerHTML += "-------------------------------------------\n";
+		noteArea.innerHTML += atob(entry.note);
 		noteArea.innerHTML += "\n\n";
-		noteArea.innerHTML += "*******************************************\n";
 	}
 
 		// Handle saving modified notes
@@ -2044,6 +2064,129 @@ function blockClientFromStore(imgObject, event, clientId) {
 function showNoteEditorFromStore(event, clientId) {
 	var d = _clientData[clientId];
 	showNoteEditor(event, clientId, d ? d.nickname : '', d ? d.notes : '');
+}
+
+
+function showNicknameEditor(event, clientId) {
+	event.stopPropagation();
+
+	var card = document.getElementById('clientCard' + clientId);
+	if (!card) return;
+
+	var cardTitle = card.querySelector('.card-title');
+	if (!cardTitle) return;
+
+	// Already editing?
+	if (cardTitle.querySelector('.nickname-edit-input')) return;
+
+	var d = _clientData[clientId];
+	var currentNickname = d ? d.nickname : '';
+
+	// Save original content so we can restore on cancel
+	var originalHTML = cardTitle.innerHTML;
+
+	// Build inline editor
+	var container = document.createElement('div');
+	container.className = 'd-flex align-items-center gap-1 flex-wrap';
+
+	var input = document.createElement('input');
+	input.type = 'text';
+	input.className = 'form-control form-control-sm nickname-edit-input';
+	input.value = currentNickname;
+	input.style.maxWidth = '200px';
+	input.style.fontSize = '0.85em';
+	input.maxLength = 60;
+
+	var saveBtn = document.createElement('button');
+	saveBtn.className = 'btn btn-primary btn-sm';
+	saveBtn.textContent = 'Save';
+	saveBtn.style.fontSize = '0.75em';
+
+	var cancelBtn = document.createElement('button');
+	cancelBtn.className = 'btn btn-secondary btn-sm';
+	cancelBtn.textContent = 'Cancel';
+	cancelBtn.style.fontSize = '0.75em';
+
+	var errorSpan = document.createElement('span');
+	errorSpan.className = 'text-danger';
+	errorSpan.style.fontSize = '0.75em';
+	errorSpan.style.display = 'none';
+
+	container.appendChild(input);
+	container.appendChild(saveBtn);
+	container.appendChild(cancelBtn);
+	container.appendChild(errorSpan);
+
+	// Stop any click inside the editor from bubbling to the card's onclick
+	// (which would re-select the client and rebuild the card, destroying the editor)
+	container.onclick = function(e) { e.stopPropagation(); };
+
+	cardTitle.innerHTML = '';
+	cardTitle.appendChild(container);
+
+	input.focus();
+	input.select();
+
+	cancelBtn.onclick = function(e) {
+		e.stopPropagation();
+		cardTitle.innerHTML = originalHTML;
+	};
+
+	input.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape') {
+			e.stopPropagation();
+			cardTitle.innerHTML = originalHTML;
+		} else if (e.key === 'Enter') {
+			e.stopPropagation();
+			saveBtn.click();
+		}
+	});
+
+	saveBtn.onclick = function(e) {
+		e.stopPropagation();
+		var newNickname = input.value.trim();
+
+		if (!newNickname) {
+			errorSpan.textContent = 'Cannot be empty';
+			errorSpan.style.display = '';
+			return;
+		}
+
+		if (newNickname === currentNickname) {
+			cardTitle.innerHTML = originalHTML;
+			return;
+		}
+
+		saveBtn.disabled = true;
+		errorSpan.style.display = 'none';
+
+		fetch('/api/updateClientNickname/' + clientId, {
+			method: 'POST',
+			body: JSON.stringify({ nickname: newNickname }),
+			headers: { 'Content-type': 'application/json; charset=UTF-8' }
+		}).then(function(resp) {
+			return resp.json().then(function(data) {
+				if (!resp.ok) {
+					errorSpan.textContent = data.error || 'Failed to save';
+					errorSpan.style.display = '';
+					saveBtn.disabled = false;
+				} else {
+					// Update local store
+					if (_clientData[clientId]) {
+						_clientData[clientId].nickname = newNickname;
+					}
+					// Remove editor from DOM before refreshing so updateClients guard doesn't block
+					container.remove();
+					showToast('Nickname updated');
+					updateClients();
+				}
+			});
+		}).catch(function() {
+			errorSpan.textContent = 'Network error';
+			errorSpan.style.display = '';
+			saveBtn.disabled = false;
+		});
+	};
 }
 
 
@@ -3922,6 +4065,9 @@ const throttledUpdateClients = throttle(() => {
 
 async function updateClients()
 {
+	// Don't rebuild the client list while the user is editing a nickname inline
+	if (document.querySelector('.nickname-edit-input')) return;
+
 	updateClientFilterDot();
 
 	console.log("Updating clients...");
@@ -4116,23 +4262,19 @@ async function updateClients()
   	clientName = escapeHTML(client.nickname);
   }
 
-  cardTitle.innerHTML = "<u>" + clientName + "</u>";
+  var pencilSvg = '<span style="cursor:pointer;opacity:0.6;" onclick="showNicknameEditor(event, \'' + escapeHTML(client.id) + '\')"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/></svg></span>';
+
+  var starIcon = client.isStarred
+    ? '<img src="/protectedStatic/star-fill.svg" style="cursor:pointer;" onclick="toggleStarFromStore(this, event, \'' + escapeHTML(client.id) + '\')">'
+    : '<img src="/protectedStatic/star.svg" style="cursor:pointer;" onclick="toggleStarFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
+
+  var blockIcon = '<img src="/protectedStatic/x-circle.svg" style="cursor:pointer;" onclick="blockClientFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
+
+  cardTitle.innerHTML = '<span class="client-name" title="' + clientName + '"><u>' + clientName + '</u></span>'
+    + '<span class="client-card-actions">' + pencilSvg + blockIcon + starIcon + '</span>';
 
   // Store client data for safe onclick lookups
   _clientData[client.id] = { nickname: client.nickname, notes: client.notes };
-
-  if (client.isStarred)
-  {
-  	cardTitle.innerHTML += '<img src="/protectedStatic/star-fill.svg" style="float: right;" onclick="toggleStarFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
-  }
-  else
-  {
-  	cardTitle.innerHTML += '<img src="/protectedStatic/star.svg" style="float: right;" onclick="toggleStarFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
-  }
-
-
-  cardTitle.innerHTML += '<img src="/protectedStatic/x-circle.svg" style="float: right; margin-right: 10px;" onclick="blockClientFromStore(this, event, \'' + escapeHTML(client.id) + '\')">';
-  cardTitle.innerHTML += '&nbsp;&nbsp;&nbsp';
 
   cardText.innerHTML  = "IP:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.ip) + "</b>";
 
@@ -4243,7 +4385,9 @@ async function updateClients()
   card.appendChild(cardBody);
 
   card.onclick =  function(event) {
-    	// console.log("!!! CLIENT CARD CLICKED!!!");
+    	// Ignore clicks on action icons (pencil/star/block) or any button/input (nickname editor, notes, payload)
+    	var target = event.target;
+    	if (target.closest('.client-card-actions') || target.closest('button') || target.closest('input')) return;
   	unselectAllClients();
   	clickedClient = this.getAttribute("clientIndex");
   	this.classList.add("table-active");
@@ -4329,6 +4473,205 @@ topObserver.observe(loadPrevioustrigger);
 }
 
 
+// ===== Loot Search =====
+
+var _lootSearchModal = null;
+
+function showLootSearchModal()
+{
+	if (!_lootSearchModal) {
+		_lootSearchModal = new bootstrap.Modal(document.getElementById('lootSearchModal'));
+	}
+	// Reset to defaults: all checkboxes checked
+	lootSearchSelectAll();
+	document.getElementById('lootSearchResults').innerHTML = '';
+	document.getElementById('lootSearchSummary').style.display = 'none';
+	document.getElementById('lootSearchPagination').innerHTML = '';
+	_lootSearchModal.show();
+	setTimeout(function() { document.getElementById('lootSearchQuery').focus(); }, 300);
+}
+
+function lootSearchSelectAll()
+{
+	var boxes = document.querySelectorAll('.loot-search-evt');
+	boxes.forEach(function(cb) { cb.checked = true; });
+}
+
+function lootSearchSelectNone()
+{
+	var boxes = document.querySelectorAll('.loot-search-evt');
+	boxes.forEach(function(cb) { cb.checked = false; });
+}
+
+function executeLootSearch(page)
+{
+	var clientFilter = document.getElementById('lootSearchClientFilter').value;
+	var searchQuery  = document.getElementById('lootSearchQuery').value;
+	var eventTypes   = [];
+	document.querySelectorAll('.loot-search-evt:checked').forEach(function(cb) {
+		eventTypes.push(cb.value);
+	});
+
+	var resultsDiv = document.getElementById('lootSearchResults');
+	var summaryDiv = document.getElementById('lootSearchSummary');
+	resultsDiv.innerHTML = '<div class="text-center text-muted py-3">Searching...</div>';
+	summaryDiv.style.display = 'none';
+	document.getElementById('lootSearchPagination').innerHTML = '';
+
+	fetch('/api/lootSearch', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			clientFilter: clientFilter,
+			searchQuery: searchQuery,
+			eventTypes: eventTypes,
+			sortOrder: document.getElementById('lootSearchSortOrder').value,
+			page: page || 1
+		})
+	})
+	.then(function(resp) { return resp.json(); })
+	.then(function(data) { renderLootSearchResults(data); })
+	.catch(function(err) {
+		resultsDiv.innerHTML = '<div class="text-danger">Search failed: ' + err.message + '</div>';
+	});
+}
+
+var _lootSearchBadgeColors = {
+	'USERINPUT': 'secondary',
+	'FORMPOST': 'danger',
+	'COOKIE': 'info',
+	'LOCALSTORAGE': 'secondary',
+	'SESSIONSTORAGE': 'secondary',
+	'URLVISITED': 'primary',
+	'XHRAPICALL': 'dark',
+	'FETCHAPICALL': 'dark',
+	'CUSTOMEXFIL': 'light',
+	'BEACON_CAPTURE': 'success',
+	'BEACON_VISIT': 'primary'
+};
+
+var _lootSearchTypeLabels = {
+	'USERINPUT': 'Input',
+	'FORMPOST': 'Form',
+	'COOKIE': 'Cookie',
+	'LOCALSTORAGE': 'LocalStorage',
+	'SESSIONSTORAGE': 'SessionStorage',
+	'URLVISITED': 'URL',
+	'XHRAPICALL': 'XHR',
+	'FETCHAPICALL': 'Fetch',
+	'CUSTOMEXFIL': 'Custom Exfil',
+	'BEACON_CAPTURE': 'Beacon Capture',
+	'BEACON_VISIT': 'Beacon Visit'
+};
+
+function escapeHtmlSearch(str)
+{
+	var div = document.createElement('div');
+	div.appendChild(document.createTextNode(str));
+	return div.innerHTML;
+}
+
+function renderLootSearchResults(data)
+{
+	var resultsDiv = document.getElementById('lootSearchResults');
+	var summaryDiv = document.getElementById('lootSearchSummary');
+	var paginationDiv = document.getElementById('lootSearchPagination');
+
+	resultsDiv.innerHTML = '';
+	paginationDiv.innerHTML = '';
+
+	if (data.total === 0) {
+		resultsDiv.innerHTML = '<div class="text-muted text-center py-3">No results found.</div>';
+		summaryDiv.style.display = 'none';
+		return;
+	}
+
+	// Summary
+	var start = (data.page - 1) * 50 + 1;
+	var end   = Math.min(data.page * 50, data.total);
+	summaryDiv.textContent = data.total + ' results, showing ' + start + '-' + end + ' (sorted: ' + (data.sortOrder || 'unknown') + ')';
+	summaryDiv.style.display = 'block';
+
+	// Render result cards
+	for (var i = 0; i < data.results.length; i++) {
+		var r = data.results[i];
+		var badgeColor = _lootSearchBadgeColors[r.eventType] || 'secondary';
+		var typeLabel  = _lootSearchTypeLabels[r.eventType] || r.eventType;
+
+		var card = document.createElement('div');
+		card.className = 'card bg-dark text-light mb-2';
+		card.style.borderLeft = '3px solid';
+
+		var cardBody = document.createElement('div');
+		cardBody.className = 'card-body py-2 px-3';
+
+		// Line 1: badge + timestamp
+		var line1 = '<span class="badge bg-' + badgeColor + ' me-2">' + escapeHtmlSearch(typeLabel) + '</span>';
+		line1 += '<small class="text-muted">' + escapeHtmlSearch(r.timeStamp) + '</small>';
+
+		// Line 2: client info
+		var clientLabel = '';
+		if (r.clientTag) clientLabel = r.clientTag + '/';
+		clientLabel += r.clientNickname;
+		var clientTypeIcon = r.clientType === 'bex-beacon' ? ' [bex]' : '';
+		var line2 = '<div><small>Client: <b>' + escapeHtmlSearch(clientLabel) + '</b>';
+		if (r.clientIP) line2 += ' (' + escapeHtmlSearch(r.clientIP) + ')';
+		line2 += escapeHtmlSearch(clientTypeIcon) + '</small></div>';
+
+		// Lines 3+: fields
+		var fieldsHtml = '';
+		var fields = r.fields || {};
+		var keys = Object.keys(fields);
+		for (var j = 0; j < keys.length; j++) {
+			var val = fields[keys[j]] || '';
+			if (val.length > 300) val = val.substring(0, 300) + '...';
+			fieldsHtml += '<div><small class="text-muted">' + escapeHtmlSearch(keys[j]) + ':</small> <span style="font-family:monospace;color:#fff;">' + escapeHtmlSearch(val) + '</span></div>';
+		}
+
+		cardBody.innerHTML = line1 + line2 + fieldsHtml;
+		card.appendChild(cardBody);
+		resultsDiv.appendChild(card);
+	}
+
+	// Pagination
+	if (data.pages > 1) {
+		var prevBtn = document.createElement('button');
+		prevBtn.className = 'btn btn-sm btn-outline-secondary';
+		prevBtn.textContent = 'Prev';
+		prevBtn.disabled = (data.page <= 1);
+		prevBtn.onclick = function() { executeLootSearch(data.page - 1); };
+
+		var pageText = document.createElement('span');
+		pageText.className = 'text-muted';
+		pageText.textContent = 'Page ' + data.page + ' of ' + data.pages;
+
+		var nextBtn = document.createElement('button');
+		nextBtn.className = 'btn btn-sm btn-outline-secondary';
+		nextBtn.textContent = 'Next';
+		nextBtn.disabled = (data.page >= data.pages);
+		nextBtn.onclick = function() { executeLootSearch(data.page + 1); };
+
+		paginationDiv.appendChild(prevBtn);
+		paginationDiv.appendChild(pageText);
+		paginationDiv.appendChild(nextBtn);
+	}
+}
+
+// Allow Enter key to trigger search in the modal inputs
+document.addEventListener('DOMContentLoaded', function() {
+	var searchInputs = ['lootSearchQuery', 'lootSearchClientFilter'];
+	searchInputs.forEach(function(id) {
+		var el = document.getElementById(id);
+		if (el) {
+			el.addEventListener('keydown', function(e) {
+				if (e.key === 'Enter') {
+					e.preventDefault();
+					executeLootSearch(1);
+				}
+			});
+		}
+	});
+});
 
 
 

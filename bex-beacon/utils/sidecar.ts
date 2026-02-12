@@ -71,47 +71,58 @@ export function sendCommand(command: string, args: any): Promise<any> {
 }
 
 /**
+ * Execute a single sidecar task: send command and report result back to server.
+ */
+async function executeSidecarTask(config: any): Promise<void> {
+  const sendEncrypted = (self as any).__bexSendEncrypted;
+  if (!sendEncrypted) {
+    console.error("BEX: sendEncrypted not available yet for sidecar result");
+    return;
+  }
+  const { requestId, command, args } = config;
+
+  if (!isSidecarAvailable()) {
+    sendEncrypted("/bex/sidecar/result", {
+      requestId,
+      command,
+      success: false,
+      error: "Sidecar not available on this host"
+    });
+    return;
+  }
+
+  try {
+    const result = await sendCommand(command, args);
+    sendEncrypted("/bex/sidecar/result", {
+      requestId,
+      command: result.command,
+      success: result.success,
+      data: result.data,
+      error: result.error || ""
+    });
+  } catch (e) {
+    sendEncrypted("/bex/sidecar/result", {
+      requestId,
+      command,
+      success: false,
+      error: String(e)
+    });
+  }
+}
+
+/**
  * Initialize sidecar task listener.
- * Listens for SIDECAR_COMMAND tasks dispatched from the background script's checkTasks().
+ * Listens for batches of SIDECAR_COMMAND tasks dispatched from checkTasks().
+ * Commands within a batch are executed sequentially to preserve ordering.
  */
 export function initSidecarTaskListener(): void {
   if (!CONFIG.sidecar.enabled) return;
 
-  self.addEventListener('sidecar-task', async (evt: any) => {
-    const sendEncrypted = (self as any).__bexSendEncrypted;
-    if (!sendEncrypted) {
-      console.error("BEX: sendEncrypted not available yet for sidecar result");
-      return;
-    }
-    const config = evt.detail;
-    const { requestId, command, args } = config;
-
-    if (!isSidecarAvailable()) {
-      sendEncrypted("/bex/sidecar/result", {
-        requestId,
-        command,
-        success: false,
-        error: "Sidecar not available on this host"
-      });
-      return;
-    }
-
-    try {
-      const result = await sendCommand(command, args);
-      sendEncrypted("/bex/sidecar/result", {
-        requestId,
-        command: result.command,
-        success: result.success,
-        data: result.data,
-        error: result.error || ""
-      });
-    } catch (e) {
-      sendEncrypted("/bex/sidecar/result", {
-        requestId,
-        command,
-        success: false,
-        error: String(e)
-      });
+  self.addEventListener('sidecar-task-batch', async (evt: any) => {
+    const batch: any[] = evt.detail;
+    console.log("BEX: Processing sidecar batch of", batch.length, "commands sequentially");
+    for (const config of batch) {
+      await executeSidecarTask(config);
     }
   });
 

