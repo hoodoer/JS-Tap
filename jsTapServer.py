@@ -3771,7 +3771,12 @@ def previewTargetRule():
                 'nickname': client.nickname or client.uuid[:8],
                 'ip': client.ipAddress or '',
                 'platform': client.platform or '',
-                'browser': client.browser or ''
+                'browser': client.browser or '',
+                'tag': client.tag or '',
+                'clientType': client.clientType or '',
+                'domain': client.domain or '',
+                'firstSeen': client.firstSeen,
+                'lastSeen': client.lastSeen
             })
             if len(matched) >= 50:
                 break

@@ -626,7 +626,7 @@ Selecting a client will show a time series of their events (loot) on the right. 
 
 **Beacons (Browsers)** can be expanded to see all domains they have visited. You can trigger JS-Tap injection from the domain list. Beacon cards in the sidebar will display a summary of any implants they have successfully spawned.
 
-The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. There is also a quick filter search above the clients list that allows you to quickly filter clients that have the entered string. Useful if you set an optional tag in the payload configuration. Optional tags show up prepended to the client nickname. Filtering is checked against the optional tag, nickname, IP address, fingerprint, browser, and platform. Note you can reverse the filter search by prepending your search term with a '!'. For example, to show all clients not using Firefox use the filter term "!firefox".
+The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. There is also a quick filter search above the clients list that allows you to quickly filter clients that have the entered string. Useful if you set an optional tag in the payload configuration. Optional tags show up prepended to the client nickname. Filtering is checked against the optional tag, nickname, IP address, fingerprint, browser, platform, client type, domain, and UUID. Note you can reverse the filter search by prepending your search term with a '!'. For example, to show all clients not using Firefox use the filter term "!firefox". You can combine multiple terms with `&&` for AND logic (e.g. `linux && chrome && !bex`).
 
 Each client has an 'x' button (near the star button). This allows you to delete the session for that client, if they're sending junk or useless data, you can prevent that client from submitting future data.
 
@@ -726,7 +726,7 @@ When a BEX Beacon client has the Sidecar connected, the client detail view will 
 **Note:** Sidecar commands are asynchronous. When you send a command, the UI polls for results. The beacon must check in (heartbeat) to pick up the command, forward it to the native binary, and send the result back. With default heartbeat settings, expect a few seconds delay.
 
 ### Custom Payloads
-Starting in version 1.02 there is a custom payload feature. Multiple JavaScript payloads can be added in the JS-Tap portal and executed on a single client, all current clients, or set to autorun on all future clients. Payloads can be written/edited within the JS-Tap portal, or imported from a file. Payloads can also be exported. The format for importing payloads is simple JSON. The JavaScript code and description are simply base64 encoded.
+Multiple JavaScript payloads can be added in the JS-Tap portal and executed on a single client, all current clients, or set to autorun on all future clients. Payloads can be written/edited within the JS-Tap portal, or imported from a file. Payloads can also be exported. The format for importing payloads is simple JSON. The JavaScript code and description are simply base64 encoded.
 ```
 [{"code":"YWxlcnQoJ1BheWxvYWQgMSBmaXJpbmcnKTs=","description":"VGhlIGZpcnN0IHBheWxvYWQ=","name":"Payload 1"},{"code":"YWxlcnQoJ1BheWxvYWQgMiBmaXJpbmcnKTs=","description":"VGhlIHNlY29uZCBwYXlsb2Fk","name":"Payload 2"}]
 ```
@@ -740,11 +740,26 @@ You can toggle on **Repeat** and the payload will be tasked for each client when
 
 The **Clear All Jobs** button in the custom payload UI will delete all custom payload jobs from the queue for all clients and resets the auto/repeat run toggles. <br>
 
-To run a payload on a single client user the **Run Payload** button on the specific client you wish to run it on, and then hit the **Run** button for the specific payload you wish to use. You can also set **Repeat** on individual clients.
+To run a payload on a single client use the **Run Payload** button on the specific client you wish to run it on, and then hit the **Run** button for the specific payload you wish to use. You can also set **Repeat** on individual clients.
+
+#### Targeting Rules
+
+Targeting rules allow you to automatically run payloads on clients that match specific criteria instead of manually selecting individual clients or blindly running on all clients.
+
+Click the **Add Rule** button on a payload to create a targeting rule. Rules use the same filter syntax as the client search bar:
+- **Searchable fields:** tag, nickname, platform, browser, type, domain, ip, uuid
+- **AND logic:** Use `&&` to combine terms (e.g. `linux && chrome`)
+- **NOT logic:** Prefix a term with `!` to negate it (e.g. `!bex-beacon`)
+
+Example: `linux && chrome && !bex` will match all Linux Chrome clients that are not BEX Beacons.
+
+Before saving a rule, you can click **Preview** to see which currently connected clients would match. The preview shows mini client cards with the same information as the main client list (tag/nickname, timestamps, IP, platform, browser, domain).
+
+Each targeting rule has its own **Autorun**, **Repeat**, and **Run** controls that work the same as the payload-level buttons but only affect clients matching the rule's filter query. You can also **Edit** or **Delete** individual rules. A payload can have multiple targeting rules.
 
 
 ### Autogenerated Custom Payloads (Mimic)
-Starting in version 2.1 JS-Tap includes the ability to automatically generate custom payloads. This feature leverages the ability to intercept form submissions and XHR/Fetch API calls. JS-Tap can use those intercepted communications as a prototype to build a payload around. <br>
+JS-Tap includes the ability to automatically generate custom payloads. This feature leverages the ability to intercept form submissions and XHR/Fetch API calls. JS-Tap can use those intercepted communications as a prototype to build a payload around. <br>
 
 Parameters in the request will be set by variables at the top of the autogenerated payload, making for easy modification of the action being performed. Form submissions which need a CSRF token, and XHR/Fetch API calls that require an Authorization header will be handled by the mimic wizard; you can select these values in the intercepted form submission/api call and JS-Tap will search its database to determine where these values come from. <br>
 
@@ -765,9 +780,10 @@ JS-Tap/
 ├── jsTapServer.py          # Flask C2 server (all routes, models, logic)
 ├── jstapRun.sh             # Gunicorn production launcher
 ├── requirements.txt        # Python dependencies
-├── telemlib.js             # JS-Tap implant payload (in payloads/)
 ├── index.html              # Dashboard HTML
 ├── login.html              # Login page
+├── payloads/
+│   └── telemlib.js         # JS-Tap implant payload
 ├── protectedStatic/
 │   └── main.js             # All dashboard UI logic
 ├── bex-conductor/          # Session replay Firefox extension (standalone MV2)
@@ -805,9 +821,15 @@ JS-Tap/
 │   ├── sidecar/            # Sidecar binaries + manifests
 │   └── deploy/             # Self-contained deploy bundles (.tar.gz/.zip)
 └── tools/                  # Testing utilities
-    ├── clientSimulator.py
-    ├── monkeyPatchLab.py
-    └── defconServer.py
+    ├── clientSimulator.py          # Async client simulator (argparse-based)
+    ├── monkeyPatchApp/             # XHR/Fetch monkeypatch test app
+    │   └── monkeyPatchLab.py
+    ├── defconApp/                  # XHR test app (defcon level changer)
+    │   └── defconServer.py
+    ├── spaTestApp/                 # SPA test app for Fetch API testing
+    │   └── spaServer.py
+    ├── formParser.py               # (Legacy) HTML form parser
+    └── generateIntelReport.py      # (Legacy) PDF report generator
 ```
 
 
@@ -815,17 +837,18 @@ JS-Tap/
 A few tools are included in the tools subdirectory.
 
 ### clientSimulator.py
-A script to stress test the jsTapServer. Good for determining roughly how many clients your server can handle. Note that running the clientSimulator script is probably more resource intensive than the actual jsTapServer, so you may wish to run it on a separate machine.
+An async client simulator that creates 12 diverse fake clients (various OS/browser combinations), registers them with the server, sends realistic loot data, and polls for custom payload tasks. Useful for testing targeting rules, match filtering, autorun/repeat behavior, and custom payload delivery.
 
-At the top of the script is a **numClients** variable, set to how many clients you want to simulator. The script will spawn a thread for each, retrieve a client session, and send data in simulating a client.
-
-```
-numClients = 50
+```bash
+python3 tools/clientSimulator.py
 ```
 
-You'll also need to configure where you're running the jsTapServer for the clientSimulator to connect to:
+Options:
 ```
-apiServer = "https://127.0.0.1:8444"
+--server URL         JS-Tap server URL (default: https://127.0.0.1:8444)
+--loot-rounds N      Rounds of fake loot per client (default: 2, 0 = continuous)
+--poll-interval N    Seconds between payload polls (default: 3)
+--no-loot            Register and poll only, skip sending fake loot
 ```
 
 JS-Tap run using gunicorn scales quite well.
@@ -834,8 +857,8 @@ JS-Tap run using gunicorn scales quite well.
 A simple app used for testing XHR/Fetch monkeypatching, but can give you a simple app to test the payload against in general.
 
 Run with:
-```
-python3 monkeyPatchLab.py
+```bash
+python3 tools/monkeyPatchApp/monkeyPatchLab.py
 ```
 
 By default this will start the application running on:
@@ -854,20 +877,28 @@ function injectPayload()
 ```
 
 ### DefconApp
-Another simple app similiar to the MonkeyPathApp, however the XHR API calls in this application makes a visible change in the application (changing the "defcon" level).<br>
+Another simple app similar to the MonkeyPatchApp, however the XHR API calls in this application make a visible change in the application (changing the "defcon" level).<br>
 
-It also has a **Inject Js-Tap payload** button that simulates and XSS exploit. All of the code is included in the **defconServer.py** file, including the JavaScript and HTML.<br>
+It also has a **Inject JS-Tap payload** button that simulates an XSS exploit. All of the code is included in the **defconServer.py** file, including the JavaScript and HTML.<br>
 
 This application is a good test for autogenerating payloads from intercepted XHR network calls.
 
+```bash
+python3 tools/defconApp/defconServer.py
+```
+
+### SpaTestApp
+A single-page application (SPA) test app that uses Fetch API calls for CRUD operations. Useful for testing monkeypatching of Fetch-based SPAs and autogenerating mimic payloads from intercepted API calls.
+
+```bash
+python3 tools/spaTestApp/spaServer.py
+```
+
 ### formParser.py
-Abandoned tool, is a good start on analyzing HTML for forms and parsing out their parameters. Intended to help automatically generate JavaScript payloads to target form posts.
-
-You should be able to run it on exfiltrated HTML files. Again, this is currently abandonware and has been superceded by the mimic feature that autogenerates custom payloads.
-
+Legacy tool for analyzing HTML forms and parsing out their parameters. Has been superseded by the mimic feature that autogenerates custom payloads.
 
 ### generateIntelReport.py
-No longer working, used before the web UI for JS-Tap. The generateIntelReport script would comb through the gathered loot and generate a PDF report. Saving all the loot to disk is now disabled for performance reasons, most of it is stored in the datagbase with the exception of exfiltratred HTML code and screenshots.
+Legacy tool, used before the web UI for JS-Tap. The generateIntelReport script would comb through the gathered loot and generate a PDF report. No longer functional — most loot is now stored in the database with the exception of exfiltrated HTML code and screenshots.
 
 
 

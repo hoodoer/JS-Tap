@@ -10,14 +10,14 @@
 
 	<style>
 		.table-active {
-			background-color: #f8f9fa;
+			background-color: rgba(255, 255, 255, 0.15);
+			border-left: 3px solid #6ea8fe !important;
 		}
 
 		/* Custom style for client type toggle to match selected client style */
 		.btn-check:checked + .btn-type-toggle {
-			background-color: #f8f9fa !important;
-			color: #212529 !important;
-			border-color: #dee2e6 !important;
+			background-color: rgba(255, 255, 255, 0.08) !important;
+			border-left: 3px solid #6ea8fe !important;
 			font-weight: bold;
 		}
 
@@ -115,6 +115,15 @@
 		}
 		.stats-flash-browser {
 			animation: statsFlashBrowser 1.5s ease-out;
+		}
+
+		.modal-content {
+			border: 2px solid #6c757d;
+		}
+
+		#savedPayloadsList > .list-group-item {
+			border-radius: 0.375rem !important;
+			border-top-width: 1px !important;
 		}
 	</style>
 </head>
@@ -790,7 +799,7 @@
 
 			<!-- Target Rule Modal -->
 			<div id="targetRuleModal" class="modal fade" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
+				<div class="modal-dialog modal-lg" style="margin-top: 8vh;">
 					<div class="modal-content">
 						<div class="modal-header">
 							<h5 class="modal-title">Add Target Rule</h5>
@@ -803,13 +812,17 @@
 								       placeholder="e.g. linux && chrome && !bex">
 								<button class="btn btn-secondary" id="targetRulePreviewBtn">Preview</button>
 							</div>
+							<div class="mb-3" style="font-size: 0.78em;">
+								Searchable fields: <b>tag</b>, <b>nickname</b>, <b>platform</b>, <b>browser</b>, <b>type</b>, <b>domain</b>, <b>ip</b>, <b>uuid</b>.
+								Use <b>&&</b> for AND, <b>!</b> for NOT.
+							</div>
 							<div id="targetRulePreviewResults" style="display: none;">
 								<div class="d-flex align-items-center mb-2">
 									<span>Matching Clients:</span>
 									<span id="targetRulePreviewCount" class="badge bg-secondary ms-2">0</span>
 								</div>
-								<ul id="targetRulePreviewList" class="list-group"
-								    style="max-height: 200px; overflow-y: auto; font-size: 0.85em;"></ul>
+								<div id="targetRulePreviewList"
+								    style="max-height: 300px; overflow-y: auto;"></div>
 							</div>
 						</div>
 						<div class="modal-footer">

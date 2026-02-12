@@ -885,6 +885,14 @@ async function exportAllPayloads(button)
 
 async function selectPayload(payload)
 {
+	// Remove highlight from all payload items
+	var allItems = document.querySelectorAll('#savedPayloadsList > li');
+	for (var i = 0; i < allItems.length; i++)
+	{
+		allItems[i].classList.remove('table-active');
+	}
+	payload.classList.add('table-active');
+
 	codeResponse = await fetch('/api/getSavedPayloadCode/' + payload.id);
 	codeJson     = await codeResponse.json();
 	description  = atob(codeJson.description);
@@ -1104,9 +1112,12 @@ async function refreshSingleClientPayloadList(client, modal)
 
 		var payload = document.createElement('li');
 		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
-		payload.textContent = name;
 		payload.name        = name;
 		payload.id          = id;
+
+		var nameStrong = document.createElement('strong');
+		nameStrong.textContent = name;
+		payload.appendChild(nameStrong);
 
 		var executePayloadButton         = document.createElement('button');
 		executePayloadButton.id          = id;
@@ -1189,9 +1200,12 @@ async function refreshSavedPayloadList()
 
 		var payload = document.createElement('li');
 		payload.className   = 'list-group-item d-flex justify-content-between align-items-center';
-		payload.textContent = name;
 		payload.name        = name;
 		payload.id          = id;
+
+		var nameStrong = document.createElement('strong');
+		nameStrong.textContent = name;
+		payload.appendChild(nameStrong);
 
 		payload.addEventListener('click', function()
 		{
@@ -1263,9 +1277,9 @@ async function refreshSavedPayloadList()
 
 		var matchButton         = document.createElement('button');
 		matchButton.className   = 'btn btn-sm me-2';
-		matchButton.textContent = 'Match';
+		matchButton.textContent = 'Add Rule';
 		matchButton.setAttribute('data-toggle', 'tooltip');
-		matchButton.setAttribute('title', 'Add a target matching rule for this Payload');
+		matchButton.setAttribute('title', 'Add a targeting rule for this payload');
 		matchButton.addEventListener('click', (function(pid) {
 			return function(e) {
 				e.stopPropagation();
@@ -1301,16 +1315,35 @@ async function refreshSavedPayloadList()
 
 		// Render nested target rules for this payload
 		var rules = allRules[i];
+		if (rules.length > 0)
+		{
+			// "Matching Rules" divider label — standalone, aligned with rule left border
+			var dividerLi = document.createElement('li');
+			dividerLi.className = 'list-group-item py-0 px-2';
+			dividerLi.style.marginLeft = '25px';
+			dividerLi.style.fontSize = '0.7em';
+			dividerLi.style.background = 'none';
+			dividerLi.style.border = 'none';
+			dividerLi.style.borderLeft = '3px solid #6c757d';
+			dividerLi.style.borderRadius = '0';
+			dividerLi.style.paddingTop = '6px';
+			dividerLi.style.paddingBottom = '4px';
+			dividerLi.textContent = 'Matching Rules';
+			savedPayloadsList.appendChild(dividerLi);
+		}
 		for (var r = 0; r < rules.length; r++)
 		{
 			var rule = rules[r];
 			var ruleLi = document.createElement('li');
 			ruleLi.className = 'list-group-item d-flex justify-content-between align-items-center py-1 px-2';
+			ruleLi.setAttribute('data-rule-id', rule.id);
 			ruleLi.style.marginLeft = '25px';
 			ruleLi.style.fontSize = '0.85em';
+			ruleLi.style.borderLeft = '3px solid #6c757d';
 
 			var querySpan = document.createElement('span');
 			querySpan.style.fontFamily = 'monospace';
+			querySpan.style.fontWeight = 'bold';
 			querySpan.style.overflow = 'hidden';
 			querySpan.style.textOverflow = 'ellipsis';
 			querySpan.style.whiteSpace = 'nowrap';
@@ -1469,17 +1502,49 @@ function showTargetRuleModal(payloadId, editRuleId, existingQuery)
 			for (var i = 0; i < data.clients.length; i++)
 			{
 				var c = data.clients[i];
-				var li = document.createElement('li');
-				li.className = 'list-group-item py-1 px-2';
-				li.textContent = c.nickname + ' \u2014 ' + c.platform + ' / ' + c.browser + ' (' + c.ip + ')';
-				previewList.appendChild(li);
+				var card = document.createElement('div');
+				card.className = 'card mb-1';
+
+				var cardBody = document.createElement('div');
+				cardBody.className = 'card-body';
+				cardBody.style.padding = '0.35rem 0.5rem';
+
+				// Title: tag/nickname
+				var title = document.createElement('h6');
+				title.className = 'card-title mb-0';
+				title.style.fontSize = '0.85em';
+				var clientName = c.tag ? escapeHTML(c.tag) + '/' + escapeHTML(c.nickname) : escapeHTML(c.nickname);
+				title.innerHTML = '<u>' + clientName + '</u>';
+
+				// Subtitle: timestamps + domain
+				var subtitle = document.createElement('div');
+				subtitle.className = 'card-subtitle mb-0 text-muted';
+				subtitle.style.fontSize = '0.75em';
+				subtitle.innerHTML = 'First Seen: ' + humanized_time_span(c.firstSeen) + '&nbsp;&nbsp;&nbsp;Last Seen: <b>' + humanized_time_span(c.lastSeen) + '</b>';
+				if (c.domain)
+				{
+					subtitle.innerHTML += '<br>Domain: <b>' + escapeHTML(c.domain) + '</b>';
+				}
+
+				// Body: IP, platform, browser
+				var details = document.createElement('div');
+				details.style.fontSize = '0.75em';
+				details.innerHTML = 'IP: <b>' + escapeHTML(c.ip) + '</b>';
+				details.innerHTML += '<br>Platform: <b>' + escapeHTML(c.platform) + '</b>';
+				details.innerHTML += '<br>Browser: <b>' + escapeHTML(c.browser) + '</b>';
+
+				cardBody.appendChild(title);
+				cardBody.appendChild(subtitle);
+				cardBody.appendChild(details);
+				card.appendChild(cardBody);
+				previewList.appendChild(card);
 			}
 			if (data.clients.length === 0)
 			{
-				var li = document.createElement('li');
-				li.className = 'list-group-item py-1 px-2 text-muted';
-				li.textContent = 'No matching clients';
-				previewList.appendChild(li);
+				var emptyMsg = document.createElement('div');
+				emptyMsg.className = 'text-muted p-2';
+				emptyMsg.textContent = 'No matching clients';
+				previewList.appendChild(emptyMsg);
 			}
 		});
 	});
@@ -1518,6 +1583,29 @@ function showTargetRuleModal(payloadId, editRuleId, existingQuery)
 				showToast(successMsg);
 			}
 		});
+	});
+
+	// Highlight the rule being edited in the payload list
+	if (isEdit)
+	{
+		var allRuleItems = document.querySelectorAll('#savedPayloadsList li[data-rule-id]');
+		for (var ri = 0; ri < allRuleItems.length; ri++)
+		{
+			if (allRuleItems[ri].getAttribute('data-rule-id') == editRuleId)
+			{
+				allRuleItems[ri].classList.add('table-active');
+			}
+		}
+	}
+
+	// Remove highlight when modal closes
+	modalEl.addEventListener('hidden.bs.modal', function onHidden() {
+		var highlighted = document.querySelectorAll('#savedPayloadsList li.table-active[data-rule-id]');
+		for (var hi = 0; hi < highlighted.length; hi++)
+		{
+			highlighted[hi].classList.remove('table-active');
+		}
+		modalEl.removeEventListener('hidden.bs.modal', onHidden);
 	});
 
 	modal.show();
@@ -3900,13 +3988,15 @@ async function updateClients()
     // Always show loot options button (sort applies to both app and browser loot)
 
     // Auto-Select Logic: When switching types, load the last selected client of that type
+    // Use loose equality (==) because selectedClientId may be a string from getAttribute
+    // while lastSelected*Id may be a number from JSON
     if (showBeacons) {
-        if (selectedClientId !== lastSelectedBrowserId) {
+        if (selectedClientId != lastSelectedBrowserId) {
             selectedClientId = lastSelectedBrowserId;
             if (selectedClientId) getClientDetails(selectedClientId);
         }
     } else {
-        if (selectedClientId !== lastSelectedAppId) {
+        if (selectedClientId != lastSelectedAppId) {
             selectedClientId = lastSelectedAppId;
             if (selectedClientId) getClientDetails(selectedClientId);
         }
