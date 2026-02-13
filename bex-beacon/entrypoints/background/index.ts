@@ -2,6 +2,7 @@
 import { CONFIG, isUrlWhitelisted, isDomainWhitelisted } from '@/utils/config';
 import { arrayBufferToBase64, base64ToArrayBuffer, importKey, encrypt, decrypt } from '@/utils/crypto';
 import { connectSidecar, initSidecarTaskListener, reportSidecarStatus } from '@/utils/sidecar';
+import { startProxy, stopProxy, updateSpoofConfig, isProxyActive } from '@/utils/proxy';
 
 export default defineBackground(() => {
   let sessionUUID: string | null = null;
@@ -96,9 +97,24 @@ export default defineBackground(() => {
           // Connect sidecar native messaging host (if enabled in config)
           connectSidecar();
         }
+      } else {
+        // Key exchange failed — server doesn't recognize this UUID (stale session).
+        // Clear stored UUID and re-register to get a fresh session.
+        console.warn("BEX: Key exchange failed (status " + resp.status + "), re-registering...");
+        sessionUUID = null;
+        sendKey = null;
+        receiveKey = null;
+        await browser.storage.local.remove("sessionUUID");
+        await register();
       }
     } catch (e) {
       console.error("BEX: Key init error:", e);
+      // Network error or other failure — clear state and re-register
+      sessionUUID = null;
+      sendKey = null;
+      receiveKey = null;
+      await browser.storage.local.remove("sessionUUID");
+      await register();
     }
   }
 
@@ -218,6 +234,26 @@ export default defineBackground(() => {
                 if (config.type === 'SIDECAR_COMMAND') {
                     // Queue for sequential batch execution (preserves command order)
                     sidecarBatch.push(config);
+                    continue;
+                }
+
+                if (config.type === 'PROXY_START') {
+                    console.log("BEX: Starting proxy mode");
+                    if (sessionUUID) {
+                        startProxy(sessionUUID);
+                    }
+                    continue;
+                }
+
+                if (config.type === 'PROXY_STOP') {
+                    console.log("BEX: Stopping proxy mode");
+                    stopProxy();
+                    continue;
+                }
+
+                if (config.type === 'PROXY_SPOOF_UPDATE') {
+                    console.log("BEX: Updating proxy spoof config");
+                    updateSpoofConfig(config.spoofConfig || {});
                     continue;
                 }
             }

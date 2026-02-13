@@ -194,6 +194,33 @@
 		</div>
 	</div>
 
+	<!-- Inject options modal -->
+	<div id="injectOptionsModal" class="modal fade" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Inject JS-Tap</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<p id="injectOptionsDomain" class="text-muted"></p>
+					<div class="mb-3">
+						<label for="injectTagInput" class="form-label">Tag</label>
+						<input type="text" class="form-control" id="injectTagInput" value="bex-injected">
+					</div>
+					<div class="mb-3">
+						<label for="injectServerInput" class="form-label">C2 Server URL</label>
+						<input type="text" class="form-control" id="injectServerInput">
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+					<button type="button" class="btn btn-primary" id="injectOptionsOk">Inject</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautifier.min.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautify-css.js"></script>
@@ -692,6 +719,10 @@
 										<label for="clientRefreshDelay" class="form-label">Client List Refresh Interval (seconds)</label>
 										<input type="number" class="form-control" id="clientRefreshDelay" value="5" style="max-width: 120px;">
 									</div>
+									<hr>
+									<h6>Browser Proxy</h6>
+									<p class="text-muted small">Import this CA certificate into your browser to use the MITM proxy for routing traffic through bex-beacon clients.</p>
+									<button class="btn btn-outline-info btn-sm" onclick="downloadCaCert()">Download Proxy CA Certificate</button>
 								</div>
 
 								<!-- Email Notifications Tab -->

@@ -1,5 +1,6 @@
 // BEX Conductor - Content Script
 // Injects localStorage, sessionStorage, and spoofs navigator properties
+// In proxy mode, skips all injection — the beacon handles credentials at the endpoint
 
 (function() {
   const hostname = location.hostname;
@@ -7,6 +8,10 @@
 
   browser.runtime.sendMessage({ type: 'GET_TICKET_FOR_DOMAIN', hostname: hostname }).then(response => {
     if (!response || !response.ticket) return;
+
+    // In proxy mode, the beacon handles credential injection at the endpoint side.
+    // Skip all local injection so we don't double-inject or leak our own session state.
+    if (response.proxyEnabled) return;
 
     const ticket = response.ticket;
 

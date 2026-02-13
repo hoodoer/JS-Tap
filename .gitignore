@@ -31,6 +31,9 @@ playwright/
 # Private keys
 *.pem
 
+# Generated MITM proxy CA
+proxy_ca/
+
 # Runtime artifacts
 *.db-shm
 *.db-wal

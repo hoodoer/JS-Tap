@@ -11,6 +11,7 @@
     "cookies",
     "webRequest",
     "webRequestBlocking",
+    "proxy",
     "storage",
     "<all_urls>"
   ],

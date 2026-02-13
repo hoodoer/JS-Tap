@@ -30,7 +30,7 @@
     ]
   },
   "sidecar": {
-    "enabled": true,
+    "enabled": false,
     "host_name": "com.jstap.sidecar",
     "binary_name": "sidecar"
   }

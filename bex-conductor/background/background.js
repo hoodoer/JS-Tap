@@ -1,17 +1,32 @@
 // BEX Conductor - Background Script
-// Manages ticket storage, cookie setting, and header injection
+// Manages ticket storage, cookie setting, header injection, and proxy mode
 
 let ticketsByDomain = {};
 
-// Load saved tickets on startup
-browser.storage.local.get('ticketsByDomain').then(result => {
+// Proxy mode state
+let proxyEnabled = false;
+let proxyAddress = '127.0.0.1';
+let proxyPort = 8445;
+
+// Load saved state on startup
+browser.storage.local.get(['ticketsByDomain', 'proxyEnabled', 'proxyAddress', 'proxyPort']).then(result => {
   if (result.ticketsByDomain) {
     ticketsByDomain = result.ticketsByDomain;
+  }
+  if (result.proxyAddress) proxyAddress = result.proxyAddress;
+  if (result.proxyPort) proxyPort = result.proxyPort;
+  if (result.proxyEnabled) {
+    proxyEnabled = true;
+    enableProxyHandler();
   }
 });
 
 function saveTickets() {
   browser.storage.local.set({ ticketsByDomain });
+}
+
+function saveProxySettings() {
+  browser.storage.local.set({ proxyEnabled, proxyAddress, proxyPort });
 }
 
 // Normalize domain for matching (strip leading dot)
@@ -92,9 +107,63 @@ async function clearCookies(domain) {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Proxy mode — route traffic through JS-Tap MITM proxy
+// ---------------------------------------------------------------------------
+
+function proxyRequestHandler(requestInfo) {
+  // Route traffic through the JS-Tap MITM proxy, EXCEPT requests to
+  // the proxy host itself (JS-Tap server, admin UI, WebSocket, etc.)
+  // to avoid circular routing.
+  try {
+    const url = new URL(requestInfo.url);
+    const host = url.hostname;
+
+    // Don't proxy requests to the JS-Tap server / proxy host
+    if (host === proxyAddress ||
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '::1') {
+      console.log('[BEX Conductor] DIRECT (local):', requestInfo.url);
+      return { type: 'direct' };
+    }
+
+    console.log('[BEX Conductor] PROXY:', requestInfo.url, '->', proxyAddress + ':' + proxyPort);
+  } catch (e) {
+    console.log('[BEX Conductor] DIRECT (parse error):', requestInfo.url);
+    return { type: 'direct' };
+  }
+
+  return { type: 'http', host: proxyAddress, port: proxyPort };
+}
+
+function enableProxyHandler() {
+  browser.proxy.onRequest.addListener(proxyRequestHandler, { urls: ['<all_urls>'] });
+  console.log('[BEX Conductor] Proxy mode enabled:', proxyAddress + ':' + proxyPort);
+}
+
+function disableProxyHandler() {
+  browser.proxy.onRequest.removeListener(proxyRequestHandler);
+  console.log('[BEX Conductor] Proxy mode disabled');
+}
+
+
+// ---------------------------------------------------------------------------
 // Header injection via blocking webRequest
+// In proxy mode, skip local injection — the beacon handles credentials.
+// We still inject User-Agent locally since the proxy doesn't modify that
+// on the wire between operator browser and JS-Tap (only the beacon's
+// outgoing fetch does, but the target site sees the beacon's fetch headers).
+// Actually, in proxy mode the beacon handles UA too, so skip everything.
+// ---------------------------------------------------------------------------
+
 browser.webRequest.onBeforeSendHeaders.addListener(
   function(details) {
+    // Skip header injection entirely when in proxy mode —
+    // the beacon injects credentials at the endpoint
+    if (proxyEnabled) return {};
+
     const url = new URL(details.url);
     const ticket = getDomainTicket(url.hostname);
     if (!ticket) return {};
@@ -143,10 +212,15 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       ticketsByDomain[ticket.domain] = ticket;
       saveTickets();
-      setCookies(ticket).then(() => {
+      // Only set cookies locally if we're NOT in proxy mode
+      if (!proxyEnabled) {
+        setCookies(ticket).then(() => {
+          sendResponse({ success: true, domain: ticket.domain });
+        });
+        return true; // async response
+      } else {
         sendResponse({ success: true, domain: ticket.domain });
-      });
-      return true; // async response
+      }
     } catch (e) {
       sendResponse({ success: false, error: e.message });
     }
@@ -185,6 +259,27 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === 'GET_TICKET_FOR_DOMAIN') {
     const ticket = getDomainTicket(msg.hostname);
-    sendResponse({ ticket: ticket || null });
+    sendResponse({ ticket: ticket || null, proxyEnabled: proxyEnabled });
+  }
+
+  // Proxy mode controls
+  if (msg.type === 'SET_PROXY') {
+    proxyAddress = msg.address || '127.0.0.1';
+    proxyPort = msg.port || 8445;
+
+    if (msg.enabled && !proxyEnabled) {
+      proxyEnabled = true;
+      enableProxyHandler();
+    } else if (!msg.enabled && proxyEnabled) {
+      proxyEnabled = false;
+      disableProxyHandler();
+    }
+
+    saveProxySettings();
+    sendResponse({ success: true, proxyEnabled, proxyAddress, proxyPort });
+  }
+
+  if (msg.type === 'GET_PROXY_STATUS') {
+    sendResponse({ proxyEnabled, proxyAddress, proxyPort });
   }
 });
