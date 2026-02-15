@@ -159,6 +159,19 @@ def detect_security_settings(source_code):
     else:
         settings['preload'] = None
 
+    # Check for debug port stripping (--inspect, --remote-debugging-port)
+    debug_switches = {
+        'inspect': False,
+        'inspect-brk': False,
+        'remote-debugging-port': False,
+    }
+    for switch in debug_switches:
+        # Match removeSwitch('inspect'), removeSwitch("inspect"), etc.
+        # Also match appendSwitch patterns that disable debugging
+        if re.search(r'removeSwitch\s*\(\s*[\'"`]' + re.escape(switch) + r'[\'"`]\s*\)', source_code):
+            debug_switches[switch] = True
+    settings['debug_switches_stripped'] = debug_switches
+
     return settings
 
 
@@ -201,6 +214,99 @@ def check_code_signing(target_path):
 
     else:
         result['details'] = 'Linux — no code signing enforcement'
+
+    return result
+
+
+def check_electron_fuses(target_path):
+    """Check Electron fuses in the app's binary.
+
+    Fuses are binary-level flags embedded in the Electron executable that control
+    security features like --inspect access. These override any JS-level settings.
+
+    Returns:
+        dict: Fuse information including individual fuse states.
+    """
+    result = {'found': False, 'fuses': {}, 'binary_path': None}
+
+    SENTINEL = b'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
+    FUSE_NAMES = [
+        'RunAsNode',
+        'EnableCookieEncryption',
+        'EnableNodeOptionsEnvironmentVariable',
+        'EnableNodeCliInspectArguments',
+        'EnableEmbeddedAsarIntegrityValidation',
+        'OnlyLoadAppFromAsar',
+        'LoadBrowserProcessSpecificV8Snapshot',
+        'GrantFileProtocolExtraPrivileges',
+    ]
+
+    # Find the Electron binary — go up from resources/app.asar to the app dir
+    app_dir = target_path
+    for _ in range(3):
+        parent = os.path.dirname(app_dir)
+        if parent == app_dir:
+            break
+        # Check if parent has resources/ (meaning we've gone one too far)
+        if os.path.basename(app_dir) == 'resources':
+            app_dir = parent
+            break
+        app_dir = parent
+
+    # Look for ELF/Mach-O executables in the app directory
+    binary_path = None
+    try:
+        for entry in os.listdir(app_dir):
+            full_path = os.path.join(app_dir, entry)
+            if not os.path.isfile(full_path) or not os.access(full_path, os.X_OK):
+                continue
+            # Skip obvious non-binaries
+            if entry.endswith(('.sh', '.py', '.js', '.json', '.pak', '.dat', '.so', '.node')):
+                continue
+            # Check file header for ELF or Mach-O
+            try:
+                with open(full_path, 'rb') as f:
+                    header = f.read(4)
+                if header[:4] == b'\x7fELF' or header[:4] in (b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf', b'\xce\xfa\xed\xfe', b'\xcf\xfa\xed\xfe'):
+                    # Check if this binary contains the fuse sentinel
+                    with open(full_path, 'rb') as f:
+                        data = f.read()
+                    if SENTINEL in data:
+                        binary_path = full_path
+                        break
+            except (PermissionError, OSError):
+                continue
+    except OSError:
+        return result
+
+    if not binary_path:
+        return result
+
+    result['binary_path'] = binary_path
+
+    with open(binary_path, 'rb') as f:
+        data = f.read()
+
+    idx = data.find(SENTINEL)
+    if idx == -1:
+        return result
+
+    result['found'] = True
+    fuse_start = idx + len(SENTINEL)
+
+    for i, name in enumerate(FUSE_NAMES):
+        byte_offset = fuse_start + 1 + i
+        if byte_offset >= len(data):
+            break
+        byte = data[byte_offset]
+        if byte == 0x31:    # ASCII '1'
+            result['fuses'][name] = 'ENABLED'
+        elif byte == 0x30:  # ASCII '0'
+            result['fuses'][name] = 'DISABLED'
+        elif byte == 0x72:  # ASCII 'r'
+            result['fuses'][name] = 'DEFAULT'
+        else:
+            result['fuses'][name] = f'UNKNOWN (0x{byte:02x})'
 
     return result
 
@@ -311,6 +417,9 @@ def detect(target_path, is_asar):
     if is_asar:
         results['integrity'] = check_asar_integrity(target_path)
 
+    # Check Electron fuses
+    results['fuses'] = check_electron_fuses(target_path)
+
     # Warnings
     if results['signing'].get('signed'):
         results['warnings'].append('Code signature detected — patching will invalidate it')
@@ -346,6 +455,48 @@ def print_report(results):
             print(f"    {'CSP':30s} Found in source code")
         if settings.get('preload'):
             print(f"    {'preload':30s} {settings['preload']}")
+
+    # Electron Fuses (binary-level)
+    fuse_data = results.get('fuses', {})
+    if fuse_data.get('found'):
+        print()
+        print(f"  Electron Fuses ({os.path.basename(fuse_data['binary_path'])}):")
+        inspect_fuse = fuse_data['fuses'].get('EnableNodeCliInspectArguments', 'UNKNOWN')
+        node_opts_fuse = fuse_data['fuses'].get('EnableNodeOptionsEnvironmentVariable', 'UNKNOWN')
+        run_as_node = fuse_data['fuses'].get('RunAsNode', 'UNKNOWN')
+        asar_integrity = fuse_data['fuses'].get('EnableEmbeddedAsarIntegrityValidation', 'UNKNOWN')
+        only_asar = fuse_data['fuses'].get('OnlyLoadAppFromAsar', 'UNKNOWN')
+
+        for name, state in fuse_data['fuses'].items():
+            marker = ''
+            if name == 'EnableNodeCliInspectArguments' and state == 'DISABLED':
+                marker = '  ** --inspect blocked'
+            elif name == 'EnableNodeOptionsEnvironmentVariable' and state == 'DISABLED':
+                marker = '  ** NODE_OPTIONS blocked'
+            elif name == 'OnlyLoadAppFromAsar' and state == 'ENABLED':
+                marker = '  ** must patch ASAR (no loose files)'
+            print(f"    {name:45s} {state}{marker}")
+
+        # Summary verdict on runtime injection
+        print()
+        if inspect_fuse == 'DISABLED':
+            print("  Runtime Injection:  BLOCKED — --inspect fuse disabled, ASAR patching required")
+        elif inspect_fuse in ('ENABLED', 'DEFAULT'):
+            print("  Runtime Injection:  POSSIBLE — --inspect fuse enabled, can inject via debug port")
+        else:
+            print(f"  Runtime Injection:  UNCERTAIN — --inspect fuse state: {inspect_fuse}")
+    else:
+        print()
+        print("  Electron Fuses: Not found in binary")
+        # Fall back to source-level analysis
+        stripped = settings.get('debug_switches_stripped', {}) if settings else {}
+        if any(stripped.values()):
+            print("  Source-Level Debug Stripping:")
+            for switch, is_stripped in stripped.items():
+                status = 'STRIPPED' if is_stripped else 'Not stripped'
+                print(f"    --{switch:28s} {status}")
+        else:
+            print("  Runtime Injection:  UNCERTAIN — no fuses found, no source-level stripping detected")
 
     signing = results.get('signing', {})
     if signing.get('details'):

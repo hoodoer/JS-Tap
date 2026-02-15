@@ -1,0 +1,28 @@
+{
+  "id": "example",
+  "name": "Example Plugin",
+  "version": "1.0.0",
+  "description": "Periodically reports open window titles. Use as a template for writing new plugins.",
+  "author": "operator",
+  "targetApps": [],
+  "capabilities": {
+    "mainProcess": true,
+    "renderer": false,
+    "ui": true
+  },
+  "dataTypes": [
+    {
+      "name": "window_info",
+      "label": "Window Info",
+      "fields": ["title", "url", "windowId"]
+    }
+  ],
+  "settings": [
+    {
+      "key": "scrapeInterval",
+      "label": "Scrape interval (seconds)",
+      "type": "number",
+      "default": 30
+    }
+  ]
+}

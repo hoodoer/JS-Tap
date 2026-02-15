@@ -1,0 +1,101 @@
+<div class="mt-2">
+    <ul class="nav nav-tabs mb-2" id="op-tabs">
+        <li class="nav-item">
+            <a class="nav-link active" href="#" data-op-tab="items">Vault Items</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" data-op-tab="totp">TOTP Codes</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" data-op-tab="summary">Summary</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" data-op-tab="errors">Errors</a>
+        </li>
+    </ul>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="small text-muted" id="op-status">Loading...</span>
+        <div>
+            <input type="text" class="form-control form-control-sm d-inline-block" style="width:200px" placeholder="Filter..." id="op-filter-input">
+            <button class="btn btn-primary btn-sm" id="op-export-btn">Export JSON</button>
+            <button class="btn btn-secondary btn-sm" id="op-clear-btn">Clear Data</button>
+        </div>
+    </div>
+
+    <!-- Vault Items Tab -->
+    <div id="op-tab-items">
+        <div class="table-responsive" style="max-height:500px;overflow:auto">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead style="position:sticky;top:0;z-index:1">
+                    <tr>
+                        <th>Item</th>
+                        <th>Fields</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody id="op-items-body">
+                    <tr><td colspan="3" class="text-muted">No items extracted yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TOTP Tab -->
+    <div id="op-tab-totp" style="display:none">
+        <div class="table-responsive" style="max-height:500px;overflow:auto">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead style="position:sticky;top:0;z-index:1">
+                    <tr>
+                        <th>Title</th>
+                        <th>Live Code</th>
+                        <th>Seed</th>
+                        <th>Vault</th>
+                    </tr>
+                </thead>
+                <tbody id="op-totp-body">
+                    <tr><td colspan="4" class="text-muted">No TOTP codes yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Summary Tab -->
+    <div id="op-tab-summary" style="display:none">
+        <div id="op-summary-content" class="p-2">
+            <span class="text-muted">No summary data yet</span>
+        </div>
+    </div>
+
+    <!-- Errors Tab -->
+    <div id="op-tab-errors" style="display:none">
+        <div class="table-responsive" style="max-height:400px;overflow:auto">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Phase</th>
+                        <th>Error</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody id="op-errors-body">
+                    <tr><td colspan="3" class="text-muted">No errors</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Item detail modal -->
+<div class="modal fade" id="op-item-modal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-white" id="op-item-modal-title">Item Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="op-item-modal-body" style="max-height:500px;overflow:auto">
+            </div>
+        </div>
+    </div>
+</div>
