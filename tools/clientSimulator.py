@@ -568,7 +568,7 @@ class SimBeaconClient:
             })
 
         # Report sidecar available
-        await self._send_encrypted(session, "/bex/sidecar/status", {"available": True})
+        await self._send_encrypted(session, "/bex/sidecar/status", {"supported": True, "connected": True})
 
     async def poll_tasks(self, session):
         """Poll for tasks via encrypted channel. Returns list of label strings."""

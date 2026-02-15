@@ -1,5 +1,5 @@
 // BEX Conductor - Background Script
-// Manages ticket storage, cookie setting, header injection, and proxy mode
+// Manages ticket storage, cookie setting, header injection, proxy mode, and ticket history
 
 let ticketsByDomain = {};
 
@@ -7,14 +7,25 @@ let ticketsByDomain = {};
 let proxyEnabled = false;
 let proxyAddress = '127.0.0.1';
 let proxyPort = 8445;
+let proxyAuthHeader = '';  // Pre-computed "Basic ..." (kept for storage compat)
+let proxyUsername = 'proxy';
+let proxyPassword = '';
+
+// Ticket history (last 10 tickets, newest first)
+let ticketHistory = [];
+const MAX_HISTORY = 10;
 
 // Load saved state on startup
-browser.storage.local.get(['ticketsByDomain', 'proxyEnabled', 'proxyAddress', 'proxyPort']).then(result => {
+browser.storage.local.get(['ticketsByDomain', 'proxyEnabled', 'proxyAddress', 'proxyPort', 'proxyAuthHeader', 'proxyUsername', 'proxyPassword', 'ticketHistory']).then(result => {
   if (result.ticketsByDomain) {
     ticketsByDomain = result.ticketsByDomain;
   }
   if (result.proxyAddress) proxyAddress = result.proxyAddress;
   if (result.proxyPort) proxyPort = result.proxyPort;
+  if (result.proxyAuthHeader) proxyAuthHeader = result.proxyAuthHeader;
+  if (result.proxyUsername) proxyUsername = result.proxyUsername;
+  if (result.proxyPassword) proxyPassword = result.proxyPassword;
+  if (result.ticketHistory) ticketHistory = result.ticketHistory;
   if (result.proxyEnabled) {
     proxyEnabled = true;
     enableProxyHandler();
@@ -26,7 +37,11 @@ function saveTickets() {
 }
 
 function saveProxySettings() {
-  browser.storage.local.set({ proxyEnabled, proxyAddress, proxyPort });
+  browser.storage.local.set({ proxyEnabled, proxyAddress, proxyPort, proxyAuthHeader, proxyUsername, proxyPassword });
+}
+
+function saveHistory() {
+  browser.storage.local.set({ ticketHistory });
 }
 
 // Normalize domain for matching (strip leading dot)
@@ -109,6 +124,51 @@ async function clearCookies(domain) {
 
 
 // ---------------------------------------------------------------------------
+// Ticket history management
+// ---------------------------------------------------------------------------
+
+function addToHistory(ticket, active) {
+  const type = ticket.type || 'clone';
+  // Key for dedup: domain for clone tickets, 'proxy:'+domains for proxy tickets
+  const key = type === 'proxy'
+    ? 'proxy:' + (ticket.domains || []).sort().join(',')
+    : 'clone:' + ticket.domain;
+
+  // Remove existing entry with same key
+  ticketHistory = ticketHistory.filter(h => h.key !== key);
+
+  // Build display label
+  const label = type === 'proxy'
+    ? (ticket.beaconNickname || (ticket.domains || []).join(', ') || 'proxy')
+    : ticket.domain;
+
+  ticketHistory.unshift({
+    key: key,
+    label: label,
+    type: type,
+    generated: ticket.generated || new Date().toISOString(),
+    ticket: ticket,
+    active: active,
+  });
+
+  // Trim to max
+  if (ticketHistory.length > MAX_HISTORY) {
+    ticketHistory = ticketHistory.slice(0, MAX_HISTORY);
+  }
+
+  saveHistory();
+}
+
+function setHistoryActive(key, active) {
+  const entry = ticketHistory.find(h => h.key === key);
+  if (entry) {
+    entry.active = active;
+    saveHistory();
+  }
+}
+
+
+// ---------------------------------------------------------------------------
 // Proxy mode — route traffic through JS-Tap MITM proxy
 // ---------------------------------------------------------------------------
 
@@ -135,17 +195,83 @@ function proxyRequestHandler(requestInfo) {
     return { type: 'direct' };
   }
 
+  // Auth is handled by onAuthRequired listener, not inline config
   return { type: 'http', host: proxyAddress, port: proxyPort };
 }
 
 function enableProxyHandler() {
   browser.proxy.onRequest.addListener(proxyRequestHandler, { urls: ['<all_urls>'] });
-  console.log('[BEX Conductor] Proxy mode enabled:', proxyAddress + ':' + proxyPort);
+  console.log('[BEX Conductor] Proxy mode enabled:', proxyAddress + ':' + proxyPort, proxyPassword ? '(authenticated)' : '(no auth)');
 }
 
 function disableProxyHandler() {
   browser.proxy.onRequest.removeListener(proxyRequestHandler);
   console.log('[BEX Conductor] Proxy mode disabled');
+}
+
+// Auto-supply proxy credentials when the proxy responds with 407
+browser.webRequest.onAuthRequired.addListener(
+  function(details) {
+    if (details.isProxy && proxyEnabled && proxyPassword) {
+      return {
+        authCredentials: {
+          username: proxyUsername,
+          password: proxyPassword
+        }
+      };
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['blocking']
+);
+
+
+// ---------------------------------------------------------------------------
+// Activate / deactivate tickets
+// ---------------------------------------------------------------------------
+
+async function activateCloneTicket(ticket) {
+  ticketsByDomain[ticket.domain] = ticket;
+  saveTickets();
+  if (!proxyEnabled) {
+    await setCookies(ticket);
+  }
+}
+
+async function deactivateCloneTicket(domain) {
+  if (ticketsByDomain[domain]) {
+    await clearCookies(domain);
+    delete ticketsByDomain[domain];
+    saveTickets();
+  }
+}
+
+function activateProxyTicket(ticket) {
+  // Deactivate any currently active proxy ticket first
+  deactivateProxyTicket();
+
+  proxyAddress = ticket.proxy.host;
+  proxyPort = ticket.proxy.port;
+  proxyUsername = ticket.proxy.username || 'proxy';
+  proxyPassword = ticket.proxy.password || '';
+  proxyAuthHeader = 'Basic ' + btoa(proxyUsername + ':' + proxyPassword);
+  proxyEnabled = true;
+
+  enableProxyHandler();
+  saveProxySettings();
+}
+
+function deactivateProxyTicket() {
+  if (proxyEnabled) {
+    proxyEnabled = false;
+    disableProxyHandler();
+    saveProxySettings();
+  }
+  // Mark all proxy history entries as inactive
+  ticketHistory.forEach(h => {
+    if (h.type === 'proxy') h.active = false;
+  });
+  saveHistory();
 }
 
 
@@ -206,20 +332,33 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         ticketJson = msg.data;
       }
       const ticket = JSON.parse(ticketJson);
-      if (!ticket.domain) {
-        sendResponse({ success: false, error: 'Invalid ticket: missing domain' });
-        return;
-      }
-      ticketsByDomain[ticket.domain] = ticket;
-      saveTickets();
-      // Only set cookies locally if we're NOT in proxy mode
-      if (!proxyEnabled) {
-        setCookies(ticket).then(() => {
-          sendResponse({ success: true, domain: ticket.domain });
+      const ticketType = ticket.type || 'clone';
+
+      if (ticketType === 'proxy') {
+        // Proxy ticket — auto-configure proxy
+        if (!ticket.proxy || !ticket.proxy.host || !ticket.proxy.port) {
+          sendResponse({ success: false, error: 'Invalid proxy ticket: missing proxy config' });
+          return;
+        }
+        activateProxyTicket(ticket);
+        addToHistory(ticket, true);
+        sendResponse({
+          success: true,
+          ticketType: 'proxy',
+          domain: (ticket.domains || []).join(', ') || 'proxy',
+          port: ticket.proxy.port,
+        });
+      } else {
+        // Clone ticket — existing behavior
+        if (!ticket.domain) {
+          sendResponse({ success: false, error: 'Invalid ticket: missing domain' });
+          return;
+        }
+        activateCloneTicket(ticket).then(() => {
+          addToHistory(ticket, true);
+          sendResponse({ success: true, ticketType: 'clone', domain: ticket.domain });
         });
         return true; // async response
-      } else {
-        sendResponse({ success: true, domain: ticket.domain });
       }
     } catch (e) {
       sendResponse({ success: false, error: e.message });
@@ -250,6 +389,9 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       clearCookies(domain).then(() => {
         delete ticketsByDomain[domain];
         saveTickets();
+        // Mark corresponding history entry as inactive
+        const key = 'clone:' + domain;
+        setHistoryActive(key, false);
         sendResponse({ success: true });
       });
       return true; // async response
@@ -262,7 +404,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ticket: ticket || null, proxyEnabled: proxyEnabled });
   }
 
-  // Proxy mode controls
+  // Proxy mode controls (legacy — kept for backward compat)
   if (msg.type === 'SET_PROXY') {
     proxyAddress = msg.address || '127.0.0.1';
     proxyPort = msg.port || 8445;
@@ -281,5 +423,76 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === 'GET_PROXY_STATUS') {
     sendResponse({ proxyEnabled, proxyAddress, proxyPort });
+  }
+
+  // Ticket history
+  if (msg.type === 'GET_TICKET_HISTORY') {
+    sendResponse({ history: ticketHistory, proxyEnabled });
+  }
+
+  if (msg.type === 'ACTIVATE_TICKET') {
+    const entry = ticketHistory.find(h => h.key === msg.key);
+    if (!entry) {
+      sendResponse({ success: false, error: 'Ticket not found in history' });
+      return;
+    }
+
+    if (entry.type === 'proxy') {
+      activateProxyTicket(entry.ticket);
+      entry.active = true;
+      saveHistory();
+      sendResponse({ success: true, ticketType: 'proxy' });
+    } else {
+      activateCloneTicket(entry.ticket).then(() => {
+        entry.active = true;
+        saveHistory();
+        sendResponse({ success: true, ticketType: 'clone' });
+      });
+      return true; // async
+    }
+  }
+
+  if (msg.type === 'DEACTIVATE_TICKET') {
+    const entry = ticketHistory.find(h => h.key === msg.key);
+    if (!entry) {
+      sendResponse({ success: false, error: 'Ticket not found in history' });
+      return;
+    }
+
+    if (entry.type === 'proxy') {
+      deactivateProxyTicket();
+      sendResponse({ success: true, ticketType: 'proxy' });
+    } else {
+      deactivateCloneTicket(entry.ticket.domain).then(() => {
+        entry.active = false;
+        saveHistory();
+        sendResponse({ success: true, ticketType: 'clone' });
+      });
+      return true; // async
+    }
+  }
+
+  if (msg.type === 'DELETE_TICKET_HISTORY') {
+    const entry = ticketHistory.find(h => h.key === msg.key);
+    if (entry) {
+      // Deactivate first if active
+      if (entry.active) {
+        if (entry.type === 'proxy') {
+          deactivateProxyTicket();
+        } else {
+          deactivateCloneTicket(entry.ticket.domain).then(() => {
+            ticketHistory = ticketHistory.filter(h => h.key !== msg.key);
+            saveHistory();
+            sendResponse({ success: true });
+          });
+          return true; // async
+        }
+      }
+      ticketHistory = ticketHistory.filter(h => h.key !== msg.key);
+      saveHistory();
+      sendResponse({ success: true });
+    } else {
+      sendResponse({ success: false, error: 'Ticket not found' });
+    }
   }
 });

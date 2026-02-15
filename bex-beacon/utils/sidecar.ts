@@ -1,16 +1,24 @@
 import { CONFIG } from './config';
 
 let port: any = null; // browser.runtime.Port
-let sidecarAvailable = false;
+let sidecarConnected = false;
+let connectionAttempted = false;
 let pendingCallbacks: Map<string, { resolve: (v: any) => void; reject: (e: any) => void; timer: ReturnType<typeof setTimeout> }> = new Map();
 
-export function isSidecarAvailable(): boolean {
-  return sidecarAvailable;
+export function isSidecarSupported(): boolean {
+  return CONFIG.sidecar.enabled;
 }
 
-export function connectSidecar(): void {
-  if (!CONFIG.sidecar.enabled) return;
-  if (port) return; // Already connected
+export function isSidecarConnected(): boolean {
+  return sidecarConnected;
+}
+
+export async function connectSidecar(): Promise<boolean> {
+  if (!CONFIG.sidecar.enabled) return false;
+  if (port && sidecarConnected) return true;
+  if (connectionAttempted && !sidecarConnected) return false;
+
+  connectionAttempted = true;
 
   try {
     port = browser.runtime.connectNative(CONFIG.sidecar.host_name);
@@ -25,7 +33,8 @@ export function connectSidecar(): void {
     });
 
     port.onDisconnect.addListener(() => {
-      sidecarAvailable = false;
+      sidecarConnected = false;
+      connectionAttempted = false;
       port = null;
       // Reject all pending callbacks
       for (const [id, cb] of pendingCallbacks.entries()) {
@@ -34,20 +43,22 @@ export function connectSidecar(): void {
       }
       pendingCallbacks.clear();
       console.log("BEX: Sidecar disconnected:", browser.runtime.lastError?.message);
+      reportSidecarStatus(); // Notify server of disconnection
     });
 
     // Send a ping to confirm it's alive
-    sendCommand("list_dir", { path: "." }).then(() => {
-      sidecarAvailable = true;
-      console.log("BEX: Sidecar connected and confirmed available.");
-    }).catch(() => {
-      sidecarAvailable = false;
-      console.log("BEX: Sidecar ping failed — not available.");
-    });
+    await sendCommand("list_dir", { path: "." });
+    sidecarConnected = true;
+    console.log("BEX: Sidecar connected and confirmed available.");
+    reportSidecarStatus(); // Notify server of connection
+    return true;
 
   } catch (e) {
-    sidecarAvailable = false;
+    sidecarConnected = false;
+    port = null;
     console.log("BEX: Sidecar not available (expected if not installed):", e);
+    reportSidecarStatus(); // Notify server of failed connection
+    return false;
   }
 }
 
@@ -81,14 +92,27 @@ async function executeSidecarTask(config: any): Promise<void> {
   }
   const { requestId, command, args } = config;
 
-  if (!isSidecarAvailable()) {
+  if (!isSidecarSupported()) {
     sendEncrypted("/bex/sidecar/result", {
       requestId,
       command,
       success: false,
-      error: "Sidecar not available on this host"
+      error: "Sidecar not enabled in build configuration"
     });
     return;
+  }
+
+  if (!isSidecarConnected()) {
+    const connected = await connectSidecar();
+    if (!connected) {
+      sendEncrypted("/bex/sidecar/result", {
+        requestId,
+        command,
+        success: false,
+        error: "Sidecar native messaging host not available. Is the sidecar binary installed?"
+      });
+      return;
+    }
   }
 
   try {
@@ -131,7 +155,7 @@ export function initSidecarTaskListener(): void {
 
 /**
  * Report sidecar status to the server via encrypted channel.
- * Called during heartbeats.
+ * Called during heartbeats and after connection state changes.
  */
 export function reportSidecarStatus(): void {
   if (!CONFIG.sidecar.enabled) return;
@@ -139,7 +163,8 @@ export function reportSidecarStatus(): void {
   const sendEncrypted = (self as any).__bexSendEncrypted;
   if (sendEncrypted) {
     sendEncrypted("/bex/sidecar/status", {
-      available: sidecarAvailable
+      supported: true,
+      connected: sidecarConnected
     });
   }
 }

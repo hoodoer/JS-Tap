@@ -1,7 +1,7 @@
 
 import { CONFIG, isUrlWhitelisted, isDomainWhitelisted } from '@/utils/config';
 import { arrayBufferToBase64, base64ToArrayBuffer, importKey, encrypt, decrypt } from '@/utils/crypto';
-import { connectSidecar, initSidecarTaskListener, reportSidecarStatus } from '@/utils/sidecar';
+import { initSidecarTaskListener, reportSidecarStatus } from '@/utils/sidecar';
 import { startProxy, stopProxy, updateSpoofConfig, isProxyActive } from '@/utils/proxy';
 
 export default defineBackground(() => {
@@ -93,9 +93,6 @@ export default defineBackground(() => {
 
           // Immediate task check on startup/re-init
           checkTasks();
-
-          // Connect sidecar native messaging host (if enabled in config)
-          connectSidecar();
         }
       } else {
         // Key exchange failed — server doesn't recognize this UUID (stale session).
@@ -383,7 +380,6 @@ export default defineBackground(() => {
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === "heartbeat") {
       checkTasks();
-      connectSidecar(); // No-op if already connected or disabled; retries if not yet available
       reportSidecarStatus();
       scheduleNextHeartbeat(); // Re-arm with fresh jitter
     }
@@ -515,6 +511,13 @@ export default defineBackground(() => {
   browser.webRequest.onSendHeaders.addListener(
     (details) => {
       if (!details.requestHeaders) return;
+
+      // Skip service-worker-originated requests when proxy is active — these
+      // are proxy fetch() calls carrying the operator's headers (or spoofed
+      // victim headers), not natural victim browsing activity.  tabId === -1
+      // means the request came from the background/service worker, not a tab.
+      if (isProxyActive() && details.tabId === -1) return;
+
       const url = new URL(details.url);
       const domain = url.hostname;
       const currentUrl = details.url;

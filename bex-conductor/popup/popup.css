@@ -5,11 +5,11 @@
 }
 
 body {
-  width: 380px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  width: 400px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
-  color: #e0e0e0;
-  background: #1a1a2e;
+  color: #aaa;
+  background: #272b30;
 }
 
 .container {
@@ -19,16 +19,16 @@ body {
 h1 {
   font-size: 16px;
   font-weight: 600;
-  color: #5bc0de;
+  color: #fff;
   margin-bottom: 12px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #6c757d;
   padding-bottom: 8px;
 }
 
 h2 {
   font-size: 12px;
   font-weight: 600;
-  color: #888;
+  color: #7a8288;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 8px;
@@ -41,19 +41,19 @@ h2 {
 textarea {
   width: 100%;
   height: 72px;
-  background: #16213e;
-  border: 1px solid #333;
+  background: #3a3f44;
+  border: 1px solid #52565a;
   border-radius: 4px;
-  color: #e0e0e0;
+  color: #aaa;
   padding: 8px;
   font-size: 12px;
-  font-family: monospace;
+  font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   resize: vertical;
 }
 
 textarea:focus {
   outline: none;
-  border-color: #5bc0de;
+  border-color: #7a8288;
 }
 
 .btn {
@@ -67,37 +67,74 @@ textarea:focus {
   margin-top: 6px;
 }
 
+/* Import button — matches btn-primary in Slate (dark gray, white text) */
 .btn-import {
-  background: #5bc0de;
-  color: #1a1a2e;
+  background: #3a3f44;
+  color: #fff;
+  border: 1px solid #52565a;
 }
 
 .btn-import:hover {
-  background: #46a5c0;
+  background: #52565a;
 }
 
+/* Open button — matches btn-outline-secondary */
 .btn-open {
-  background: #0f3460;
-  color: #e0e0e0;
+  background: transparent;
+  color: #7a8288;
+  border: 1px solid #7a8288;
   font-size: 11px;
   padding: 3px 8px;
   margin: 0;
 }
 
 .btn-open:hover {
-  background: #1a5276;
+  background: #7a8288;
+  color: #fff;
 }
 
-.btn-clear {
-  background: #5c1a1a;
-  color: #e0e0e0;
+/* Activate button — matches btn-primary in Slate */
+.btn-activate {
+  background: #3a3f44;
+  color: #fff;
+  border: 1px solid #52565a;
   font-size: 11px;
   padding: 3px 8px;
   margin: 0;
 }
 
-.btn-clear:hover {
-  background: #7a2020;
+.btn-activate:hover {
+  background: #52565a;
+}
+
+/* Deactivate button — matches btn-secondary in Slate */
+.btn-deactivate {
+  background: transparent;
+  color: #7a8288;
+  border: 1px solid #7a8288;
+  font-size: 11px;
+  padding: 3px 8px;
+  margin: 0;
+}
+
+.btn-deactivate:hover {
+  background: #7a8288;
+  color: #fff;
+}
+
+/* Delete button — matches btn-secondary in Slate */
+.btn-delete {
+  background: transparent;
+  color: #7a8288;
+  border: 1px solid #7a8288;
+  font-size: 11px;
+  padding: 3px 8px;
+  margin: 0;
+}
+
+.btn-delete:hover {
+  background: #7a8288;
+  color: #fff;
 }
 
 .status {
@@ -108,35 +145,60 @@ textarea:focus {
 }
 
 .status.success {
-  background: #1b4332;
-  color: #95d5b2;
-  border: 1px solid #2d6a4f;
+  background: #3a3f44;
+  color: #fff;
+  border: 1px solid #52565a;
 }
 
 .status.error {
-  background: #3d1212;
-  color: #f5a5a5;
-  border: 1px solid #6b2020;
+  background: #3a3f44;
+  color: #fff;
+  border: 1px solid #52565a;
 }
 
 .ticket-list .empty {
-  color: #555;
+  color: #7a8288;
   font-style: italic;
   font-size: 12px;
 }
 
+/* Ticket cards */
 .ticket-card {
-  background: #16213e;
-  border: 1px solid #333;
+  background: #3a3f44;
+  border: 1px solid #52565a;
   border-radius: 4px;
   padding: 8px 10px;
   margin-bottom: 6px;
 }
 
+.ticket-card.active {
+  border-left: 3px solid #fff;
+}
+
+.ticket-card.active.proxy-card {
+  border-left: 3px solid #fff;
+}
+
+.ticket-card .card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
 .ticket-card .domain {
   font-weight: 600;
-  color: #5bc0de;
+  color: #fff;
   font-size: 13px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-card .card-info {
+  font-size: 11px;
+  color: #7a8288;
   margin-bottom: 4px;
 }
 
@@ -149,101 +211,35 @@ textarea:focus {
 
 .badge {
   display: inline-block;
-  background: #0f3460;
-  color: #a0c4e8;
+  background: #272b30;
+  color: #aaa;
   padding: 1px 6px;
   border-radius: 3px;
   font-size: 10px;
 }
 
+.badge-type {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.badge-type-clone {
+  background: #272b30;
+  color: #aaa;
+}
+
+.badge-type-proxy {
+  background: #272b30;
+  color: #aaa;
+}
+
+.badge-active {
+  background: #272b30;
+  color: #fff;
+}
+
 .ticket-card .actions {
   display: flex;
   gap: 6px;
-}
-
-/* Proxy section */
-.proxy-section {
-  background: #16213e;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 10px;
-}
-
-.proxy-toggle-row {
-  margin-bottom: 6px;
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.toggle-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #5bc0de;
-}
-
-.toggle-text {
-  color: #888;
-}
-
-.toggle-text.proxy-active {
-  color: #f0ad4e;
-}
-
-.proxy-fields {
-  margin-top: 6px;
-}
-
-.proxy-input-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.proxy-input-row input[type="text"] {
-  flex: 1;
-  background: #1a1a2e;
-  border: 1px solid #333;
-  border-radius: 3px;
-  color: #e0e0e0;
-  padding: 4px 6px;
-  font-size: 12px;
-  font-family: monospace;
-}
-
-.proxy-input-row input[type="number"] {
-  width: 60px;
-  background: #1a1a2e;
-  border: 1px solid #333;
-  border-radius: 3px;
-  color: #e0e0e0;
-  padding: 4px 6px;
-  font-size: 12px;
-  font-family: monospace;
-}
-
-.proxy-input-row input:focus {
-  outline: none;
-  border-color: #5bc0de;
-}
-
-.proxy-colon {
-  color: #555;
-  font-weight: bold;
-}
-
-.badge-proxy {
-  background: #5c3d1a !important;
-  color: #f0ad4e !important;
-}
-
-.badge-direct {
-  background: #1a3d1a !important;
-  color: #8fbc8f !important;
 }

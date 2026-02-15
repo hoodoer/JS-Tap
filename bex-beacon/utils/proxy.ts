@@ -257,7 +257,7 @@ async function handleProxyRequest(req: {
       headers: fetchHeaders,
       redirect: 'follow', // Follow redirects — 'manual' produces opaque status=0 responses
       signal: controller.signal,
-      credentials: 'include', // Send cookies — builds session state as operator browses
+      credentials: shouldSpoof ? 'include' : 'omit',
     };
 
     if (req.body && req.method !== 'GET' && req.method !== 'HEAD') {

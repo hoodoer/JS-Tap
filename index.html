@@ -24,7 +24,7 @@
 		.btn-type-toggle {
 			background-color: #343a40;
 			color: #adb5bd;
-			border-color: #495057;
+			border-color: #52565a;
 		}
 
 		.card-stack {
@@ -57,13 +57,20 @@
 			padding: 3px 8px;
 			background-color: #aaa;
 			color: #000;
-			min-width: 220px;
+			flex: 1;
+			min-width: 0;
 			font-size: 0.85em;
 		}
 
 		#searchClientInput::placeholder {
 			color: #8b8680;
 			font-size: 0.9em;
+		}
+
+		/* Expand filter input on focus: hide label + toggle so input gets full width */
+		.filter-expanded .client-header-label,
+		.filter-expanded .client-type-toggle {
+			display: none !important;
 		}
 
 		/* Ghost Loot effect for background sessions */
@@ -102,7 +109,7 @@
 		}
 		@keyframes statsFlashApp {
 			0% { color: #adb5bd; }
-			25% { color: #0dcaf0; text-shadow: 0 0 8px rgba(13,202,240,0.6); }
+			25% { color: #5bc0de; text-shadow: 0 0 8px rgba(91,192,222,0.6); }
 			100% { color: #adb5bd; text-shadow: none; }
 		}
 		.stats-flash-app {
@@ -110,11 +117,19 @@
 		}
 		@keyframes statsFlashBrowser {
 			0% { color: #adb5bd; }
-			25% { color: #198754; text-shadow: 0 0 8px rgba(25,135,84,0.6); }
+			25% { color: #62c462; text-shadow: 0 0 8px rgba(98,196,98,0.6); }
 			100% { color: #adb5bd; text-shadow: none; }
 		}
 		.stats-flash-browser {
 			animation: statsFlashBrowser 1.5s ease-out;
+		}
+		@keyframes statsFlashElectron {
+			0% { color: #adb5bd; }
+			25% { color: #f89406; text-shadow: 0 0 8px rgba(248,148,6,0.6); }
+			100% { color: #adb5bd; text-shadow: none; }
+		}
+		.stats-flash-electron {
+			animation: statsFlashElectron 1.5s ease-out;
 		}
 
 		.modal-content {
@@ -199,7 +214,7 @@
 		<div class="modal-dialog">
 			<div class="modal-content">
 				<div class="modal-header">
-					<h5 class="modal-title">Inject JS-Tap</h5>
+					<h5 class="modal-title">Inject DOM Beacon</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body">
@@ -319,30 +334,44 @@
 
 				<!-- Client Card Stack -->
 				<div class="col-4" id="scrollContainer">
-					<div class="d-flex align-items-center gap-2">
-						<label style="margin-top: 8px;"><h4><b>&nbsp;&nbsp;Client</b></h4></label>
-						<div class="btn-group" role="group" aria-label="Client Type Toggle">
+					<div class="d-flex align-items-center gap-2" id="clientHeaderBar">
+						<label class="client-header-label" style="margin-top: 8px;"><h4><b>Client</b></h4></label>
+						<div class="btn-group client-type-toggle" role="group" aria-label="Client Type Toggle">
 							<input type="radio" class="btn-check" name="clientTypeToggle" id="toggleApps" autocomplete="off" checked onclick="updateClients()">
 							<label class="btn btn-type-toggle btn-sm" for="toggleApps">Apps</label>
 
 							<input type="radio" class="btn-check" name="clientTypeToggle" id="toggleBrowsers" autocomplete="off" onclick="updateClients()">
 							<label class="btn btn-type-toggle btn-sm" for="toggleBrowsers">Browsers</label>
+
+							<input type="radio" class="btn-check" name="clientTypeToggle" id="toggleElectrons" autocomplete="off" onclick="updateClients()">
+							<label class="btn btn-type-toggle btn-sm" for="toggleElectrons">Electrons</label>
 						</div>
-						<input type="text" class="form-control" placeholder="Filter: linux && chrome && !bex" id="searchClientInput">
+						<input type="text" class="form-control" placeholder="Filter..." id="searchClientInput">
 						<button type="button" class="btn btn-primary position-relative" id="clientFilterBtn" onclick=showClientFilterModal()><img src="/protectedStatic/filter.svg"></button>
 					</div>
 					<div class="card-stack" id="client-stack"></div>
 				</div>
 
 				<!-- Register filter handler -->
-				<script type="text/javascript">document.getElementById('searchClientInput').addEventListener('input', updateClients);</script>
+				<script type="text/javascript">
+					document.getElementById('searchClientInput').addEventListener('input', updateClients);
+					(function() {
+						var input = document.getElementById('searchClientInput');
+						var bar = document.getElementById('clientHeaderBar');
+						input.addEventListener('focus', function() { bar.classList.add('filter-expanded'); });
+						input.addEventListener('blur', function() { bar.classList.remove('filter-expanded'); });
+						input.addEventListener('keydown', function(e) { if (e.key === 'Enter') input.blur(); });
+					})();
+				</script>
 
 				<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
-				<div class="col-8">
+				<div class="col-8" style="border-left: 1px solid #52565a;">
 
 					<div class="d-flex justify-content-between align-items-center">
-						<label style="margin-top: 8px;"><h4 id="loot-header-text"><b>&nbsp;&nbsp;Loot</b></h4></label>
-						<div>
+						<div id="loot-header-area" class="d-flex align-items-center gap-2">
+							<label style="margin-top: 8px;"><h4 id="loot-header-text"><b>&nbsp;&nbsp;Loot</b></h4></label>
+						</div>
+						<div id="loot-toolbar-buttons">
 							<button type="button" class="btn btn-primary position-relative me-1" onclick="showLootSearchModal()" title="Search Loot">
 								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
 							</button>
@@ -350,6 +379,8 @@
 						</div>
 					</div>
 					<div class="card-stack" id="detail-stack">
+					</div>
+					<div class="card-stack" id="tools-stack" style="display: none;">
 					</div>
 				</div>
 			</div>
@@ -660,6 +691,12 @@
 								<input class="form-check-input" type="checkbox" value="" id="customExfilEvents" checked>
 								<label class="form-check-label" for="flexCheckChecked">
 									Custom Payload Exfiltrated Data
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="keylogEvents" checked>
+								<label class="form-check-label" for="keylogEvents">
+									Keylogs
 								</label>
 							</div>
 
@@ -1114,6 +1151,7 @@
 									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="XHRAPICALL" id="ls_XHRAPICALL" checked><label class="form-check-label" for="ls_XHRAPICALL">XHR Calls</label></div>
 									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="FETCHAPICALL" id="ls_FETCHAPICALL" checked><label class="form-check-label" for="ls_FETCHAPICALL">Fetch Calls</label></div>
 									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="CUSTOMEXFIL" id="ls_CUSTOMEXFIL" checked><label class="form-check-label" for="ls_CUSTOMEXFIL">Custom Exfil</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="KEYLOG" id="ls_KEYLOG" checked><label class="form-check-label" for="ls_KEYLOG">Keylogs</label></div>
 								</div>
 								<div class="col-md-4">
 									<small class="text-muted">Beacon Events</small>
