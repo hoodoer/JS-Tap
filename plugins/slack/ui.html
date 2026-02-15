@@ -1,0 +1,72 @@
+<div class="mt-2">
+    <div class="d-flex justify-content-between align-items-center mb-2" id="slack-topbar">
+        <div>
+            <span class="text-white fw-bold" id="slack-workspace">Workspace: --</span>
+            <span class="text-muted ms-3" id="slack-user">User: --</span>
+        </div>
+        <div>
+            <span class="badge bg-secondary" id="slack-status">Waiting...</span>
+            <button class="btn btn-primary btn-sm ms-2" id="slack-refresh-btn">Refresh Channels</button>
+            <button class="btn btn-secondary btn-sm" id="slack-export-btn">Export JSON</button>
+            <button class="btn btn-secondary btn-sm" id="slack-clear-btn">Clear Data</button>
+        </div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="d-flex mb-2" style="gap:8px">
+        <input type="text" class="form-control form-control-sm" placeholder="Search messages... (e.g. &quot;password&quot;, &quot;from:alice in:#general&quot;)" id="slack-search-input" style="max-width:500px">
+        <button class="btn btn-outline-info btn-sm" id="slack-search-btn" style="min-width:70px">Search</button>
+        <span class="text-muted small align-self-center" id="slack-search-status"></span>
+    </div>
+
+    <!-- Search results (hidden by default) -->
+    <div id="slack-search-panel" style="display:none" class="mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="text-white small fw-bold" id="slack-search-title">Search Results</span>
+            <div>
+                <button class="btn btn-outline-secondary btn-sm" id="slack-search-prev" style="min-width:50px" disabled>Prev</button>
+                <span class="text-muted small mx-1" id="slack-search-page-info"></span>
+                <button class="btn btn-outline-secondary btn-sm" id="slack-search-next" style="min-width:50px" disabled>Next</button>
+                <button class="btn btn-secondary btn-sm ms-2" id="slack-search-close">Close</button>
+            </div>
+        </div>
+        <div id="slack-search-results" style="max-height:300px;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:8px;background:#272b30">
+        </div>
+    </div>
+
+    <div class="d-flex" style="gap:12px;height:520px">
+        <!-- Channel sidebar -->
+        <div style="width:220px;min-width:220px;display:flex;flex-direction:column">
+            <input type="text" class="form-control form-control-sm mb-2" placeholder="Filter channels..." id="slack-channel-filter">
+            <div id="slack-channel-list" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:4px">
+                <div class="text-muted small p-2">No channels loaded</div>
+            </div>
+        </div>
+
+        <!-- Message area -->
+        <div style="flex:1;display:flex;flex-direction:column">
+            <div class="d-flex align-items-center mb-2">
+                <span class="text-white fw-bold" id="slack-channel-name">Select a channel</span>
+                <span class="text-muted small ms-2" id="slack-channel-topic"></span>
+            </div>
+            <div id="slack-messages" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:8px;background:#272b30">
+                <div class="text-muted small">Select a channel to view messages</div>
+            </div>
+            <div class="d-flex mt-2" style="gap:8px">
+                <input type="text" class="form-control form-control-sm" placeholder="Type a message..." id="slack-msg-input" disabled>
+                <button class="btn btn-outline-success btn-sm" id="slack-send-btn" disabled style="min-width:60px">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Errors section (collapsible) -->
+    <div class="mt-2">
+        <a href="#" class="text-muted small" id="slack-errors-toggle" style="display:none">Show errors (<span id="slack-error-count">0</span>)</a>
+        <div id="slack-errors-panel" style="display:none;max-height:150px;overflow-y:auto" class="mt-1">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead><tr><th>Phase</th><th>Error</th><th>Time</th></tr></thead>
+                <tbody id="slack-errors-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>

