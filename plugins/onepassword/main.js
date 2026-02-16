@@ -358,7 +358,7 @@ function emitItem(vm, rawItem, specifier, vaultName, rawDetail) {
     });
 
     // Emit TOTP seed URIs as separate entries if present
-    if (plugin.settings.extractTotp !== 0) {
+    {
         // Check if any field looks like OTP
         var hasOtpField = false;
         for (var ti = 0; ti < fields.length; ti++) {
