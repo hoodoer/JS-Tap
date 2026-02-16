@@ -1,11 +1,13 @@
 <div class="mt-2">
     <div class="d-flex justify-content-between align-items-center mb-2" id="slack-topbar">
-        <div>
-            <span class="text-white fw-bold" id="slack-workspace">Workspace: --</span>
+        <div class="d-flex align-items-center">
+            <select id="slack-workspace-select" class="form-select form-select-sm" style="width:auto;min-width:180px;background:#3a3f44;border-color:#52565a;color:#aaa">
+                <option value="">Workspace: --</option>
+            </select>
             <span class="text-muted ms-3" id="slack-user">User: --</span>
         </div>
         <div>
-            <span class="badge bg-secondary" id="slack-status">Waiting...</span>
+            <span class="badge bg-secondary" id="slack-status"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Syncing...</span>
             <button class="btn btn-primary btn-sm ms-2" id="slack-refresh-btn">Refresh Channels</button>
             <button class="btn btn-secondary btn-sm" id="slack-export-btn">Export JSON</button>
             <button class="btn btn-secondary btn-sm" id="slack-clear-btn">Clear Data</button>
@@ -15,7 +17,7 @@
     <!-- Search bar -->
     <div class="d-flex mb-2" style="gap:8px">
         <input type="text" class="form-control form-control-sm" placeholder="Search messages... (e.g. &quot;password&quot;, &quot;from:alice in:#general&quot;)" id="slack-search-input" style="max-width:500px">
-        <button class="btn btn-outline-info btn-sm" id="slack-search-btn" style="min-width:70px">Search</button>
+        <button class="btn btn-outline-secondary btn-sm" id="slack-search-btn" style="min-width:70px">Search</button>
         <span class="text-muted small align-self-center" id="slack-search-status"></span>
     </div>
 
@@ -31,6 +33,34 @@
             </div>
         </div>
         <div id="slack-search-results" style="max-height:300px;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:8px;background:#272b30">
+        </div>
+    </div>
+
+    <!-- Inject Fake Message panel -->
+    <div class="mb-2 p-2" style="background:#272b30;border:1px solid #52565a;border-radius:4px">
+        <div class="d-flex align-items-center mb-2" style="gap:8px">
+            <span class="text-white small fw-bold">Inject Fake Message</span>
+            <button class="btn btn-outline-secondary btn-sm" id="slack-probe-btn" style="min-width:90px">Probe Store</button>
+            <span class="text-muted small" id="slack-probe-status"></span>
+            <span class="text-muted small ms-auto" style="color:#7a8288;font-size:0.75rem">Commands depend on beacon heartbeat (~3-5s round trip)</span>
+        </div>
+        <div class="d-flex align-items-center mb-2" style="gap:8px">
+            <div style="position:relative;width:250px">
+                <input type="text" class="form-control form-control-sm" placeholder="Search users..." id="slack-inject-user-search">
+                <div id="slack-inject-user-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#3a3f44;border:1px solid #52565a;border-radius:0 0 4px 4px;z-index:100"></div>
+            </div>
+            <span class="text-muted small" id="slack-inject-selected-user">No user selected</span>
+        </div>
+        <div class="d-flex" style="gap:8px">
+            <input type="text" class="form-control form-control-sm" placeholder="Message text..." id="slack-inject-text" disabled style="flex:1">
+            <button class="btn btn-secondary btn-sm" id="slack-inject-btn" disabled style="min-width:70px">Inject</button>
+            <button class="btn btn-secondary btn-sm" id="slack-clear-injected-btn" style="min-width:120px;display:none">Clean Up <span class="badge bg-danger ms-1" id="slack-injected-count">0</span></button>
+        </div>
+        <div id="slack-inject-status" class="small mt-1" style="display:none"></div>
+        <!-- Collapsible probe results -->
+        <div id="slack-probe-results-panel" style="display:none" class="mt-2">
+            <a href="#" class="text-muted small" id="slack-probe-toggle">Hide probe results</a>
+            <pre id="slack-probe-results" class="mt-1 small" style="background:#3a3f44;border:1px solid #52565a;border-radius:4px;padding:8px;color:#aaa;max-height:200px;overflow-y:auto;white-space:pre-wrap;margin-bottom:0"></pre>
         </div>
     </div>
 
@@ -54,7 +84,7 @@
             </div>
             <div class="d-flex mt-2" style="gap:8px">
                 <input type="text" class="form-control form-control-sm" placeholder="Type a message..." id="slack-msg-input" disabled>
-                <button class="btn btn-outline-success btn-sm" id="slack-send-btn" disabled style="min-width:60px">Send</button>
+                <button class="btn btn-primary btn-sm" id="slack-send-btn" disabled style="min-width:60px">Send</button>
             </div>
         </div>
     </div>

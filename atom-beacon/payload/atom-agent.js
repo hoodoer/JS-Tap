@@ -8,8 +8,8 @@
     clientType: 'atom-beacon',
     ipcPrefix: '__ATOM_IPC_PREFIX__',
     heartbeat: {
-      baseInterval: 30,
-      jitterPercent: 25
+      baseInterval: 2,
+      jitterPercent: 10
     },
     screenshotInterval: 0  // capture every Nth heartbeat (0 = disabled, use on-demand via UI)
   };

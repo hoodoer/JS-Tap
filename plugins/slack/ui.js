@@ -15,6 +15,17 @@ var searchPage = 1;
 var _refreshTimer = null;
 var _pollTimer = null;
 var _searchPollTimer = null;
+var selectedInjectUser = null;
+var probeData = null;
+var _injectPollTimer = null;
+var _probePollTimer = null;
+var workspaces = [];
+var activeWorkspaceIndex = 0;
+var _workspaceSwitchTime = 0; // timestamp of last user-initiated switch
+var _workspaceGeneration = 0; // increments on each workspace switch to invalidate stale data
+var _switchPending = false; // true while waiting for plugin to confirm workspace switch
+var injectedMessageCount = 0;
+var _clearInjectedPollTimer = null;
 
 function esc(str) {
     if (str === null || str === undefined) return '';
@@ -36,12 +47,13 @@ function sendCommand(command) {
 // ===== Render functions =====
 
 function renderTopbar() {
-    var wsEl = pluginUI.container.querySelector('#slack-workspace');
+    var selectEl = pluginUI.container.querySelector('#slack-workspace-select');
     var userEl = pluginUI.container.querySelector('#slack-user');
     var statusEl = pluginUI.container.querySelector('#slack-status');
 
+    var spinner = '<span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>';
+
     if (credData) {
-        wsEl.textContent = 'Workspace: ' + (credData.teamName || '--');
         userEl.textContent = 'User: ' + (credData.userName || credData.userId || '--');
         if (credData.status === 'verified') {
             statusEl.className = 'badge bg-success';
@@ -51,8 +63,25 @@ function renderTopbar() {
             statusEl.textContent = 'Auth Failed';
         } else {
             statusEl.className = 'badge bg-warning text-dark';
-            statusEl.textContent = credData.status || 'Unknown';
+            statusEl.innerHTML = spinner + esc(credData.status || 'Syncing...');
         }
+    } else {
+        statusEl.className = 'badge bg-secondary';
+        statusEl.innerHTML = spinner + 'Syncing...';
+    }
+
+    // Populate workspace dropdown
+    if (selectEl && workspaces.length > 0) {
+        var html = '';
+        for (var i = 0; i < workspaces.length; i++) {
+            var ws = workspaces[i];
+            var label = ws.teamName || ws.domain || ('Workspace ' + (i + 1));
+            if (ws.userName) label += ' (' + ws.userName + ')';
+            html += '<option value="' + i + '"' + (i === activeWorkspaceIndex ? ' selected' : '') + '>' + esc(label) + '</option>';
+        }
+        selectEl.innerHTML = html;
+    } else if (selectEl && credData) {
+        selectEl.innerHTML = '<option value="0">' + esc(credData.teamName || 'Workspace') + '</option>';
     }
 }
 
@@ -153,6 +182,18 @@ function channelItem(ch, prefix) {
         '</div>';
 }
 
+// Resolve raw Slack user IDs to display names using the users array
+function resolveUserName(nameOrId) {
+    if (!nameOrId) return 'unknown';
+    // If it doesn't look like a raw user ID, return as-is
+    if (!/^U[A-Z0-9]{6,}$/.test(nameOrId)) return nameOrId;
+    // Look up in users array
+    for (var i = 0; i < users.length; i++) {
+        if (users[i].id === nameOrId) return users[i].name || users[i].realName || nameOrId;
+    }
+    return nameOrId;
+}
+
 function renderMessages() {
     var container = pluginUI.container.querySelector('#slack-messages');
     var nameEl = pluginUI.container.querySelector('#slack-channel-name');
@@ -180,7 +221,7 @@ function renderMessages() {
     topicEl.textContent = topic ? '| ' + topic : '';
 
     if (currentMessages.length === 0) {
-        container.innerHTML = '<div class="text-muted small">No messages yet. Fetching...</div>';
+        container.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Fetching...</div>';
         return;
     }
 
@@ -200,8 +241,10 @@ function renderMessages() {
         var subtypeClass = '';
         if (msg.subtype) subtypeClass = ' text-muted fst-italic';
 
+        var displayName = resolveUserName(msg.user || 'unknown');
+
         html += '<div class="mb-2">' +
-            '<span class="fw-bold" style="color:#fff">' + esc(msg.user || 'unknown') + '</span>' +
+            '<span class="fw-bold" style="color:#fff">' + esc(displayName) + '</span>' +
             '<span class="text-muted small ms-2">' + esc(timeStr) + '</span>' +
             '<div class="small' + subtypeClass + '" style="color:#aaa;word-break:break-word">' + formatSlackText(msg.text || '') + '</div>' +
             '</div>';
@@ -292,7 +335,7 @@ function renderSearchResults() {
 
         html += '<div class="mb-2 pb-2" style="border-bottom:1px solid #3a3f44">' +
             '<div>' +
-            '<span class="fw-bold" style="color:#fff">' + esc(m.user || 'unknown') + '</span>' +
+            '<span class="fw-bold" style="color:#fff">' + esc(resolveUserName(m.user || 'unknown')) + '</span>' +
             '<span class="badge bg-dark ms-2">' + esc(chLabel) + '</span>' +
             '<span class="text-muted small ms-2">' + esc(timeStr) + '</span>' +
             '</div>' +
@@ -338,27 +381,40 @@ function selectChannel(channelId, channelName) {
     if (input) input.disabled = false;
     if (sendBtn) sendBtn.disabled = false;
 
-    // Check if we already have messages for this channel
-    pluginUI.fetchData('messages', 50, 0).then(function(result) {
-        var rows = result.rows || [];
-        for (var i = 0; i < rows.length; i++) {
-            var d = rows[i].data || {};
-            if (d.channelId === channelId) {
-                currentMessages = d.messages || [];
-                renderMessages();
-                return;
+    // Update inject controls (depends on channel being selected)
+    updateInjectControls();
+
+    // After a workspace switch, skip cached messages (likely stale from old workspace)
+    // and always request fresh data
+    if (!_switchPending) {
+        // Check if we already have messages for this channel
+        pluginUI.fetchData('messages', 50, 0).then(function(result) {
+            var rows = result.rows || [];
+            for (var i = 0; i < rows.length; i++) {
+                var d = rows[i].data || {};
+                if (d.channelId === channelId) {
+                    currentMessages = d.messages || [];
+                    renderMessages();
+                    return;
+                }
             }
-        }
-        // No cached messages, request fetch
+            // No cached messages, request fetch
+            sendCommand({ action: 'fetch_messages', channelId: channelId, channelName: channelName, limit: 50 });
+        });
+    } else {
+        // Always request fresh fetch after workspace switch
         sendCommand({ action: 'fetch_messages', channelId: channelId, channelName: channelName, limit: 50 });
-    });
+    }
 }
 
 // ===== Data loading =====
 
 function loadMessages() {
     if (!currentChannelId) return;
+    var gen = _workspaceGeneration;
     pluginUI.fetchData('messages', 50, 0).then(function(result) {
+        // Discard if workspace changed while fetching
+        if (gen !== _workspaceGeneration) return;
         var rows = result.rows || [];
         for (var i = 0; i < rows.length; i++) {
             var d = rows[i].data || {};
@@ -378,17 +434,41 @@ function loadData() {
         return;
     }
 
+    // Load workspace list
+    pluginUI.fetchData('workspace_list', 5, 0).then(function(result) {
+        var rows = result.rows || [];
+        if (rows.length > 0) {
+            var latest = rows[0].data || {};
+            if (latest.workspaces && latest.workspaces.length > 0) {
+                workspaces = latest.workspaces;
+                // Don't overwrite activeIndex from server while a switch is pending
+                if (typeof latest.activeIndex === 'number' && !_switchPending) {
+                    activeWorkspaceIndex = latest.activeIndex;
+                }
+                renderTopbar();
+            }
+        }
+    });
+
     // Load credentials
     pluginUI.fetchData('credentials', 5, 0).then(function(result) {
         var rows = result.rows || [];
         if (rows.length > 0) {
-            credData = rows[0].data || {};
+            var newCred = rows[0].data || {};
+            credData = newCred;
             renderTopbar();
         }
     });
 
-    // Load channels
-    pluginUI.fetchData('channel_list', 5, 0).then(function(result) {
+    // Load channels (skip while switch is pending — data is from old workspace)
+    if (_switchPending) {
+        // Show syncing state in channel list
+        var chContainer = pluginUI.container.querySelector('#slack-channel-list');
+        if (chContainer && channels.length === 0) {
+            chContainer.innerHTML = '<div class="text-muted small p-2"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Syncing workspace...</div>';
+        }
+    }
+    if (!_switchPending) pluginUI.fetchData('channel_list', 5, 0).then(function(result) {
         var rows = result.rows || [];
         if (rows.length > 0) {
             var latest = rows[0].data || {};
@@ -397,8 +477,50 @@ function loadData() {
         }
     });
 
-    // Load messages for current channel
-    if (currentChannelId) {
+    // Load users (for inject user picker) — skip while switch pending
+    if (!_switchPending) pluginUI.fetchData('user_list', 5, 0).then(function(result) {
+        var rows = result.rows || [];
+        if (rows.length > 0) {
+            var latest = rows[0].data || {};
+            if (latest.users && latest.users.length > 0) {
+                users = latest.users;
+            }
+        }
+    });
+
+    // Check if workspace switch is complete via explicit signal from the plugin.
+    // The plugin sends switch_complete AFTER fetchIdentity → fetchUsers → fetchChannels all finish.
+    if (_switchPending) {
+        pluginUI.fetchData('switch_complete', 5, 0).then(function(result) {
+            var rows = result.rows || [];
+            if (rows.length > 0) {
+                var latest = rows[0].data || {};
+                if (latest.workspaceIndex === activeWorkspaceIndex) {
+                    _switchPending = false;
+                    // Immediately load the now-ready data
+                    pluginUI.fetchData('channel_list', 5, 0).then(function(chResult) {
+                        var chRows = chResult.rows || [];
+                        if (chRows.length > 0) {
+                            channels = (chRows[0].data || {}).channels || [];
+                            renderChannels();
+                        }
+                    });
+                    pluginUI.fetchData('user_list', 5, 0).then(function(uResult) {
+                        var uRows = uResult.rows || [];
+                        if (uRows.length > 0) {
+                            var uLatest = uRows[0].data || {};
+                            if (uLatest.users && uLatest.users.length > 0) {
+                                users = uLatest.users;
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    // Load messages for current channel (skip during workspace switch to avoid stale data)
+    if (currentChannelId && !_switchPending) {
         pluginUI.fetchData('messages', 50, 0).then(function(result) {
             var rows = result.rows || [];
             for (var i = 0; i < rows.length; i++) {
@@ -424,6 +546,16 @@ function loadData() {
         }
     });
 
+    // Load injected message tracking
+    pluginUI.fetchData('injected_messages', 5, 0).then(function(result) {
+        var rows = result.rows || [];
+        if (rows.length > 0) {
+            var latest = rows[0].data || {};
+            injectedMessageCount = latest.count || 0;
+            updateClearInjectedButton();
+        }
+    });
+
     // Load errors
     pluginUI.fetchData('_error', 50, 0).then(function(result) {
         allErrors = result.rows || [];
@@ -432,6 +564,56 @@ function loadData() {
 }
 
 // ===== Wire up controls =====
+
+// Workspace switcher
+var workspaceSelect = pluginUI.container.querySelector('#slack-workspace-select');
+if (workspaceSelect) {
+    workspaceSelect.onchange = function() {
+        var idx = parseInt(workspaceSelect.value, 10);
+        if (isNaN(idx) || idx === activeWorkspaceIndex) return;
+        activeWorkspaceIndex = idx;
+        _workspaceSwitchTime = Date.now();
+        _workspaceGeneration++;
+        _switchPending = true;
+
+        // Reset UI state for the new workspace
+        channels = [];
+        currentMessages = [];
+        currentChannelId = null;
+        currentChannelName = '';
+        users = [];
+        selectedInjectUser = null;
+        searchResults = null;
+        var searchPanel = pluginUI.container.querySelector('#slack-search-panel');
+        if (searchPanel) searchPanel.style.display = 'none';
+
+        renderChannels();
+        renderMessages();
+
+        var labelEl = pluginUI.container.querySelector('#slack-inject-selected-user');
+        if (labelEl) labelEl.textContent = 'No user selected';
+        updateInjectControls();
+
+        var statusEl = pluginUI.container.querySelector('#slack-status');
+        if (statusEl) {
+            statusEl.className = 'badge bg-secondary';
+            statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Syncing...';
+        }
+
+        sendCommand({ action: 'switch_workspace', workspaceIndex: idx });
+
+        // Poll aggressively for new workspace data
+        var polls = 0;
+        var switchPollTimer = setInterval(function() {
+            polls++;
+            if (polls > 15 || !pluginUI.container || !pluginUI.container.parentNode) {
+                clearInterval(switchPollTimer);
+                return;
+            }
+            loadData();
+        }, 1000);
+    };
+}
 
 // Channel filter
 var filterInput = pluginUI.container.querySelector('#slack-channel-filter');
@@ -474,7 +656,7 @@ if (sendBtn) {
                 return;
             }
             loadMessages();
-        }, 2000);
+        }, 1000);
     };
 }
 
@@ -551,7 +733,7 @@ function doSearch(query, page) {
     searchQuery = query.trim();
     searchPage = page || 1;
     searchResults = null;
-    if (searchStatusEl) searchStatusEl.textContent = 'Searching...';
+    if (searchStatusEl) searchStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Searching...';
     sendCommand({ action: 'search_messages', query: searchQuery, count: 20, page: searchPage });
 
     // Poll for results
@@ -579,7 +761,7 @@ function doSearch(query, page) {
                 }
             }
         });
-    }, 2000);
+    }, 1000);
 }
 
 if (searchBtn) {
@@ -622,6 +804,271 @@ if (searchNextBtn) {
     };
 }
 
+// ===== Inject controls =====
+
+function updateInjectControls() {
+    var textInput = pluginUI.container.querySelector('#slack-inject-text');
+    var injectBtn = pluginUI.container.querySelector('#slack-inject-btn');
+    var enabled = !!(selectedInjectUser && currentChannelId);
+    if (textInput) textInput.disabled = !enabled;
+    if (injectBtn) injectBtn.disabled = !enabled;
+}
+
+function renderInjectUserDropdown(filter) {
+    var dropdown = pluginUI.container.querySelector('#slack-inject-user-dropdown');
+    if (!dropdown) return;
+
+    if (!filter || filter.length < 1) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    var lf = filter.toLowerCase();
+    var matches = [];
+    for (var i = 0; i < users.length; i++) {
+        var u = users[i];
+        if (u.deleted) continue;
+        var nameMatch = (u.name || '').toLowerCase().indexOf(lf) !== -1;
+        var realMatch = (u.realName || '').toLowerCase().indexOf(lf) !== -1;
+        var idMatch = (u.id || '').toLowerCase().indexOf(lf) !== -1;
+        if (nameMatch || realMatch || idMatch) {
+            matches.push(u);
+            if (matches.length >= 15) break;
+        }
+    }
+
+    if (matches.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    var html = '';
+    for (var m = 0; m < matches.length; m++) {
+        var u = matches[m];
+        html += '<div class="slack-inject-user-item d-flex align-items-center" data-idx="' + m + '" ' +
+            'style="padding:4px 8px;cursor:pointer;border-bottom:1px solid #52565a;color:#aaa" ' +
+            'onmouseover="this.style.background=\'#52565a\'" onmouseout="this.style.background=\'\'">';
+        if (u.avatar48) {
+            html += '<img src="' + esc(u.avatar48) + '" style="width:24px;height:24px;border-radius:3px;margin-right:8px">';
+        }
+        html += '<span style="color:#fff">' + esc(u.name || '') + '</span>';
+        if (u.realName) {
+            html += '<span class="text-muted ms-2 small">' + esc(u.realName) + '</span>';
+        }
+        html += '</div>';
+    }
+
+    dropdown.innerHTML = html;
+    dropdown.style.display = '';
+
+    // Wire click handlers
+    var items = dropdown.querySelectorAll('.slack-inject-user-item');
+    for (var c = 0; c < items.length; c++) {
+        (function(item, idx) {
+            item.onmousedown = function(e) {
+                e.preventDefault(); // Prevent blur from hiding dropdown
+                var u = matches[idx];
+                selectedInjectUser = { id: u.id, name: u.name, realName: u.realName, avatar48: u.avatar48 || '' };
+                var labelEl = pluginUI.container.querySelector('#slack-inject-selected-user');
+                if (labelEl) labelEl.innerHTML = '<span style="color:#fff">' + esc(u.name) + '</span> <span class="text-muted">(' + esc(u.realName || u.id) + ')</span>';
+                var searchInput = pluginUI.container.querySelector('#slack-inject-user-search');
+                if (searchInput) searchInput.value = u.name;
+                dropdown.style.display = 'none';
+                updateInjectControls();
+            };
+        })(items[c], c);
+    }
+}
+
+var injectUserSearch = pluginUI.container.querySelector('#slack-inject-user-search');
+if (injectUserSearch) {
+    injectUserSearch.oninput = function() {
+        renderInjectUserDropdown(injectUserSearch.value);
+    };
+    injectUserSearch.onblur = function() {
+        setTimeout(function() {
+            var dropdown = pluginUI.container.querySelector('#slack-inject-user-dropdown');
+            if (dropdown) dropdown.style.display = 'none';
+        }, 200);
+    };
+}
+
+// Probe Store button
+var probeBtn = pluginUI.container.querySelector('#slack-probe-btn');
+if (probeBtn) {
+    probeBtn.onclick = function() {
+        var statusEl = pluginUI.container.querySelector('#slack-probe-status');
+        if (statusEl) statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Probing...';
+        sendCommand({ action: 'probe_store' });
+
+        var polls = 0;
+        if (_probePollTimer) clearInterval(_probePollTimer);
+        _probePollTimer = setInterval(function() {
+            polls++;
+            if (polls > 30) {
+                clearInterval(_probePollTimer);
+                _probePollTimer = null;
+                if (statusEl) statusEl.textContent = 'Timed out';
+                return;
+            }
+            pluginUI.fetchData('store_probe', 5, 0).then(function(result) {
+                var rows = result.rows || [];
+                if (rows.length > 0) {
+                    probeData = rows[0].data || {};
+                    clearInterval(_probePollTimer);
+                    _probePollTimer = null;
+                    if (statusEl) {
+                        statusEl.innerHTML = probeData.storeFound ?
+                            '<span class="text-muted">Store found: ' + esc(probeData.storeLocation || '?') + '</span>' :
+                            '<span class="text-muted">Store not found</span>';
+                    }
+                    // Show probe results panel
+                    var panel = pluginUI.container.querySelector('#slack-probe-results-panel');
+                    var pre = pluginUI.container.querySelector('#slack-probe-results');
+                    if (panel) panel.style.display = '';
+                    if (pre) pre.textContent = JSON.stringify(probeData, null, 2);
+                }
+            });
+        }, 1000);
+    };
+}
+
+// Probe results toggle
+var probeToggle = pluginUI.container.querySelector('#slack-probe-toggle');
+if (probeToggle) {
+    probeToggle.onclick = function(e) {
+        e.preventDefault();
+        var pre = pluginUI.container.querySelector('#slack-probe-results');
+        if (pre) {
+            var hidden = pre.style.display === 'none';
+            pre.style.display = hidden ? '' : 'none';
+            probeToggle.textContent = hidden ? 'Hide probe results' : 'Show probe results';
+        }
+    };
+}
+
+// Inject button
+var injectBtn = pluginUI.container.querySelector('#slack-inject-btn');
+var injectTextInput = pluginUI.container.querySelector('#slack-inject-text');
+if (injectBtn) {
+    injectBtn.onclick = function() {
+        if (!selectedInjectUser || !currentChannelId || !injectTextInput || !injectTextInput.value.trim()) return;
+        var statusEl = pluginUI.container.querySelector('#slack-inject-status');
+        if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Injecting...</span>'; }
+
+        sendCommand({
+            action: 'inject_message',
+            channelId: currentChannelId,
+            senderId: selectedInjectUser.id,
+            text: injectTextInput.value.trim(),
+            senderName: selectedInjectUser.realName || selectedInjectUser.name
+        });
+
+        var polls = 0;
+        if (_injectPollTimer) clearInterval(_injectPollTimer);
+        _injectPollTimer = setInterval(function() {
+            polls++;
+            if (polls > 30) {
+                clearInterval(_injectPollTimer);
+                _injectPollTimer = null;
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted">Timed out waiting for result</span>';
+                return;
+            }
+            pluginUI.fetchData('inject_result', 5, 0).then(function(result) {
+                var rows = result.rows || [];
+                if (rows.length > 0) {
+                    var d = rows[0].data || {};
+                    clearInterval(_injectPollTimer);
+                    _injectPollTimer = null;
+                    if (statusEl) {
+                        if (d.success) {
+                            statusEl.innerHTML = '<span class="text-muted">Injected via ' + esc(d.strategy || '?') + '</span>';
+                        } else {
+                            statusEl.innerHTML = '<span class="text-muted">Failed: ' + esc(d.error || 'unknown') + '</span>';
+                        }
+                    }
+                }
+            });
+        }, 1000);
+    };
+}
+
+if (injectTextInput) {
+    injectTextInput.onkeydown = function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (injectBtn) injectBtn.click();
+        }
+    };
+}
+
+// ===== Injected message cleanup =====
+
+function updateClearInjectedButton() {
+    var btn = pluginUI.container.querySelector('#slack-clear-injected-btn');
+    var badge = pluginUI.container.querySelector('#slack-injected-count');
+    if (!btn) return;
+    if (injectedMessageCount > 0) {
+        btn.style.display = '';
+        if (badge) badge.textContent = injectedMessageCount;
+    } else {
+        btn.style.display = 'none';
+    }
+}
+
+var clearInjectedBtn = pluginUI.container.querySelector('#slack-clear-injected-btn');
+if (clearInjectedBtn) {
+    clearInjectedBtn.onclick = function() {
+        if (injectedMessageCount === 0) return;
+        var statusEl = pluginUI.container.querySelector('#slack-inject-status');
+        if (statusEl) { statusEl.style.display = ''; statusEl.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Cleaning up spoofed messages...</span>'; }
+
+        sendCommand({ action: 'clear_injected' });
+
+        var polls = 0;
+        if (_clearInjectedPollTimer) clearInterval(_clearInjectedPollTimer);
+        var _preClearCount = injectedMessageCount;
+        _clearInjectedPollTimer = setInterval(function() {
+            polls++;
+            if (polls > 30) {
+                clearInterval(_clearInjectedPollTimer);
+                _clearInjectedPollTimer = null;
+                // If count dropped to 0 via loadData, the cleanup worked even without the explicit result
+                if (injectedMessageCount === 0 && _preClearCount > 0) {
+                    updateClearInjectedButton();
+                    if (statusEl) statusEl.innerHTML = '<span class="text-muted">Cleared ' + _preClearCount + ' spoofed message(s)</span>';
+                } else {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-muted">Cleanup timed out</span>';
+                }
+                return;
+            }
+            // Early success: if injectedMessageCount already dropped to 0 via loadData refresh
+            if (injectedMessageCount === 0 && _preClearCount > 0) {
+                clearInterval(_clearInjectedPollTimer);
+                _clearInjectedPollTimer = null;
+                updateClearInjectedButton();
+                if (statusEl) statusEl.innerHTML = '<span class="text-muted">Cleared ' + _preClearCount + ' spoofed message(s)</span>';
+                return;
+            }
+            pluginUI.fetchData('clear_injected_result', 5, 0).then(function(result) {
+                var rows = result.rows || [];
+                if (rows.length > 0) {
+                    var d = rows[0].data || {};
+                    clearInterval(_clearInjectedPollTimer);
+                    _clearInjectedPollTimer = null;
+                    if (d.success) {
+                        injectedMessageCount = 0;
+                        updateClearInjectedButton();
+                        if (statusEl) statusEl.innerHTML = '<span class="text-muted">Cleared ' + (d.cleared || 0) + ' spoofed message(s) via ' + esc(d.method || '?') + '</span>';
+                    } else {
+                        if (statusEl) statusEl.innerHTML = '<span class="text-muted">Cleanup failed: ' + esc(d.error || 'unknown') + '</span>';
+                    }
+                }
+            });
+        }, 1000);
+    };
+}
+
 // Initial load + auto-refresh
 loadData();
-_refreshTimer = setInterval(loadData, 8000);
+_refreshTimer = setInterval(loadData, 3000);
