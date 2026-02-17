@@ -650,6 +650,16 @@
 
   // ===== Screenshots =====
 
+  function withTimeout(promise, ms) {
+    let timer;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Timeout')), ms); })
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  const CAPTURE_TIMEOUT = 10000; // 10s — prevent desktopCapturer/capturePage from hanging the heartbeat
+
   async function captureWindow(windowId) {
     const entry = trackedWindows.get(windowId);
     if (!entry || entry.webContents.isDestroyed()) return null;
@@ -660,10 +670,10 @@
       if (win && desktopCapturer) {
         try {
           const bounds = win.getBounds();
-          const sources = await desktopCapturer.getSources({
+          const sources = await withTimeout(desktopCapturer.getSources({
             types: ['window'],
             thumbnailSize: { width: bounds.width, height: bounds.height }
-          });
+          }), CAPTURE_TIMEOUT);
 
           // Match by window id string (Electron uses "window:N:0" format)
           // or fall back to title matching
@@ -677,12 +687,12 @@
             return source.thumbnail.toPNG();
           }
         } catch (e) {
-          // desktopCapturer failed — fall through to capturePage
+          // desktopCapturer failed or timed out — fall through to capturePage
         }
       }
 
       // Fallback: capturePage (works but misses GPU-composited content)
-      const nativeImage = await entry.webContents.capturePage();
+      const nativeImage = await withTimeout(entry.webContents.capturePage(), CAPTURE_TIMEOUT);
       return nativeImage.toPNG();
     } catch (e) {
       return null;
@@ -694,12 +704,12 @@
     let sources = [];
     try {
       if (desktopCapturer) {
-        sources = await desktopCapturer.getSources({
+        sources = await withTimeout(desktopCapturer.getSources({
           types: ['window'],
           thumbnailSize: { width: 1920, height: 1080 }
-        });
+        }), CAPTURE_TIMEOUT);
       }
-    } catch (e) { /* desktopCapturer unavailable */ }
+    } catch (e) { /* desktopCapturer unavailable or timed out */ }
 
     for (const [windowId, entry] of trackedWindows) {
       if (!entry.webContents.isDestroyed()) {
@@ -726,9 +736,9 @@
         // Fallback to capturePage
         if (!png) {
           try {
-            const nativeImage = await entry.webContents.capturePage();
+            const nativeImage = await withTimeout(entry.webContents.capturePage(), CAPTURE_TIMEOUT);
             png = nativeImage.toPNG();
-          } catch (e) { /* capture failed */ }
+          } catch (e) { /* capture failed or timed out */ }
         }
 
         if (png && png.length > 0) {

