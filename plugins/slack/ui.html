@@ -1,7 +1,20 @@
+<style>
+    #slack-search-input, #slack-inject-user-search, #slack-inject-text,
+    #slack-channel-filter, #slack-msg-input, #slack-workspace-select {
+        background-color: #aaa !important;
+        color: #000 !important;
+    }
+    #slack-search-input::placeholder, #slack-inject-user-search::placeholder,
+    #slack-inject-text::placeholder, #slack-channel-filter::placeholder,
+    #slack-msg-input::placeholder {
+        color: #8b8680;
+        font-size: 0.9em;
+    }
+</style>
 <div class="mt-2">
     <div class="d-flex justify-content-between align-items-center mb-2" id="slack-topbar">
         <div class="d-flex align-items-center">
-            <select id="slack-workspace-select" class="form-select form-select-sm" style="width:auto;min-width:180px;background:#3a3f44;border-color:#52565a;color:#aaa">
+            <select id="slack-workspace-select" class="form-select form-select-sm" style="width:auto;min-width:180px;border-color:#52565a">
                 <option value="">Workspace: --</option>
             </select>
             <span class="text-muted ms-3" id="slack-user">User: --</span>
