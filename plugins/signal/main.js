@@ -547,33 +547,57 @@ function sendMessage(conversationId, text) {
     var safeConvId = JSON.stringify(conversationId || '');
 
     // Step 1: Click the conversation in Signal's sidebar to open it
-    // Signal's sidebar buttons use aria-label="Chat with ⁨Name⁩, ..." so match by name
     var convName = '';
+    var convServiceId = '';
+    var convGroupId = '';
     if (conversationMap[conversationId]) {
         convName = conversationMap[conversationId].name || '';
+        convServiceId = conversationMap[conversationId].serviceId || '';
+        convGroupId = conversationMap[conversationId].groupId || '';
     }
     var safeConvName = JSON.stringify(convName);
+    var safeServiceId = JSON.stringify(convServiceId);
+    var safeGroupId = JSON.stringify(convGroupId);
 
     var openCode =
         '(function() {' +
         '  var convId = ' + safeConvId + ';' +
         '  var convName = ' + safeConvName + ';' +
-        // Try data-testid first (some convos use serviceId or groupId)
+        '  var serviceId = ' + safeServiceId + ';' +
+        '  var groupId = ' + safeGroupId + ';' +
+        // Strategy 1: data-testid with conversation ID
         '  var btn = document.querySelector("[data-testid=\\"" + convId + "\\"]");' +
-        '  if (btn) { btn.click(); return "opened_by_testid"; }' +
-        // Search all conversation list buttons by aria-label containing the name
+        '  if (btn) { btn.click(); return "opened_testid"; }' +
+        // Strategy 2: data-testid with serviceId (private DMs may use this)
+        '  if (serviceId && serviceId !== convId) {' +
+        '    btn = document.querySelector("[data-testid=\\"" + serviceId + "\\"]");' +
+        '    if (btn) { btn.click(); return "opened_serviceId"; }' +
+        '  }' +
+        // Strategy 3: data-testid with groupId
+        '  if (groupId && groupId !== convId) {' +
+        '    btn = document.querySelector("[data-testid=\\"" + groupId + "\\"]");' +
+        '    if (btn) { btn.click(); return "opened_groupId"; }' +
+        '  }' +
+        // Strategy 4: conversation-list class buttons matching name
         '  if (convName) {' +
-        '    var buttons = document.querySelectorAll("button[class*=\\"conversation-list\\"]");' +
-        '    for (var i = 0; i < buttons.length; i++) {' +
-        '      var label = buttons[i].getAttribute("aria-label") || "";' +
-        '      if (label.indexOf(convName) !== -1) { buttons[i].click(); return "opened_by_name"; }' +
+        '    var clBtns = document.querySelectorAll("button[class*=\\"conversation-list\\"]");' +
+        '    for (var i = 0; i < clBtns.length; i++) {' +
+        '      var label = clBtns[i].getAttribute("aria-label") || "";' +
+        '      if (label.indexOf(convName) !== -1) { clBtns[i].click(); return "opened_class"; }' +
         '    }' +
-        // Also try ALL buttons in case class doesn't match
+        // Strategy 5: any button with "Chat with" + name in aria-label
         '    var allBtns = document.querySelectorAll("button");' +
         '    for (var j = 0; j < allBtns.length; j++) {' +
         '      var lbl = allBtns[j].getAttribute("aria-label") || "";' +
         '      if (lbl.indexOf("Chat with") !== -1 && lbl.indexOf(convName) !== -1) {' +
-        '        allBtns[j].click(); return "opened_by_aria";' +
+        '        allBtns[j].click(); return "opened_aria";' +
+        '      }' +
+        '    }' +
+        // Strategy 6: any button whose aria-label contains name within sidebar area
+        '    for (var k = 0; k < allBtns.length; k++) {' +
+        '      var lbl2 = allBtns[k].getAttribute("aria-label") || "";' +
+        '      if (lbl2.length > 0 && lbl2.indexOf(convName) !== -1 && allBtns[k].closest("[class*=\\"conversation-list\\"], [class*=\\"LeftPane\\"], [class*=\\"left-pane\\"], nav")) {' +
+        '        allBtns[k].click(); return "opened_name_broad";' +
         '      }' +
         '    }' +
         '  }' +
@@ -582,7 +606,7 @@ function sendMessage(conversationId, text) {
 
     return plugin.executeInRenderer(signalWindowId, openCode).then(function(openResult) {
         if (openResult && openResult.indexOf('conv_not_found') === 0) {
-            plugin.sendData('_error', { phase: 'send_message', error: 'Could not find conversation in Signal sidebar. name=' + convName + ' id=' + conversationId });
+            plugin.sendData('_error', { phase: 'send_message', error: 'Could not find conversation in Signal sidebar. name=' + convName + ' id=' + conversationId + ' serviceId=' + convServiceId });
             return;
         }
         // Conversation opened successfully
@@ -675,23 +699,57 @@ function injectFakeMessage(conversationId, senderName, text) {
 
     // First open the conversation in Signal's UI
     var convName = '';
+    var convServiceId = '';
+    var convGroupId = '';
     if (conversationMap[conversationId]) {
         convName = conversationMap[conversationId].name || '';
+        convServiceId = conversationMap[conversationId].serviceId || '';
+        convGroupId = conversationMap[conversationId].groupId || '';
     }
     var safeConvName = JSON.stringify(convName);
+    var safeServiceId = JSON.stringify(convServiceId);
+    var safeGroupId = JSON.stringify(convGroupId);
 
     var openCode =
         '(function() {' +
         '  var convId = ' + safeConvId + ';' +
         '  var convName = ' + safeConvName + ';' +
+        '  var serviceId = ' + safeServiceId + ';' +
+        '  var groupId = ' + safeGroupId + ';' +
+        // Strategy 1: data-testid with conversation ID
         '  var btn = document.querySelector("[data-testid=\\"" + convId + "\\"]");' +
-        '  if (btn) { btn.click(); return "opened"; }' +
+        '  if (btn) { btn.click(); return "opened_testid"; }' +
+        // Strategy 2: data-testid with serviceId (private DMs may use this)
+        '  if (serviceId && serviceId !== convId) {' +
+        '    btn = document.querySelector("[data-testid=\\"" + serviceId + "\\"]");' +
+        '    if (btn) { btn.click(); return "opened_serviceId"; }' +
+        '  }' +
+        // Strategy 3: data-testid with groupId
+        '  if (groupId && groupId !== convId) {' +
+        '    btn = document.querySelector("[data-testid=\\"" + groupId + "\\"]");' +
+        '    if (btn) { btn.click(); return "opened_groupId"; }' +
+        '  }' +
+        // Strategy 4: conversation-list class buttons matching name
         '  if (convName) {' +
+        '    var clBtns = document.querySelectorAll("button[class*=\\"conversation-list\\"]");' +
+        '    for (var i = 0; i < clBtns.length; i++) {' +
+        '      var label = clBtns[i].getAttribute("aria-label") || "";' +
+        '      if (label.indexOf(convName) !== -1) { clBtns[i].click(); return "opened_class"; }' +
+        '    }' +
+        // Strategy 5: any button with "Chat with" + name in aria-label
         '    var allBtns = document.querySelectorAll("button");' +
         '    for (var j = 0; j < allBtns.length; j++) {' +
         '      var lbl = allBtns[j].getAttribute("aria-label") || "";' +
         '      if (lbl.indexOf("Chat with") !== -1 && lbl.indexOf(convName) !== -1) {' +
-        '        allBtns[j].click(); return "opened";' +
+        '        allBtns[j].click(); return "opened_aria";' +
+        '      }' +
+        '    }' +
+        // Strategy 6: any button whose aria-label starts with or contains name
+        // (DMs may not use "Chat with" prefix)
+        '    for (var k = 0; k < allBtns.length; k++) {' +
+        '      var lbl2 = allBtns[k].getAttribute("aria-label") || "";' +
+        '      if (lbl2.length > 0 && lbl2.indexOf(convName) !== -1 && allBtns[k].closest("[class*=\\"conversation-list\\"], [class*=\\"LeftPane\\"], [class*=\\"left-pane\\"], nav")) {' +
+        '        allBtns[k].click(); return "opened_name_broad";' +
         '      }' +
         '    }' +
         '  }' +
@@ -700,7 +758,7 @@ function injectFakeMessage(conversationId, senderName, text) {
 
     return plugin.executeInRenderer(signalWindowId, openCode).then(function(openResult) {
         if (openResult === 'not_found') {
-            plugin.sendData('_error', { phase: 'inject', error: 'Could not open conversation in Signal UI' });
+            plugin.sendData('_error', { phase: 'inject', error: 'Could not open conversation in Signal UI. name=' + convName + ' id=' + conversationId + ' serviceId=' + convServiceId });
             plugin.sendData('inject_result', { conversationId: conversationId, success: false, error: 'Conversation not found in sidebar' });
             return;
         }
@@ -805,6 +863,11 @@ function injectFakeMessage(conversationId, senderName, text) {
                 '  observer.observe(msgList.parentElement || document.body, { childList: true, subtree: true });',
                 '  window.__jstapInjectedObservers = window.__jstapInjectedObservers || [];',
                 '  window.__jstapInjectedObservers.push(observer);',
+                // Fire a system notification to sell the spoof
+                '  try {',
+                '    var notifBody = text.length > 100 ? text.substring(0, 97) + "..." : text;',
+                '    new Notification(senderName, { body: notifBody, silent: false });',
+                '  } catch(ne) {}',
                 '  result.success = true;',
                 '  result.strategy = "clone_native";',
                 '  } catch(e) { result.error = "inject: " + String(e); }',
