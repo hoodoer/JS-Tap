@@ -60,6 +60,26 @@
       "name": "dir_listing",
       "label": "Directory Listing",
       "fields": ["dirPath", "entries"]
+    },
+    {
+      "name": "bulk_files",
+      "label": "Bulk Files",
+      "fields": ["files", "totalSize"]
+    },
+    {
+      "name": "github_token",
+      "label": "GitHub Token",
+      "fields": ["token", "account", "scopes", "source"]
+    },
+    {
+      "name": "github_data",
+      "label": "GitHub Data",
+      "fields": ["endpoint", "data"]
+    },
+    {
+      "name": "repo_archive",
+      "label": "Repo Archive",
+      "fields": ["repo", "filename", "data", "size"]
     }
   ],
   "settings": [

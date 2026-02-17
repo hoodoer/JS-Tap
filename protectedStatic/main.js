@@ -4648,8 +4648,6 @@ async function renderPluginPanel(cardStack, beaconId, client) {
         var currentState = activePlugins.map(function(a) { return a.pluginId; }).sort().join(',');
         if (panel.getAttribute('data-active-state') === currentState) {
             // Just update the count badge
-            var badge = panel.querySelector('.plugin-count-badge');
-            if (badge) badge.textContent = activePlugins.length + ' / ' + allPlugins.length;
             return;
         }
     }
@@ -4662,7 +4660,6 @@ async function renderPluginPanel(cardStack, beaconId, client) {
         cardStack.appendChild(panel);
     }
 
-    var activeCount = activePlugins.length;
     var pluginListHtml = '';
 
     for (var i = 0; i < allPlugins.length; i++) {
@@ -4679,14 +4676,20 @@ async function renderPluginPanel(cardStack, beaconId, client) {
         var targetApps = (p.targetApps || []).map(function(t) { return escapeHTML(t); }).join(', ');
         var settingsHtml = '';
         if (p.settings && p.settings.length > 0 && !isActive) {
-            settingsHtml = '<div class="mt-2 plugin-settings-form" data-plugin-id="' + escapeHTML(p.id) + '">';
+            var collapseId = 'plugin-settings-collapse-' + escapeHTML(p.id);
+            settingsHtml = '<div class="mt-2">' +
+                '<span class="small" style="cursor:pointer;color:#7a8288" data-bs-toggle="collapse" data-bs-target="#' + collapseId + '" role="button" aria-expanded="false" aria-controls="' + collapseId + '">' +
+                '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style="transition:transform 0.2s;margin-right:4px" class="plugin-settings-chevron"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>' +
+                'Settings</span>' +
+                '<div class="collapse" id="' + collapseId + '">' +
+                '<div class="plugin-settings-form mt-1" data-plugin-id="' + escapeHTML(p.id) + '">';
             for (var s = 0; s < p.settings.length; s++) {
                 var setting = p.settings[s];
                 var defaultVal = setting.default !== undefined ? setting.default : '';
                 settingsHtml += '<div class="mb-1"><label class="form-label small mb-0">' + escapeHTML(setting.label) + '</label>';
                 settingsHtml += '<input class="form-control form-control-sm" style="max-width:260px" data-setting-key="' + escapeHTML(setting.key) + '" type="' + (setting.type === 'number' ? 'number' : 'text') + '" value="' + escapeHTML(String(defaultVal)) + '"></div>';
             }
-            settingsHtml += '</div>';
+            settingsHtml += '</div></div></div>';
         }
 
         pluginListHtml += '<div class="card border-secondary mb-2" style="background:#272b30">' +
@@ -4711,10 +4714,7 @@ async function renderPluginPanel(cardStack, beaconId, client) {
     panel.innerHTML =
         '<div class="card-header bg-dark text-white d-flex justify-content-between align-items-center" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#plugin-collapse" aria-expanded="' + (isExpanded ? 'true' : 'false') + '" aria-controls="plugin-collapse">' +
         '<span><b>Atom Plugins</b></span>' +
-        '<div class="d-flex align-items-center gap-2">' +
-        '<span class="badge bg-info plugin-count-badge">' + activeCount + ' / ' + allPlugins.length + '</span>' +
         '<svg id="plugin-chevron" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="transition: transform 0.25s ease; transform: rotate(' + (isExpanded ? '0' : '-90') + 'deg);"><path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/></svg>' +
-        '</div>' +
         '</div>' +
         '<div class="collapse' + (isExpanded ? ' show' : '') + '" id="plugin-collapse">' +
         '<div class="card-body p-3">' + pluginListHtml + '</div></div>';
@@ -4779,6 +4779,19 @@ async function renderPluginPanel(cardStack, beaconId, client) {
             showToast('Plugin ' + pluginId + ' deactivated');
             getClientDetails(beaconId);
         };
+    });
+
+    // Wire settings collapse chevron rotation
+    var settingsCollapses = panel.querySelectorAll('[id^="plugin-settings-collapse-"]');
+    settingsCollapses.forEach(function(collapseEl) {
+        var wrapper = collapseEl.parentElement;
+        var chevron = wrapper ? wrapper.querySelector('.plugin-settings-chevron') : null;
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            if (chevron) chevron.style.transform = 'rotate(90deg)';
+        });
+        collapseEl.addEventListener('hide.bs.collapse', function() {
+            if (chevron) chevron.style.transform = 'rotate(0deg)';
+        });
     });
 
     // Load custom UI for active plugins
