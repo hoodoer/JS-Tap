@@ -474,6 +474,7 @@ def create_deploy_bundles(config, crx_path, xpi_path, include_sidecar):
         ('chrome-windows',  'windows', f'{binary_name}-windows-amd64.exe', None,                                                           None,                                                    'Chrome',   'zip'),
         ('chromium-linux',  'linux',   f'{binary_name}-linux-amd64',       '.config/chromium/NativeMessagingHosts',                         '/usr/share/chromium/extensions',                        'Chromium', 'tar.gz'),
         ('chromium-mac',    'mac',     None,                               'Library/Application Support/Chromium/NativeMessagingHosts',      '/Library/Application Support/Chromium/External Extensions', 'Chromium', 'tar.gz'),
+        ('edge-windows',    'windows', f'{binary_name}-windows-amd64.exe', None,                                                           None,                                                    'Edge',     'zip'),
     ]
 
     firefox_bundles = [
@@ -839,7 +840,7 @@ echo "Uninstall complete. Restart {browser_label} for changes to take effect."
 
 
 def _gen_chrome_windows_script(bundle_dir, config, has_crx, sidecar_enabled, browser_label):
-    """Generate a Chrome/Chromium install script for Windows."""
+    """Generate a Chrome/Chromium/Edge install script for Windows."""
     _, chrome_id, _ = get_ext_ids(config)
     ext_meta = config.get('extension', {})
     ext_version = ext_meta.get('version', '1.0.0')
@@ -847,6 +848,14 @@ def _gen_chrome_windows_script(bundle_dir, config, has_crx, sidecar_enabled, bro
     sidecar_cfg = config.get('sidecar', {})
     host_name = sidecar_cfg.get('host_name', 'com.jstap.sidecar')
     binary_name = sidecar_cfg.get('binary_name', 'sidecar')
+
+    # Registry and NM paths differ for Edge vs Chrome
+    if browser_label == 'Edge':
+        reg_base = 'Microsoft\\Edge'
+        nm_appdata_dir = 'Microsoft\\Edge\\User Data\\NativeMessagingHosts'
+    else:
+        reg_base = 'Google\\Chrome'
+        nm_appdata_dir = 'Google\\Chrome\\User Data\\NativeMessagingHosts'
 
     install_base = f'%LOCALAPPDATA%\\{dirname}'
 
@@ -864,7 +873,7 @@ echo   "external_version": "{ext_version}"
 echo }}
 ) > "%EXT_DIR%\\{chrome_id}.json"
 
-reg add "HKCU\\Software\\Google\\Chrome\\Extensions\\{chrome_id}" /v path /t REG_SZ /d "%EXT_DIR%\\{chrome_id}.json" /f
+reg add "HKCU\\Software\\{reg_base}\\Extensions\\{chrome_id}" /v path /t REG_SZ /d "%EXT_DIR%\\{chrome_id}.json" /f
 echo Installed {browser_label} extension via registry.
 '''
     elif has_crx:
@@ -889,7 +898,7 @@ echo Installed {browser_label} extension to: %EXT_DEST%
         sidecar_section = f'''
 REM --- Install Sidecar ---
 set "SIDECAR_DEST={install_base}\\{binary_name}.exe"
-set "NM_DIR=%LOCALAPPDATA%\\Google\\Chrome\\User Data\\NativeMessagingHosts"
+set "NM_DIR=%LOCALAPPDATA%\\{nm_appdata_dir}"
 if not exist "{install_base}" mkdir "{install_base}"
 if not exist "%NM_DIR%" mkdir "%NM_DIR%"
 
@@ -905,11 +914,13 @@ echo   "allowed_origins": ["chrome-extension://{chrome_id}/"]
 echo }}
 ) > "%NM_DIR%\\{host_name}.json"
 
-reg add "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\{host_name}" /ve /t REG_SZ /d "%NM_DIR%\\{host_name}.json" /f
+reg add "HKCU\\Software\\{reg_base}\\NativeMessagingHosts\\{host_name}" /ve /t REG_SZ /d "%NM_DIR%\\{host_name}.json" /f
 echo Installed sidecar.
 echo   Binary: %SIDECAR_DEST%
 echo   Manifest: %NM_DIR%\\{host_name}.json
 '''
+
+    ext_url = 'edge://extensions' if browser_label == 'Edge' else 'chrome://extensions'
 
     if has_crx and chrome_id:
         instructions = f'''
@@ -921,14 +932,14 @@ echo The extension will be installed automatically.
         instructions = f'''
 echo.
 echo To install the extension:
-echo   Drag and drop the .crx file into chrome://extensions
+echo   Drag and drop the .crx file into {ext_url}
 echo   CRX location: {install_base}\\extension.crx
 '''
     else:
         instructions = f'''
 echo.
 echo To load the extension:
-echo   1. Open chrome://extensions
+echo   1. Open {ext_url}
 echo   2. Enable Developer mode
 echo   3. Click "Load unpacked" and select: {install_base}\\chrome-extension
 '''
@@ -945,7 +956,7 @@ pause
 
 
 def _gen_chrome_windows_uninstall(bundle_dir, config, has_crx, sidecar_enabled, browser_label):
-    """Generate a Chrome/Chromium uninstall script for Windows."""
+    """Generate a Chrome/Chromium/Edge uninstall script for Windows."""
     _, chrome_id, _ = get_ext_ids(config)
     ext_meta = config.get('extension', {})
     dirname = ext_meta.get('install_dirname', 'jstap')
@@ -954,10 +965,18 @@ def _gen_chrome_windows_uninstall(bundle_dir, config, has_crx, sidecar_enabled, 
     binary_name = sidecar_cfg.get('binary_name', 'sidecar')
     install_base = f'%LOCALAPPDATA%\\{dirname}'
 
+    # Registry and NM paths differ for Edge vs Chrome
+    if browser_label == 'Edge':
+        reg_base = 'Microsoft\\Edge'
+        nm_appdata_dir = 'Microsoft\\Edge\\User Data\\NativeMessagingHosts'
+    else:
+        reg_base = 'Google\\Chrome'
+        nm_appdata_dir = 'Google\\Chrome\\User Data\\NativeMessagingHosts'
+
     if has_crx and chrome_id:
         ext_section = f'''
 REM --- Remove Extension ---
-reg delete "HKCU\\Software\\Google\\Chrome\\Extensions\\{chrome_id}" /f 2>nul
+reg delete "HKCU\\Software\\{reg_base}\\Extensions\\{chrome_id}" /f 2>nul
 if exist "{install_base}\\{chrome_id}.json" del /F "{install_base}\\{chrome_id}.json"
 if exist "{install_base}\\extension.crx" del /F "{install_base}\\extension.crx"
 echo Removed {browser_label} extension registry entry and files.
@@ -974,8 +993,8 @@ echo Removed {browser_label} extension files.
     if sidecar_enabled:
         sidecar_section = f'''
 REM --- Remove Sidecar ---
-reg delete "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\{host_name}" /f 2>nul
-set "NM_DIR=%LOCALAPPDATA%\\Google\\Chrome\\User Data\\NativeMessagingHosts"
+reg delete "HKCU\\Software\\{reg_base}\\NativeMessagingHosts\\{host_name}" /f 2>nul
+set "NM_DIR=%LOCALAPPDATA%\\{nm_appdata_dir}"
 if exist "%NM_DIR%\\{host_name}.json" del /F "%NM_DIR%\\{host_name}.json"
 if exist "{install_base}\\{binary_name}.exe" del /F "{install_base}\\{binary_name}.exe"
 echo Removed sidecar binary, manifest, and registry entry.
