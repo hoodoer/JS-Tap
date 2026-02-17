@@ -860,7 +860,65 @@ def _gen_chrome_windows_script(bundle_dir, config, has_crx, sidecar_enabled, bro
     install_base = f'%LOCALAPPDATA%\\{dirname}'
 
     if has_crx and chrome_id:
-        ext_section = f'''
+        if browser_label == 'Edge':
+            # Edge on unmanaged Windows devices blocks automated extension
+            # install (file:// URLs, registry path+JSON, forcelist all blocked).
+            # On managed (domain-joined) devices, ExtensionInstallForcelist works.
+            # Detect managed state and use the appropriate path.
+            ext_section = f'''
+REM --- Install Extension ---
+set "EXT_DIR={install_base}"
+if not exist "%EXT_DIR%" mkdir "%EXT_DIR%"
+copy /Y "%SCRIPT_DIR%extension.crx" "%EXT_DIR%\\extension.crx"
+
+REM Detect if device is managed (domain-joined or Azure AD joined)
+set "MANAGED=0"
+dsregcmd /status 2>nul | findstr /c:"DomainJoined : YES" >nul && set "MANAGED=1"
+dsregcmd /status 2>nul | findstr /c:"AzureAdJoined : YES" >nul && set "MANAGED=1"
+
+if "%MANAGED%"=="0" goto :manual_ext_install
+
+REM --- Managed device: automated install via ExtensionInstallForcelist policy ---
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo Device is managed - automated extension install is available.
+    echo Re-run as administrator for automated install, or install manually below.
+    goto :manual_ext_install
+)
+
+set "CRX_URL=file:///%EXT_DIR:\\=/%/extension.crx"
+set "XML_URL=file:///%EXT_DIR:\\=/%/updates.xml"
+
+(
+echo ^<?xml version='1.0' encoding='UTF-8'?^>
+echo ^<gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'^>
+echo   ^<app appid='{chrome_id}'^>
+echo     ^<updatecheck codebase='%CRX_URL%' version='{ext_version}' /^>
+echo   ^</app^>
+echo ^</gupdate^>
+) > "%EXT_DIR%\\updates.xml"
+
+reg add "HKLM\\SOFTWARE\\Policies\\{reg_base}\\ExtensionInstallForcelist" /v 1 /t REG_SZ /d "{chrome_id};%XML_URL%" /f
+gpupdate /force >nul 2>&1
+echo Extension force-install policy set. Extension will install on next Edge restart.
+goto :ext_install_done
+
+:manual_ext_install
+echo.
+echo To install the extension:
+echo   1. Open edge://extensions
+echo   2. Enable "Developer mode" (toggle in bottom-left)
+echo   3. Drag and drop this file into the Edge extensions page:
+echo      %EXT_DIR%\\extension.crx
+echo.
+echo Opening edge://extensions now...
+start msedge edge://extensions
+
+:ext_install_done
+'''
+        else:
+            ext_section = f'''
 REM --- Install Extension ---
 set "EXT_DIR={install_base}"
 if not exist "%EXT_DIR%" mkdir "%EXT_DIR%"
@@ -923,7 +981,13 @@ echo   Manifest: %NM_DIR%\\{host_name}.json
     ext_url = 'edge://extensions' if browser_label == 'Edge' else 'chrome://extensions'
 
     if has_crx and chrome_id:
-        instructions = f'''
+        if browser_label == 'Edge':
+            instructions = '''
+echo.
+echo Installation complete.
+'''
+        else:
+            instructions = f'''
 echo.
 echo Installation complete. Restart {browser_label}.
 echo The extension will be installed automatically.
@@ -944,13 +1008,15 @@ echo   2. Enable Developer mode
 echo   3. Click "Load unpacked" and select: {install_base}\\chrome-extension
 '''
 
+    admin_check = ''
+
     write_script(os.path.join(bundle_dir, 'install.bat'), f'''@echo off
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
 echo JS-Tap {browser_label} Installer
 echo ================================
-{ext_section}{sidecar_section}{instructions}
+{admin_check}{ext_section}{sidecar_section}{instructions}
 pause
 ''', executable=False)
 
@@ -974,7 +1040,27 @@ def _gen_chrome_windows_uninstall(bundle_dir, config, has_crx, sidecar_enabled, 
         nm_appdata_dir = 'Google\\Chrome\\User Data\\NativeMessagingHosts'
 
     if has_crx and chrome_id:
-        ext_section = f'''
+        if browser_label == 'Edge':
+            ext_section = f'''
+REM --- Remove Extension ---
+REM Clean up force-install policy (requires admin, silent if not available)
+reg delete "HKLM\\SOFTWARE\\Policies\\{reg_base}\\ExtensionInstallForcelist" /f 2>nul
+reg delete "HKLM\\SOFTWARE\\WOW6432Node\\Policies\\{reg_base}\\ExtensionInstallForcelist" /f 2>nul
+REM Clean up old registry entries from previous install methods
+reg delete "HKLM\\Software\\{reg_base}\\Extensions\\{chrome_id}" /f 2>nul
+reg delete "HKCU\\Software\\{reg_base}\\Extensions\\{chrome_id}" /f 2>nul
+
+REM Remove extension files
+if exist "{install_base}\\extension.crx" del /F "{install_base}\\extension.crx"
+if exist "{install_base}\\updates.xml" del /F "{install_base}\\updates.xml"
+if exist "{install_base}\\{chrome_id}.json" del /F "{install_base}\\{chrome_id}.json"
+echo Removed extension files and registry entries.
+echo NOTE: If the extension is still visible in Edge, remove it from edge://extensions
+echo TIP: Run as administrator to also clean up managed extension policies.
+echo NOTE: Close all Edge processes (check Task Manager) as Edge runs in the background.
+'''
+        else:
+            ext_section = f'''
 REM --- Remove Extension ---
 reg delete "HKCU\\Software\\{reg_base}\\Extensions\\{chrome_id}" /f 2>nul
 if exist "{install_base}\\{chrome_id}.json" del /F "{install_base}\\{chrome_id}.json"
@@ -1005,12 +1091,14 @@ REM --- Cleanup ---
 if exist "{install_base}" rmdir /Q "{install_base}" 2>nul
 '''
 
+    admin_check = ''
+
     write_script(os.path.join(bundle_dir, 'uninstall.bat'), f'''@echo off
 setlocal
 
 echo JS-Tap {browser_label} Uninstaller
 echo ==================================
-{ext_section}{sidecar_section}{cleanup}
+{admin_check}{ext_section}{sidecar_section}{cleanup}
 echo.
 echo Uninstall complete. Restart {browser_label} for changes to take effect.
 pause

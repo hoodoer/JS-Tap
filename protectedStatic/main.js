@@ -3036,6 +3036,7 @@ var _sidecarShellHistoryIndex = -1;
 var _sidecarShellOutput = '';
 var _sidecarShellBeaconId = '';
 var _sidecarShellNickname = '';
+var _sidecarShellIsWindows = false;
 var _sidecarShellQueue = [];
 var _sidecarShellRunning = false;
 
@@ -3245,12 +3246,22 @@ function _sidecarShellProcessQueue() {
 
 async function _sidecarShellRunOne(beaconId, rawCmd) {
     // Wrap with CURRENT CWD (which may have been updated by prior queued commands)
-    var cwdEscaped = _sidecarShellCwd.replace(/'/g, "'\\''");
+    // Windows cmd.exe uses & as separator, cd (no args) instead of pwd, and double quotes
     var wrappedCmd;
-    if (_sidecarShellCwd) {
-        wrappedCmd = "cd '" + cwdEscaped + "' && " + rawCmd + "; echo '__SIDECAR_CWD__'; pwd";
+    if (_sidecarShellIsWindows) {
+        var cwdEscaped = _sidecarShellCwd.replace(/"/g, '""');
+        if (_sidecarShellCwd) {
+            wrappedCmd = 'cd /d "' + cwdEscaped + '" && ' + rawCmd + ' & echo __SIDECAR_CWD__& cd';
+        } else {
+            wrappedCmd = rawCmd + ' & echo __SIDECAR_CWD__& cd';
+        }
     } else {
-        wrappedCmd = rawCmd + "; echo '__SIDECAR_CWD__'; pwd";
+        var cwdEscaped = _sidecarShellCwd.replace(/'/g, "'\\''");
+        if (_sidecarShellCwd) {
+            wrappedCmd = "cd '" + cwdEscaped + "' && " + rawCmd + "; echo '__SIDECAR_CWD__'; pwd";
+        } else {
+            wrappedCmd = rawCmd + "; echo '__SIDECAR_CWD__'; pwd";
+        }
     }
 
     var promptText = escapeHTML((_sidecarShellCwd || '~') + ' $ ' + rawCmd);
@@ -3352,7 +3363,8 @@ function sidecarPopOutShell(beaconId) {
         cwd: _sidecarShellCwd,
         history: _sidecarShellHistory.slice(),
         output: _sidecarShellOutput,
-        nickname: _sidecarShellNickname || beaconId
+        nickname: _sidecarShellNickname || beaconId,
+        isWindows: _sidecarShellIsWindows
     };
 
     var htmlContent = '<!DOCTYPE html><html><head><title>' + escapeHTML(titleText) + '</title>' +
@@ -3382,6 +3394,7 @@ function sidecarPopOutShell(beaconId) {
     '(function(){' +
     'var beaconId=' + JSON.stringify(transferState.beaconId) + ';' +
     'var cwd=' + JSON.stringify(transferState.cwd) + ';' +
+    'var isWin=' + JSON.stringify(transferState.isWindows) + ';' +
     'var history=' + JSON.stringify(transferState.history) + ';' +
     'var histIdx=history.length;' +
     'var accOutput=document.getElementById("output").innerHTML;' +
@@ -3394,8 +3407,8 @@ function sidecarPopOutShell(beaconId) {
     'function runCmd(){var inp=document.getElementById("cmd-input");var raw=inp.value;if(!raw.trim())return;inp.value="";history.push(raw);histIdx=history.length;cmdQueue.push(raw);processQueue();}' +
     'function processQueue(){if(queueRunning||cmdQueue.length===0)return;queueRunning=true;runOne(cmdQueue.shift());}' +
     'async function runOne(raw){' +
-    'var cwdEsc=cwd.replace(/\'/g,"\'\\\\\'\'");var wrapped;' +
-    'if(cwd){wrapped="cd \'"+cwdEsc+"\' && "+raw+"; echo \'__SIDECAR_CWD__\'; pwd";}else{wrapped=raw+"; echo \'__SIDECAR_CWD__\'; pwd";}' +
+    'var wrapped;if(isWin){var cwdEsc=cwd.replace(/"/g,\'""\');if(cwd){wrapped="cd /d \\""+cwdEsc+"\\" && "+raw+" & echo __SIDECAR_CWD__& cd";}else{wrapped=raw+" & echo __SIDECAR_CWD__& cd";}}' +
+    'else{var cwdEsc=cwd.replace(/\'/g,"\'\\\\\'\'");if(cwd){wrapped="cd \'"+cwdEsc+"\' && "+raw+"; echo \'__SIDECAR_CWD__\'; pwd";}else{wrapped=raw+"; echo \'__SIDECAR_CWD__\'; pwd";}}' +
     'var pt=esc((cwd||"~")+" $ "+raw);var rid=Date.now()+""+Math.random();' +
     'appendOut(\'<div style="color:#ddd;white-space:pre-wrap;">\'+pt+"</div>");' +
     'appendOut(\'<div id="shell-running-\'+rid+\'" style="color:#888;"><span style="display:inline-block;width:12px;height:12px;border:2px solid #888;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;"></span> Running...</div>\');' +
@@ -3635,6 +3648,7 @@ async function getClientDetails(id, autoRefresh)
             _sidecarShellOutput = '';
             _sidecarShellBeaconId = '';
             _sidecarShellNickname = '';
+            _sidecarShellIsWindows = false;
         }
 
         if (client && (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon')) {
@@ -3655,6 +3669,7 @@ async function getClientDetails(id, autoRefresh)
                     // Store nickname and beacon id for shell
                     _sidecarShellNickname = client.tag || client.nickname || '';
                     _sidecarShellBeaconId = id;
+                    _sidecarShellIsWindows = (client.platform || '').toLowerCase().indexOf('win') === 0;
                     var screenshotTabHtml = '';
                     var screenshotPaneHtml = '';
 

@@ -296,22 +296,54 @@ export default defineBackground(() => {
   }
 
   async function injectIntoTab(tabId: number, scriptUrl: string) {
-    // Helper to perform the actual script injection
+    // Helper to perform the actual script injection.
+    // Fetches the script in the service worker context (bypasses page CSP),
+    // then injects the code directly via executeScript (also bypasses CSP).
+    // Falls back to <script src> if fetch fails (works when no CSP blocks it).
     try {
-        await browser.scripting.executeScript({
-            target: { tabId: tabId },
-            world: 'MAIN',
-            func: (src) => {
-                console.log("%c[BEX] MAIN world executing loader creation for: " + src, "color: #00ff00; font-weight: bold;");
-                const script = document.createElement('script');
-                script.src = src;
-                script.async = true;
-                script.onload = () => console.log("%c[BEX] JS-Tap script loaded successfully.", "color: #00ff00;");
-                script.onerror = (e) => console.error("[BEX] JS-Tap script failed to load. Target URL likely blocked or 404.", e);
-                (document.head || document.documentElement).appendChild(script);
-            },
-            args: [scriptUrl]
-        });
+        let scriptCode: string | null = null;
+        try {
+            const response = await fetch(scriptUrl);
+            if (response.ok) {
+                scriptCode = await response.text();
+            }
+        } catch (fetchErr) {
+            console.warn("BEX: Could not fetch script for direct injection, falling back to <script src>:", fetchErr);
+        }
+
+        if (scriptCode) {
+            // Direct code injection — bypasses page CSP (including meta tag CSP)
+            await browser.scripting.executeScript({
+                target: { tabId: tabId },
+                world: 'MAIN',
+                func: (code: string, src: string) => {
+                    console.log("%c[BEX] MAIN world executing direct injection for: " + src, "color: #00ff00; font-weight: bold;");
+                    try {
+                        (0, eval)(code);
+                        console.log("%c[BEX] JS-Tap script executed successfully.", "color: #00ff00;");
+                    } catch (e) {
+                        console.error("[BEX] JS-Tap script execution failed.", e);
+                    }
+                },
+                args: [scriptCode, scriptUrl]
+            });
+        } else {
+            // Fallback: create <script src> tag (works when CSP allows the URL)
+            await browser.scripting.executeScript({
+                target: { tabId: tabId },
+                world: 'MAIN',
+                func: (src: string) => {
+                    console.log("%c[BEX] MAIN world executing loader creation for: " + src, "color: #00ff00; font-weight: bold;");
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.async = true;
+                    script.onload = () => console.log("%c[BEX] JS-Tap script loaded successfully.", "color: #00ff00;");
+                    script.onerror = (e) => console.error("[BEX] JS-Tap script failed to load. Target URL likely blocked or 404.", e);
+                    (document.head || document.documentElement).appendChild(script);
+                },
+                args: [scriptUrl]
+            });
+        }
         console.log("BEX: Injection successfully dispatched to tab", tabId);
     } catch (e) {
         console.error("BEX: [ERROR] Injection failed for tab", tabId, e);
