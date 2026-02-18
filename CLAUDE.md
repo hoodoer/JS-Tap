@@ -15,7 +15,7 @@ This project uses Bootswatch **Slate** theme on Bootstrap 5.3. The palette is gr
 - **Active indicators**: 3px left border using Slate semantic colors (`#62c462` success, `#f89406` warning). NEVER use full colored borders or custom highlight fills.
 - **Status toast colors**: Match `showToast()` — `bg-success` (green), `bg-danger` (red), `bg-warning` (orange), `bg-info` (cyan default).
 
-Extension popups (bex-conductor) must mirror the Slate aesthetic since they don't load Bootstrap CSS directly.
+Extension popups (jstap-conductor) must mirror the Slate aesthetic since they don't load Bootstrap CSS directly.
 
 ## Build & Run
 

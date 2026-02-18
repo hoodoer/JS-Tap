@@ -1,4 +1,4 @@
-// BEX Conductor - Background Script
+// JS-Tap Conductor - Background Script
 // Manages ticket storage, cookie setting, header injection, proxy mode, and ticket history
 
 let ticketsByDomain = {};
@@ -99,7 +99,7 @@ async function setCookies(ticket) {
     try {
       await browser.cookies.set(cookieDetails);
     } catch (e) {
-      console.warn('[BEX Conductor] Failed to set cookie:', cookie.name, e);
+      console.warn('[JS-Tap Conductor] Failed to set cookie:', cookie.name, e);
     }
   }
 }
@@ -117,7 +117,7 @@ async function clearCookies(domain) {
     try {
       await browser.cookies.remove({ url, name: cookie.name });
     } catch (e) {
-      console.warn('[BEX Conductor] Failed to remove cookie:', cookie.name, e);
+      console.warn('[JS-Tap Conductor] Failed to remove cookie:', cookie.name, e);
     }
   }
 }
@@ -185,13 +185,13 @@ function proxyRequestHandler(requestInfo) {
         host === 'localhost' ||
         host === '127.0.0.1' ||
         host === '::1') {
-      console.log('[BEX Conductor] DIRECT (local):', requestInfo.url);
+      console.log('[JS-Tap Conductor] DIRECT (local):', requestInfo.url);
       return { type: 'direct' };
     }
 
-    console.log('[BEX Conductor] PROXY:', requestInfo.url, '->', proxyAddress + ':' + proxyPort);
+    console.log('[JS-Tap Conductor] PROXY:', requestInfo.url, '->', proxyAddress + ':' + proxyPort);
   } catch (e) {
-    console.log('[BEX Conductor] DIRECT (parse error):', requestInfo.url);
+    console.log('[JS-Tap Conductor] DIRECT (parse error):', requestInfo.url);
     return { type: 'direct' };
   }
 
@@ -201,12 +201,12 @@ function proxyRequestHandler(requestInfo) {
 
 function enableProxyHandler() {
   browser.proxy.onRequest.addListener(proxyRequestHandler, { urls: ['<all_urls>'] });
-  console.log('[BEX Conductor] Proxy mode enabled:', proxyAddress + ':' + proxyPort, proxyPassword ? '(authenticated)' : '(no auth)');
+  console.log('[JS-Tap Conductor] Proxy mode enabled:', proxyAddress + ':' + proxyPort, proxyPassword ? '(authenticated)' : '(no auth)');
 }
 
 function disableProxyHandler() {
   browser.proxy.onRequest.removeListener(proxyRequestHandler);
-  console.log('[BEX Conductor] Proxy mode disabled');
+  console.log('[JS-Tap Conductor] Proxy mode disabled');
 }
 
 // Auto-supply proxy credentials when the proxy responds with 407

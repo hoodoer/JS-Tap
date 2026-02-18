@@ -151,7 +151,7 @@ showToast(message, type)
 - Auto-dismiss after 3000ms
 - Positioned bottom-right
 
-## Extension Popups (BEX Conductor)
+## Extension Popups (JS-Tap Conductor)
 
 Extension popups should mirror the Slate aesthetic:
 - Page bg: `#272b30`

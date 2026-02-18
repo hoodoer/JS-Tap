@@ -1,4 +1,4 @@
-// BEX Conductor - Popup Logic
+// JS-Tap Conductor - Popup Logic
 
 const ticketInput = document.getElementById('ticketInput');
 const importBtn = document.getElementById('importBtn');
@@ -146,7 +146,7 @@ function refreshTickets() {
 importBtn.addEventListener('click', () => {
   const data = ticketInput.value.trim();
   if (!data) {
-    showStatus('Please paste a BEX ticket first', true);
+    showStatus('Please paste a JS-Tap ticket first', true);
     return;
   }
 

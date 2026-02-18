@@ -800,7 +800,7 @@ if (msgInput) {
     };
 }
 
-// Generate BEX Conductor ticket
+// Generate clone ticket
 var ticketBtn = pluginUI.container.querySelector('#slack-ticket-btn');
 if (ticketBtn) {
     ticketBtn.onclick = function() {

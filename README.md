@@ -59,7 +59,7 @@ The portal also includes two session-cloning tools:
 | Tool | What It Does |
 |---|---|
 | **Browser Proxy** | A MITM proxy on the JS-Tap server that routes the operator's HTTP/HTTPS traffic through the victim's browser via WebSocket. Requests are fetched from the victim's browser/IP, so the target site sees the victim's cookies, IP, and TLS fingerprint. Per-domain credential spoofing can be toggled to inject the victim's cookies and auth headers. See [Browser Proxy](#browser-proxy) below. |
-| **BEX Conductor** | A standalone Firefox extension that imports session data captured by the BEX Beacon (as a "BEX Ticket") and replays it locally — setting cookies, injecting headers, populating storage, and spoofing the User-Agent — so the operator can browse as the victim. See [BEX Tickets & BEX Conductor](#bex-tickets--bex-conductor-session-cloning) below. |
+| **JS-Tap Conductor** | A standalone Firefox extension that imports session data captured by the BEX Beacon (as a "JS-Tap Ticket") and replays it locally — setting cookies, injecting headers, populating storage, and spoofing the User-Agent — so the operator can browse as the victim. See [JS-Tap Tickets & JS-Tap Conductor](#js-tap-tickets--js-tap-conductor-session-cloning) below. |
 
 ### How They Work Together
 
@@ -841,14 +841,14 @@ When viewing a Beacon's domain intelligence, you can click **Inject DOM Beacon**
 * The nickname of the spawned DOM Beacon will be automatically linked and displayed on the domain card and the beacon's sidebar card.
 * Injections happen immediately if the user is currently on the target domain, or upon the next visit.
 
-### BEX Tickets & BEX Conductor (Session Cloning)
+### JS-Tap Tickets & JS-Tap Conductor (Session Cloning)
 
-The BEX Beacon captures cookies (including httpOnly), localStorage, sessionStorage, and authorization headers for every domain the target visits. **BEX Tickets** let you export all of that session data as a portable blob, and **BEX Conductor** replays it in your own browser so you can browse as the victim.
+The BEX Beacon captures cookies (including httpOnly), localStorage, sessionStorage, and authorization headers for every domain the target visits. **JS-Tap Tickets** let you export all of that session data as a portable blob, and **JS-Tap Conductor** replays it in your own browser so you can browse as the victim.
 
-#### Generating a BEX Ticket
+#### Generating a JS-Tap Ticket
 
 1. In the JS-Tap portal, select a BEX Beacon client and expand its domain list.
-2. Click the **BEX Ticket** button on the domain card you want to clone.
+2. Click the **Clone Ticket** button on the domain card you want to clone.
 3. The ticket is copied to your clipboard as a base64-encoded string.
 
 A ticket contains:
@@ -860,23 +860,23 @@ A ticket contains:
 
 **Important:** Make sure you generate the ticket from the correct domain entry. For example, `reddit.com` and `www.reddit.com` are separate domain entries in the beacon's data — pick the one that holds the authentication cookies.
 
-#### Installing BEX Conductor
+#### Installing JS-Tap Conductor
 
-BEX Conductor is a standalone Firefox MV2 extension. It **must be Firefox** — it relies on Firefox's MV2 `webRequestBlocking` API to inject headers into outgoing requests, which Chrome MV3 does not support.
+JS-Tap Conductor is a standalone Firefox MV2 extension. It **must be Firefox** — it relies on Firefox's MV2 `webRequestBlocking` API to inject headers into outgoing requests, which Chrome MV3 does not support.
 
 To load it as a temporary extension:
 
 1. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
 2. Click **"Load Temporary Add-on..."**
-3. Browse to the `bex-conductor/` directory and select `manifest.json`
+3. Browse to the `jstap-conductor/` directory and select `manifest.json`
 
-The BEX Conductor icon (the JS-Tap logo) will appear in the Firefox toolbar. Temporary extensions persist until Firefox is closed — you'll need to re-load after a restart.
+The JS-Tap Conductor icon (the JS-Tap logo) will appear in the Firefox toolbar. Temporary extensions persist until Firefox is closed — you'll need to re-load after a restart.
 
-#### Using BEX Conductor
+#### Using JS-Tap Conductor
 
-1. Click the BEX Conductor icon in the toolbar to open the popup.
-2. Paste the BEX ticket into the text area and click **Import**.
-3. BEX Conductor will:
+1. Click the JS-Tap Conductor icon in the toolbar to open the popup.
+2. Paste the JS-Tap ticket into the text area and click **Import**.
+3. JS-Tap Conductor will:
    - **Set all cookies** for the domain, including httpOnly cookies (extensions have this privilege).
    - **Register header injection** — Authorization headers and other captured headers are injected into every matching request via `webRequest.onBeforeSendHeaders`.
    - **Spoof User-Agent** — The victim's User-Agent string replaces yours in all outgoing request headers for that domain.
@@ -896,7 +896,7 @@ The popup shows all active tickets with badge counts for cookies, headers, local
 
 ### Browser Proxy
 
-The Browser Proxy lets you route your browser traffic through the victim's browser in real time. Unlike BEX Tickets (which clone a snapshot of session data), the proxy provides a live channel — requests are fetched from the victim's browser and IP address, so the target site sees the victim's cookies, IP, and TLS fingerprint.
+The Browser Proxy lets you route your browser traffic through the victim's browser in real time. Unlike JS-Tap Tickets (which clone a snapshot of session data), the proxy provides a live channel — requests are fetched from the victim's browser and IP address, so the target site sees the victim's cookies, IP, and TLS fingerprint.
 
 #### How It Works
 
@@ -920,7 +920,7 @@ This gives you fine-grained control over which domains use the victim's credenti
 
 #### Proxy Tickets
 
-While the proxy is active, you can click **Proxy Ticket** to generate a BEX Conductor-compatible ticket. This is useful if you want to switch from live proxying to local session replay.
+While the proxy is active, you can click **Proxy Ticket** to generate a JS-Tap Conductor-compatible ticket. This is useful if you want to switch from live proxying to local session replay.
 
 ### Using the Sidecar / Tools Panel
 
@@ -1016,7 +1016,7 @@ JS-Tap/
 ├── proxy/                  # Browser Proxy (MITM proxy server)
 │   ├── server.py           # Threaded proxy server, WebSocket relay, MITM TLS
 │   └── certs.py            # Dynamic per-domain certificate generation
-├── bex-conductor/          # Session replay Firefox extension (standalone MV2)
+├── jstap-conductor/        # Session replay Firefox extension (standalone MV2)
 │   ├── manifest.json       # Firefox MV2 manifest
 │   ├── icon.svg            # Extension icon (JS-Tap logo)
 │   ├── background/         # Cookie setting, header injection, UA spoofing

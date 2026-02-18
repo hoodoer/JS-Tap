@@ -1,4 +1,4 @@
-// BEX Conductor - Content Script
+// JS-Tap Conductor - Content Script
 // Injects localStorage, sessionStorage, and spoofs navigator properties
 // In proxy mode, skips all injection — the beacon handles credentials at the endpoint
 
@@ -21,7 +21,7 @@
         try {
           localStorage.setItem(entry.key, entry.value);
         } catch (e) {
-          console.warn('[BEX Conductor] Failed to set localStorage:', entry.key, e);
+          console.warn('[JS-Tap Conductor] Failed to set localStorage:', entry.key, e);
         }
       }
     }
@@ -32,7 +32,7 @@
         try {
           sessionStorage.setItem(entry.key, entry.value);
         } catch (e) {
-          console.warn('[BEX Conductor] Failed to set sessionStorage:', entry.key, e);
+          console.warn('[JS-Tap Conductor] Failed to set sessionStorage:', entry.key, e);
         }
       }
     }

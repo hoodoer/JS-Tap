@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "BEX Conductor",
+  "name": "JS-Tap Conductor",
   "version": "1.0.0",
   "description": "Session replay tool",
   "icons": {
@@ -28,7 +28,7 @@
   ],
   "browser_action": {
     "default_popup": "popup/popup.html",
-    "default_title": "BEX Conductor",
+    "default_title": "JS-Tap Conductor",
     "default_icon": "icon.svg"
   }
 }

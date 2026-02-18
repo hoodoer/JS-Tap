@@ -1987,7 +1987,7 @@ def serveDynamicInjectedPayload(beaconID, domain):
     return response
 
 
-@app.route('/api/bex/server_url', methods=['GET'])
+@app.route('/api/jstap/server_url', methods=['GET'])
 @login_required
 def getBexServerUrl():
     try:
@@ -2001,7 +2001,7 @@ def getBexServerUrl():
         return jsonify({"serverUrl": ""})
 
 
-@app.route('/api/bex/inject', methods=['POST'])
+@app.route('/api/jstap/inject', methods=['POST'])
 @login_required
 def enableBexInjection():
     content = request.json
@@ -2059,7 +2059,7 @@ def enableBexInjection():
     return "ok", 200
 
 
-@app.route('/api/bex/stop_inject', methods=['POST'])
+@app.route('/api/jstap/stop_inject', methods=['POST'])
 @login_required
 def disableBexInjection():
     content = request.json
@@ -2095,7 +2095,7 @@ def disableBexInjection():
     return "ok", 200
 
 
-@app.route('/api/bex/injections/<beaconID_raw>', methods=['GET'])
+@app.route('/api/jstap/injections/<beaconID_raw>', methods=['GET'])
 @login_required
 def getBexInjections(beaconID_raw):
     client = Client.query.filter_by(id=beaconID_raw).first()
@@ -3336,7 +3336,7 @@ def getClients():
 
 
 
-@app.route('/api/bex/domains/<id>', methods=['GET'])
+@app.route('/api/jstap/domains/<id>', methods=['GET'])
 @login_required
 def getBexDomains(id):
     client = Client.query.filter_by(id=id).first()
@@ -3365,7 +3365,7 @@ def getBexDomains(id):
     return jsonify(domainData)
 
 
-@app.route('/api/bex/visits/<domainID>', methods=['GET'])
+@app.route('/api/jstap/visits/<domainID>', methods=['GET'])
 @login_required
 def getBexVisits(domainID):
     visits = BeaconVisit.query.filter_by(domainID=domainID).order_by(BeaconVisit.visitTime.desc()).limit(100).all()
@@ -3373,7 +3373,7 @@ def getBexVisits(domainID):
     return jsonify(visitData)
 
 
-@app.route('/api/bex/captures/<domainID>', methods=['GET'])
+@app.route('/api/jstap/captures/<domainID>', methods=['GET'])
 @login_required
 def getBexCaptures(domainID):
     captures = BeaconCapture.query.filter_by(domainID=domainID).all()
@@ -3381,7 +3381,7 @@ def getBexCaptures(domainID):
     return jsonify(captureData)
 
 
-@app.route('/api/bex/ticket/<domainID>', methods=['GET'])
+@app.route('/api/jstap/ticket/<domainID>', methods=['GET'])
 @login_required
 def getBexTicket(domainID):
     domain = BeaconDomain.query.filter_by(id=domainID).first()
@@ -3705,10 +3705,10 @@ def _build_spoof_payload(beacon_uuid):
     return payload
 
 
-@app.route('/api/bex/proxy_ticket/<beaconID>', methods=['GET'])
+@app.route('/api/jstap/proxy_ticket/<beaconID>', methods=['GET'])
 @login_required
 def getBexProxyTicket(beaconID):
-    """Generate a proxy ticket for BEX Conductor. Only available when proxy is active."""
+    """Generate a proxy ticket for JS-Tap Conductor. Only available when proxy is active."""
     client = Client.query.filter_by(id=beaconID).first()
     if not client:
         client = Client.query.filter_by(uuid=beaconID).first()

@@ -190,7 +190,7 @@ function showInjectOptionsModal(domain, callback) {
     var serverInput = document.getElementById('injectServerInput');
     tagInput.value = 'bex-injected';
     serverInput.value = window.location.origin; // temporary default until fetch completes
-    fetch('/api/bex/server_url').then(function(r) { return r.json(); }).then(function(data) {
+    fetch('/api/jstap/server_url').then(function(r) { return r.json(); }).then(function(data) {
         if (data.serverUrl) serverInput.value = data.serverUrl;
     });
     var okBtn = document.getElementById('injectOptionsOk');
@@ -2825,7 +2825,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 
     // Fetch History
     try {
-		var visitResp = await fetch('/api/bex/visits/' + domainID);
+		var visitResp = await fetch('/api/jstap/visits/' + domainID);
 		var visits = await visitResp.json();
         var historyContent = document.getElementById('history-content-' + domainID);
 
@@ -2853,7 +2853,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 
     // Fetch Captures — organized into sub-tabs by type
 	try {
-		var resp = await fetch('/api/bex/captures/' + domainID);
+		var resp = await fetch('/api/jstap/captures/' + domainID);
 		var captures = await resp.json();
         var captureContent = document.getElementById('captures-content-' + domainID);
 
@@ -2958,7 +2958,7 @@ async function toggleDomainDetails(domainID, btnElement) {
 function toggleBexInjection(beaconID, domain, isActive) {
     if (isActive) {
         showConfirmModal('Stop Injection', 'Stop injecting DOM Beacon into ' + domain + '?', function() {
-            fetch('/api/bex/stop_inject', {
+            fetch('/api/jstap/stop_inject', {
                 method: 'POST',
                 body: JSON.stringify({ beaconID: beaconID, domain: domain }),
                 headers: { "Content-type": "application/json; charset=UTF-8" }
@@ -2969,7 +2969,7 @@ function toggleBexInjection(beaconID, domain, isActive) {
         });
     } else {
         showInjectOptionsModal(domain, function(tag, serverUrl) {
-            fetch('/api/bex/inject', {
+            fetch('/api/jstap/inject', {
                 method: 'POST',
                 body: JSON.stringify({ beaconID: beaconID, domain: domain, tag: tag, serverUrl: serverUrl }),
                 headers: { "Content-type": "application/json; charset=UTF-8" }
@@ -2984,9 +2984,9 @@ function toggleBexInjection(beaconID, domain, isActive) {
 
 // ---- Ticket Functions ----
 
-async function generateBexTicket(domainID) {
+async function generateCloneTicket(domainID) {
     try {
-        var resp = await fetch('/api/bex/ticket/' + domainID);
+        var resp = await fetch('/api/jstap/ticket/' + domainID);
         if (!resp.ok) {
             showToast('Failed to generate ticket', 'danger');
             return;
@@ -2994,7 +2994,7 @@ async function generateBexTicket(domainID) {
         var ticket = await resp.json();
         var text = btoa(JSON.stringify(ticket));
         navigator.clipboard.writeText(text).then(function() {
-            showToast('BEX Clone Ticket copied to clipboard');
+            showToast('Clone Ticket copied to clipboard');
         }).catch(function() {
             showToast('Clipboard unavailable', 'danger');
         });
@@ -3006,7 +3006,7 @@ async function generateBexTicket(domainID) {
 
 async function generateProxyTicket(beaconId) {
     try {
-        var resp = await fetch('/api/bex/proxy_ticket/' + beaconId);
+        var resp = await fetch('/api/jstap/proxy_ticket/' + beaconId);
         if (!resp.ok) {
             var errData = await resp.json().catch(function() { return {}; });
             showToast(errData.error || 'Proxy not active for this beacon', 'danger');
@@ -3015,7 +3015,7 @@ async function generateProxyTicket(beaconId) {
         var ticket = await resp.json();
         var text = btoa(JSON.stringify(ticket));
         navigator.clipboard.writeText(text).then(function() {
-            showToast('BEX Proxy Ticket copied to clipboard');
+            showToast('Proxy Ticket copied to clipboard');
         }).catch(function() {
             showToast('Clipboard unavailable', 'danger');
         });
@@ -3785,11 +3785,11 @@ async function getClientDetails(id, autoRefresh)
                 // Close the beacon block — fall through to app-style event view below
             } else {
 
-            var domainsReq = await fetch('/api/bex/domains/' + id);
+            var domainsReq = await fetch('/api/jstap/domains/' + id);
             var domains = await domainsReq.json();
 
             // Fetch active injections
-            var injectionsReq = await fetch('/api/bex/injections/' + id);
+            var injectionsReq = await fetch('/api/jstap/injections/' + id);
             var injections = await injectionsReq.json();
             var activeMap = {};
             injections.forEach(i => activeMap[i.domain] = { tag: i.tag, success: i.last_success });
@@ -3885,7 +3885,7 @@ async function getClientDetails(id, autoRefresh)
                     cloneTicketBtn.style.minWidth = "120px";
                     cloneTicketBtn.className = 'btn btn-primary btn-sm';
                     cloneTicketBtn.textContent = 'Clone Ticket';
-                    cloneTicketBtn.onclick = function() { generateBexTicket(d.id); };
+                    cloneTicketBtn.onclick = function() { generateCloneTicket(d.id); };
                     controlsArea.appendChild(cloneTicketBtn);
 
                     const captureBtn = document.createElement('button');
