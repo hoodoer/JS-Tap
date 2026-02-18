@@ -4391,7 +4391,7 @@ function renderBeaconCallbackPanel(cardStack, beaconId, clientType) {
 
     var isAtom = clientType === 'atom-beacon';
     var isImplant = clientType === 'js-implant';
-    var defaultBase = isAtom ? 2 : (isImplant ? 2 : 60);
+    var defaultBase = isAtom ? 2 : (isImplant ? 2 : 5);
     var defaultJitter = isAtom ? 10 : (isImplant ? 0 : 30);
 
     panel = document.createElement('div');

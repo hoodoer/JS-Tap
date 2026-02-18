@@ -44,3 +44,6 @@ __pycache__/
 # WXT generated
 .wxt/
 .output/
+
+# Build artifact — copied from project root by buildAll.py
+public/telemlib.js

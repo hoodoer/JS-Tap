@@ -169,7 +169,7 @@ The **BEX Beacon** is a browser extension version of JS-Tap. It serves two prima
 
 The BEX Beacon uses app-layer encrypted communication (AES-GCM) with the JS-Tap server. All telemetry and task responses are encrypted end-to-end through a single endpoint, making network traffic harder to fingerprint.
 
-The beacon also includes features like CSP/X-Frame-Options header stripping (via declarativeNetRequest rules) to facilitate JS-Tap injection into strict environments.
+The beacon also includes features like CSP/X-Frame-Options header stripping (via declarativeNetRequest rules) to facilitate JS-Tap injection into strict environments. For targets that use `<meta http-equiv="Content-Security-Policy">` tags (which cannot be stripped via header rules since they are embedded in the HTML), the BEX Beacon uses a bundled injection approach — `telemlib.js` is packaged inside the extension and injected via `chrome.scripting.executeScript({ files })`, which bypasses page-level CSP entirely through the browser's privileged extension injection mechanism.
 
 When paired with the optional **Sidecar** native messaging host, the BEX Beacon gains OS-level access on the target machine. See the [Sidecar](#sidecar-native-messaging) section below.
 
@@ -246,7 +246,7 @@ cd bex-beacon && npm install && cd ..
 python3 buildAll.py
 ```
 
-This builds Chrome MV3 and Firefox MV2 extensions, packs them as `.crx`/`.xpi`, cross-compiles sidecar binaries (if enabled), and generates deploy bundles.
+This builds Chrome MV3 and Firefox MV2 extensions, packs them as `.crx`/`.xpi`, cross-compiles sidecar binaries (if enabled), and generates deploy bundles. The build script automatically increments the extension's patch version number on each build (e.g. `2.1.5` → `2.1.6`) in `bex-beacon/config.json` to ensure that browser force-install mechanisms (Chrome/Edge enterprise policy) pick up updated builds.
 
 #### Build Flags
 
@@ -470,6 +470,26 @@ atomize.exe --server https://10.0.0.1:8444 C:\Users\target\AppData\Local\slack\a
 
 > **Note:** PyInstaller can only build for the OS it runs on. To build a Windows `.exe`, run PyInstaller on a Windows machine (or a Windows VM/CI runner).
 
+**Windows pip troubleshooting:**
+
+If `pip` is not recognized on Windows but `python` works, use `python -m pip` instead:
+
+```
+python -m pip install pyinstaller
+```
+
+If `pyinstaller` is not found after installing, use `python -m PyInstaller` (case-sensitive):
+
+```
+python -m PyInstaller atomize.spec
+```
+
+If pip itself isn't available, ensure Python was installed with the **"Add Python to PATH"** checkbox enabled. You can also bootstrap pip manually:
+
+```
+python -m ensurepip --upgrade
+```
+
 #### Analyzing a Target
 
 Before patching, use `--detect-only` to analyze the target app's structure, security settings, and code signing status:
@@ -651,7 +671,7 @@ Controls the extension's manifest metadata and deployment naming. Change these f
 | Field | Description |
 |---|---|
 | `name` | Display name of the extension |
-| `version` | Extension version (also used in .crx external extension JSON) |
+| `version` | Extension version (also used in .crx external extension JSON). Auto-incremented by `buildAll.py` on each build. |
 | `description` | Extension description shown in browser |
 | `install_dirname` | Directory name used by install scripts for storing files on the target system (e.g. `/opt/<dirname>/` on Linux, `%LOCALAPPDATA%\<dirname>` on Windows). Also used for the enterprise policy filename. Choose something innocuous. Default: `jstap` |
 

