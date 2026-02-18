@@ -25,7 +25,8 @@ function mmAPI(method, path, body) {
         var parsed = url.parse(creds.serverUrl);
         var mod = parsed.protocol === 'https:' ? https : http;
         var headers = {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
         };
         if (creds.token) {
             headers['Authorization'] = 'Bearer ' + creds.token;
@@ -63,6 +64,12 @@ function mmAPI(method, path, body) {
                         plugin.setTimeout(function() {
                             mmAPI(method, path, body).then(resolve).catch(reject);
                         }, delaySec * 1000);
+                        return;
+                    }
+                    if (res.statusCode === 401 && creds.cookie && creds.token) {
+                        // Bearer token is stale — retry with cookie only
+                        creds.token = '';
+                        mmAPI(method, path, body).then(resolve).catch(reject);
                         return;
                     }
                     resolve(parsed);
@@ -292,20 +299,38 @@ function extractCredentials() {
                 } catch(e) {}
             }
 
-            // Match cookie by domain
+            // Match cookies by domain — collect ALL cookies for this server, plus extract MMAUTHTOKEN
             var matchedCookie = '';
+            var domainCookies = [];
             try {
                 var serverHost = new url.URL(serverUrl).hostname;
                 for (var c = 0; c < cookies.length; c++) {
-                    if (cookies[c].domain && (serverHost.indexOf(cookies[c].domain.replace(/^\./, '')) !== -1 ||
-                        cookies[c].domain.replace(/^\./, '').indexOf(serverHost) !== -1)) {
-                        matchedCookie = cookies[c].value;
-                        break;
+                    var cookieDomain = (cookies[c].domain || '').replace(/^\./, '');
+                    if (cookieDomain && (serverHost.indexOf(cookieDomain) !== -1 ||
+                        cookieDomain.indexOf(serverHost) !== -1)) {
+                        // Store full cookie object for clone ticket
+                        domainCookies.push({
+                            name: cookies[c].name,
+                            value: cookies[c].value,
+                            domain: cookies[c].domain || '',
+                            path: cookies[c].path || '/',
+                            httpOnly: !!cookies[c].httpOnly,
+                            secure: !!cookies[c].secure,
+                            sameSite: cookies[c].sameSite || 'lax'
+                        });
+                        if (cookies[c].name === 'MMAUTHTOKEN' && !matchedCookie) {
+                            matchedCookie = cookies[c].value;
+                        }
                     }
                 }
-                // If no domain match, use any MMAUTHTOKEN
-                if (!matchedCookie && cookies.length > 0) {
-                    matchedCookie = cookies[0].value;
+                // Fallback: if no domain-matched MMAUTHTOKEN, look for any MMAUTHTOKEN
+                if (!matchedCookie) {
+                    for (var ca = 0; ca < cookies.length; ca++) {
+                        if (cookies[ca].name === 'MMAUTHTOKEN') {
+                            matchedCookie = cookies[ca].value;
+                            break;
+                        }
+                    }
                 }
             } catch(e) {}
 
@@ -317,6 +342,7 @@ function extractCredentials() {
                     serverUrl: serverUrl,
                     token: token,
                     cookie: matchedCookie || token,
+                    allCookies: domainCookies,
                     teamId: teamId,
                     teamName: teamName,
                     userId: userId,
@@ -382,8 +408,8 @@ function extractMMCookies(diag) {
     var session = plugin.electron.session;
     var allCookies = [];
 
-    // Get MMAUTHTOKEN from default session (all domains)
-    return session.defaultSession.cookies.get({ name: 'MMAUTHTOKEN' })
+    // Get ALL cookies from default session (we'll filter by domain later)
+    return session.defaultSession.cookies.get({})
         .catch(function() { return []; })
         .then(function(cookies) {
             for (var i = 0; i < cookies.length; i++) {
@@ -414,7 +440,7 @@ function extractMMCookies(diag) {
             for (var p = 0; p < sessions.length; p++) {
                 (function(sess) {
                     chain = chain.then(function() {
-                        return sess.cookies.get({ name: 'MMAUTHTOKEN' })
+                        return sess.cookies.get({})
                             .catch(function() { return []; })
                             .then(function(cookies) {
                                 for (var c = 0; c < cookies.length; c++) {

