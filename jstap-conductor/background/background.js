@@ -82,14 +82,14 @@ async function setCookies(ticket) {
       cookieDetails.domain = cookie.domain;
     }
 
-    // Map sameSite values
-    const sameSite = (cookie.sameSite || '').toLowerCase();
-    if (sameSite === 'strict') {
-      cookieDetails.sameSite = 'strict';
-    } else if (sameSite === 'lax') {
+    // Use the original sameSite value from the captured cookie.
+    // Only fixup: Firefox rejects SameSite=None (no_restriction) without
+    // secure=true, so downgrade to 'lax' in that specific case.
+    const sameSite = (cookie.sameSite || 'lax').toLowerCase();
+    if (sameSite === 'no_restriction' && !cookieDetails.secure) {
       cookieDetails.sameSite = 'lax';
     } else {
-      cookieDetails.sameSite = 'no_restriction';
+      cookieDetails.sameSite = sameSite;
     }
 
     if (cookie.expirationDate) {
