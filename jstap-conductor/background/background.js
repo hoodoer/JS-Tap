@@ -233,9 +233,12 @@ browser.webRequest.onAuthRequired.addListener(
 async function activateCloneTicket(ticket) {
   ticketsByDomain[ticket.domain] = ticket;
   saveTickets();
-  if (!proxyEnabled) {
-    await setCookies(ticket);
-  }
+  // Always set cookies in the operator's browser, even in proxy mode.
+  // Apps like Mattermost read non-httpOnly cookies (e.g. MMCSRF) from
+  // the browser to set CSRF headers (X-CSRF-Token). Without these cookies
+  // in the operator's browser, CSRF validation fails and the target
+  // server may revoke the session entirely.
+  await setCookies(ticket);
 }
 
 async function deactivateCloneTicket(domain) {
@@ -277,18 +280,13 @@ function deactivateProxyTicket() {
 
 // ---------------------------------------------------------------------------
 // Header injection via blocking webRequest
-// In proxy mode, skip local injection — the beacon handles credentials.
-// We still inject User-Agent locally since the proxy doesn't modify that
-// on the wire between operator browser and JS-Tap (only the beacon's
-// outgoing fetch does, but the target site sees the beacon's fetch headers).
-// Actually, in proxy mode the beacon handles UA too, so skip everything.
+// In proxy mode, headers flow: operator browser → Conductor injects →
+// MITM proxy captures → beacon fetchHeaders → fetch() to target.
+// Clone tickets provide Authorization, API keys, and User-Agent.
 // ---------------------------------------------------------------------------
 
 browser.webRequest.onBeforeSendHeaders.addListener(
   function(details) {
-    // Skip header injection entirely when in proxy mode —
-    // the beacon injects credentials at the endpoint
-    if (proxyEnabled) return {};
 
     const url = new URL(details.url);
     const ticket = getDomainTicket(url.hostname);

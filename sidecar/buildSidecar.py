@@ -375,7 +375,6 @@ reg add "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\{host_name}" /ve 
 echo Installed sidecar for Chrome on Windows.
 echo   Binary: %BINARY_DEST%
 echo   Manifest: %MANIFEST_DIR%\\{host_name}.json
-pause
 ''', executable=False)
 
     # --- Windows Firefox (.bat) ---
@@ -408,7 +407,6 @@ reg add "HKCU\\Software\\Mozilla\\NativeMessagingHosts\\{host_name}" /ve /t REG_
 echo Installed sidecar for Firefox on Windows.
 echo   Binary: %BINARY_DEST%
 echo   Manifest: %MANIFEST_DIR%\\{host_name}.json
-pause
 ''', executable=False)
 
     # --- Windows Registry files (.reg) for manual import ---

@@ -1,6 +1,6 @@
 <style>
     #mm-search-input, #mm-inject-user-search, #mm-inject-text,
-    #mm-channel-filter, #mm-msg-input, #mm-server-select {
+    #mm-channel-filter, #mm-msg-input, #mm-server-select, #mm-team-select {
         background-color: #aaa !important;
         color: #000 !important;
     }
@@ -16,6 +16,8 @@
         <div class="d-flex align-items-center">
             <select id="mm-server-select" class="form-select form-select-sm" style="width:auto;min-width:180px;border-color:#52565a">
                 <option value="">Server: --</option>
+            </select>
+            <select id="mm-team-select" class="form-select form-select-sm ms-2" style="width:auto;min-width:150px;border-color:#52565a;display:none">
             </select>
             <span class="text-muted ms-3" id="mm-user">User: --</span>
         </div>

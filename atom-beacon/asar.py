@@ -17,6 +17,8 @@ import json
 import os
 import struct
 import shutil
+import tempfile
+import gc
 
 
 def _align4(n):
@@ -325,16 +327,34 @@ def patch_file(asar_path, internal_path, new_data, output_path=None):
             entry.pop('integrity', None)
         current_offset += len(chunk)
 
-    # Write the new asar
+    # Write the new asar via temp file to avoid Windows file locking issues
     header_json = json.dumps(header, separators=(',', ':'), sort_keys=False)
     header_pickle = _write_pickle_string(header_json)
     size_pickle = _write_pickle_uint32(len(header_pickle))
 
-    with open(output_path, 'wb') as f:
-        f.write(size_pickle)
-        f.write(header_pickle)
-        for chunk in file_data_chunks:
-            f.write(chunk)
+    temp_fd, temp_path = tempfile.mkstemp(
+        dir=os.path.dirname(output_path),
+        prefix='.asar_',
+        suffix='.tmp'
+    )
+    os.close(temp_fd)
+
+    try:
+        with open(temp_path, 'wb') as f:
+            f.write(size_pickle)
+            f.write(header_pickle)
+            for chunk in file_data_chunks:
+                f.write(chunk)
+
+        # Force garbage collection to release any lingering file handles
+        gc.collect()
+        os.replace(temp_path, output_path)
+    except Exception:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+        raise
 
 
 def list_contents(asar_path):

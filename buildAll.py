@@ -1033,9 +1033,7 @@ setlocal
 set "SCRIPT_DIR=%~dp0"
 echo JS-Tap {browser_label} Installer
 echo ================================
-{admin_check}{ext_section}{sidecar_section}{instructions}
-pause
-''', executable=False)
+{admin_check}{ext_section}{sidecar_section}{instructions}''', executable=False)
 
 
 def _gen_chrome_windows_uninstall(bundle_dir, config, has_crx, sidecar_enabled, browser_label):
@@ -1118,7 +1116,6 @@ echo ==================================
 {admin_check}{ext_section}{sidecar_section}{cleanup}
 echo.
 echo Uninstall complete. Restart {browser_label} for changes to take effect.
-pause
 ''', executable=False)
 
 
@@ -1393,9 +1390,7 @@ setlocal
 set "SCRIPT_DIR=%~dp0"
 echo JS-Tap Firefox Installer
 echo ========================
-{ext_section}{sidecar_section}{instructions}
-pause
-''', executable=False)
+{ext_section}{sidecar_section}{instructions}''', executable=False)
 
 
 def _gen_firefox_unix_uninstall(bundle_dir, config, os_type, has_xpi, sidecar_enabled, nm_dir):
@@ -1522,7 +1517,6 @@ echo ==========================
 {ext_section}{sidecar_section}{cleanup}
 echo.
 echo Uninstall complete. Restart Firefox for changes to take effect.
-pause
 ''', executable=False)
 
 

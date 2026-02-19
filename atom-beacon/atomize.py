@@ -636,8 +636,15 @@ def patch_asar(target_path, server_url, tag, backup=True, output_path=None):
     final_output = output_path or target_path
     if backup and os.path.isfile(final_output):
         backup_path = final_output + '.bak'
+        # Remove read-only attribute on existing backup if present (Windows installers set this)
+        if os.path.isfile(backup_path):
+            os.chmod(backup_path, 0o666)
         shutil.copy2(final_output, backup_path)
         print(f"  Backup: {backup_path}")
+
+    # Strip read-only attribute on target so we can overwrite it (Windows installers set this)
+    if os.path.isfile(final_output):
+        os.chmod(final_output, 0o666)
 
     # Patch the single entry file in-place (preserves unpacked refs and header structure)
     print(f"  Patching {entry_point} in {target_path}...")

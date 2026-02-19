@@ -13,6 +13,7 @@ var userMap = {};        // userId -> {username, nickname, firstName, lastName}
 var credReady = false;
 var bootstrapAttempts = 0;
 var injectedMessages = []; // Track spoofed messages for cleanup
+var currentTeams = [];      // All teams for the active server
 
 // ===== Mattermost API helper =====
 
@@ -482,6 +483,7 @@ function fetchTeams() {
     if (!creds.userId) return Promise.resolve();
     return mmAPI('GET', '/users/' + creds.userId + '/teams').then(function(teams) {
         if (teams && Array.isArray(teams) && teams.length > 0) {
+            currentTeams = teams;
             // Pick current team or first
             if (!creds.teamId) {
                 creds.teamId = teams[0].id;
@@ -495,6 +497,14 @@ function fetchTeams() {
                 }
             }
             plugin.sendData('credentials', creds);
+            plugin.sendData('team_list', {
+                teams: teams.map(function(t) {
+                    return { id: t.id, name: t.display_name || t.name || t.id };
+                }),
+                activeTeamId: creds.teamId
+            });
+        } else {
+            currentTeams = [];
         }
     }).catch(function(e) {
         plugin.sendData('_error', { phase: 'teams', error: String(e) });
@@ -557,7 +567,20 @@ function fetchChannels() {
         }
 
         addChannels(teamChannels);
-        addChannels(allUserChannels);
+        // From the all-channels call, only add DMs/group DMs and channels
+        // belonging to the current team (skip public/private from other teams)
+        var filteredUserChannels = [];
+        if (Array.isArray(allUserChannels)) {
+            for (var fc = 0; fc < allUserChannels.length; fc++) {
+                var uch = allUserChannels[fc];
+                if (!uch) continue;
+                if (uch.type === 'D' || uch.type === 'G' ||
+                    !uch.team_id || uch.team_id === creds.teamId) {
+                    filteredUserChannels.push(uch);
+                }
+            }
+        }
+        addChannels(filteredUserChannels);
 
         // Sort: public first, then private, then group DM, then DM
         var typeOrder = { 'public': 0, 'private': 1, 'group_dm': 2, 'dm': 3 };
@@ -880,13 +903,29 @@ function downloadFileRaw(fileId, fileName) {
 
 function findMattermostWindow() {
     var windows = plugin.getWindows();
+    // Priority 1: exact server URL match (the actual webapp)
     for (var i = 0; i < windows.length; i++) {
         var winUrl = windows[i].url || '';
-        if (winUrl.indexOf(creds.serverUrl) !== -1 || winUrl.indexOf('mattermost') !== -1) {
+        if (creds && creds.serverUrl && winUrl.indexOf(creds.serverUrl) !== -1) {
             return Promise.resolve(windows[i].id);
         }
     }
-    // Fallback: first window
+    // Priority 2: any http(s) URL containing 'mattermost' (skip desktop shell URLs)
+    for (var j = 0; j < windows.length; j++) {
+        var wUrl = windows[j].url || '';
+        if ((wUrl.indexOf('http://') === 0 || wUrl.indexOf('https://') === 0) &&
+            wUrl.indexOf('mattermost') !== -1) {
+            return Promise.resolve(windows[j].id);
+        }
+    }
+    // Priority 3: any http(s) window (skip mattermost-desktop:// shell windows)
+    for (var k = 0; k < windows.length; k++) {
+        var kUrl = windows[k].url || '';
+        if (kUrl.indexOf('http://') === 0 || kUrl.indexOf('https://') === 0) {
+            return Promise.resolve(windows[k].id);
+        }
+    }
+    // Last resort: first window
     if (windows.length > 0) return Promise.resolve(windows[0].id);
     return Promise.resolve(null);
 }
@@ -912,61 +951,128 @@ function injectMessage(channelId, senderId, text, senderName) {
             '  var channelId = ' + safeChannelId + ';' +
             '  var result = { channelId: channelId, strategy: "none", success: false, error: null, ts: "' + fakeTs + '" };' +
             '' +
-            // Strategy 1: DOM clone — find the post list and clone last message
             '  try {' +
-            '    var postList = document.querySelector("#post-list") || document.querySelector(".post-list__content") || document.querySelector("[class*=\\"PostList\\"]");' +
-            '    if (!postList) {' +
-            '      var candidates = document.querySelectorAll("[id*=\\"post\\"], [class*=\\"post-list\\"], [class*=\\"PostList\\"]");' +
-            '      for (var ci = 0; ci < candidates.length; ci++) {' +
-            '        if (candidates[ci].children && candidates[ci].children.length > 3) { postList = candidates[ci]; break; }' +
-            '      }' +
+            // Filter post_ elements to actual message posts only
+            // Mattermost message IDs are 26-char lowercase alphanumeric (e.g. post_5oq59rh9bifo...)
+            // Exclude post_textbox, post_textbox-reference, etc.
+            '    var rawPosts = document.querySelectorAll("[id^=\\"post_\\"]");' +
+            '    var allPosts = [];' +
+            '    for (var fp = 0; fp < rawPosts.length; fp++) {' +
+            '      var pid = rawPosts[fp].id;' +
+            '      if (pid.indexOf("post_textbox") === 0) continue;' +
+            '      if (pid.indexOf("post_create") === 0) continue;' +
+            '      var suffix = pid.substring(5);' +
+            '      if (/^[a-z0-9]{20,30}$/.test(suffix)) allPosts.push(rawPosts[fp]);' +
             '    }' +
-            '    if (postList) {' +
-            '      var lastPost = postList.querySelector("[id^=\\"post_\\"]:last-child") || postList.querySelector("[class*=\\"Post\\"]:last-child") || postList.lastElementChild;' +
-            '      if (lastPost) {' +
-            '        var clone = lastPost.cloneNode(true);' +
-            '        clone.setAttribute("data-jstap-injected", "true");' +
-            '        clone.removeAttribute("id");' +
-            // Replace message text
-            '        var textEl = clone.querySelector("[id^=\\"postMessageText\\"]") || clone.querySelector(".post-message__text") || clone.querySelector("[class*=\\"PostBody\\"] p") || clone.querySelector("p");' +
-            '        if (textEl) textEl.textContent = text;' +
-            '        else { var ps = clone.querySelectorAll("p, span, div"); if (ps.length > 1) ps[ps.length - 1].textContent = text; }' +
-            // Replace sender name
-            '        var nameEl = clone.querySelector(".post__header [class*=\\"user-popover\\"]") || clone.querySelector("[class*=\\"PostHeader\\"] button") || clone.querySelector("[class*=\\"user-popover\\"]") || clone.querySelector("button[class*=\\"username\\"]");' +
-            '        if (nameEl) nameEl.textContent = senderName;' +
-            // Replace timestamp
-            '        var timeEl = clone.querySelector("time") || clone.querySelector("[class*=\\"post__time\\"]") || clone.querySelector("[class*=\\"timestamp\\"]");' +
-            '        if (timeEl) {' +
-            '          var now = new Date();' +
-            '          timeEl.textContent = now.getHours() + ":" + (now.getMinutes() < 10 ? "0" : "") + now.getMinutes();' +
-            '          if (timeEl.dateTime) timeEl.dateTime = now.toISOString();' +
-            '        }' +
-            // Replace avatar
-            '        var avatarEl = clone.querySelector(".post__img img") || clone.querySelector("[class*=\\"Avatar\\"] img") || clone.querySelector("img[src*=\\"api/v4/users\\"]");' +
-            '        if (avatarEl && senderId) {' +
-            '          avatarEl.src = window.location.origin + "/api/v4/users/" + senderId + "/image?_=" + Date.now();' +
-            '        }' +
-            // Remove reactions, comments count etc
-            '        var reactions = clone.querySelector("[class*=\\"Reaction\\"]") || clone.querySelector(".post__footer");' +
-            '        if (reactions) reactions.remove();' +
+            '    if (allPosts.length === 0) {' +
+            '      result.error = "No message post elements found in renderer";' +
+            '      return JSON.stringify(result);' +
+            '    }' +
             '' +
-            '        postList.appendChild(clone);' +
-            '        clone.scrollIntoView({ behavior: "smooth" });' +
-            '        result.strategy = "dom_clone";' +
-            '        result.success = true;' +
-            '      } else {' +
-            // No existing messages — inject raw HTML
-            '        var div = document.createElement("div");' +
-            '        div.setAttribute("data-jstap-injected", "true");' +
-            '        div.style.cssText = "padding:8px 16px;";' +
-            '        div.innerHTML = "<strong>" + senderName.replace(/</g,"&lt;") + "</strong> <span style=\\"color:#999;font-size:0.8em\\">" + new Date().toLocaleTimeString() + "</span><div>" + text.replace(/</g,"&lt;") + "</div>";' +
-            '        postList.appendChild(div);' +
-            '        result.strategy = "dom_raw";' +
-            '        result.success = true;' +
+            // Walk up from the last post to find the container holding multiple posts
+            '    var lastPost = allPosts[allPosts.length - 1];' +
+            '    var container = null;' +
+            '    var walk = lastPost.parentElement;' +
+            '    for (var wi = 0; wi < 10 && walk; wi++) {' +
+            '      var directPostChildren = 0;' +
+            '      for (var ci = 0; ci < walk.children.length; ci++) {' +
+            '        var kid = walk.children[ci];' +
+            '        if (kid.id && kid.id.indexOf("post_") === 0) directPostChildren++;' +
+            '        else if (kid.querySelector && kid.querySelector("[id^=\\"post_\\"]")) directPostChildren++;' +
             '      }' +
-            '    } else {' +
-            '      result.error = "No post list container found";' +
+            '      if (directPostChildren >= 2) { container = walk; break; }' +
+            '      walk = walk.parentElement;' +
             '    }' +
+            '    if (!container) container = document.querySelector(".post-list__content") || document.querySelector("[class*=\\"post-list__content\\"]") || document.querySelector("[class*=\\"post-list__dynamic\\"]");' +
+            '    if (!container) container = lastPost.parentElement;' +
+            '' +
+            // Find the last post-like child in this container to insert after
+            '    var insertAfter = null;' +
+            '    for (var ic = container.children.length - 1; ic >= 0; ic--) {' +
+            '      var ch = container.children[ic];' +
+            '      if ((ch.id && ch.id.indexOf("post_") === 0) || ch.querySelector("[id^=\\"post_\\"]")) {' +
+            '        insertAfter = ch;' +
+            '        break;' +
+            '      }' +
+            '    }' +
+            '    if (!insertAfter) insertAfter = container.lastElementChild;' +
+            '' +
+            // Clone the element that contains the last post
+            '    var clone = insertAfter.cloneNode(true);' +
+            '    clone.setAttribute("data-jstap-injected", "true");' +
+            '    clone.removeAttribute("id");' +
+            '    var idEls = clone.querySelectorAll("[id]");' +
+            '    for (var ii = 0; ii < idEls.length; ii++) idEls[ii].removeAttribute("id");' +
+            '    var testIds = clone.querySelectorAll("[data-testid]");' +
+            '    for (var ti = 0; ti < testIds.length; ti++) testIds[ti].removeAttribute("data-testid");' +
+            '' +
+            // Replace message text
+            '    var textEl = clone.querySelector("[class*=\\"post-message\\"] p") || clone.querySelector(".post-message__text p") || clone.querySelector(".post-message__text") || clone.querySelector("p");' +
+            '    if (textEl) textEl.textContent = text;' +
+            '    else {' +
+            '      var ps = clone.querySelectorAll("p");' +
+            '      if (ps.length > 0) ps[ps.length - 1].textContent = text;' +
+            '    }' +
+            '' +
+            // Replace sender name
+            '    var nameEl = clone.querySelector("[class*=\\"user-popover\\"]") || clone.querySelector("button[class*=\\"user\\"]") || clone.querySelector(".post__header button") || clone.querySelector("[class*=\\"post__header\\"] button");' +
+            '    if (nameEl) nameEl.textContent = senderName;' +
+            '' +
+            // Replace timestamp
+            '    var timeEl = clone.querySelector("time");' +
+            '    if (timeEl) {' +
+            '      var now = new Date();' +
+            '      timeEl.textContent = now.getHours() + ":" + (now.getMinutes() < 10 ? "0" : "") + now.getMinutes();' +
+            '      if (timeEl.dateTime) timeEl.dateTime = now.toISOString();' +
+            '    }' +
+            '' +
+            // Replace avatar — try img first, then any element in the avatar area
+            '    var avatarImg = clone.querySelector("img[src*=\\"/api/v4/users/\\"]") || clone.querySelector(".post__img img") || clone.querySelector("img[class*=\\"avatar\\"]") || clone.querySelector("img[class*=\\"Avatar\\"]");' +
+            '    if (avatarImg && senderId) {' +
+            '      var origSrc = avatarImg.getAttribute("src") || "";' +
+            '      var userIdMatch = origSrc.match(/\\/api\\/v4\\/users\\/([a-z0-9]+)\\/image/);' +
+            '      if (userIdMatch) {' +
+            '        avatarImg.src = origSrc.replace("/users/" + userIdMatch[1] + "/", "/users/" + senderId + "/");' +
+            '      } else {' +
+            '        avatarImg.src = window.location.origin + "/api/v4/users/" + senderId + "/image/default";' +
+            '      }' +
+            '    } else if (senderId) {' +
+            // No <img> found — avatar is probably an initials div/canvas/svg
+            '      var avatarContainer = clone.querySelector(".post__img") || clone.querySelector("[class*=\\"post__img\\"]");' +
+            '      if (avatarContainer) {' +
+            '        var innerWrap = avatarContainer.querySelector("button") || avatarContainer.querySelector("span") || avatarContainer;' +
+            '        var newImg = document.createElement("img");' +
+            '        newImg.src = window.location.origin + "/api/v4/users/" + senderId + "/image/default";' +
+            '        newImg.style.cssText = "width:32px;height:32px;border-radius:50%;";' +
+            '        var origImg = avatarContainer.querySelector("img, canvas, svg, [class*=\\"Avatar\\"]");' +
+            '        if (origImg && origImg.className) newImg.className = origImg.className;' +
+            '        innerWrap.innerHTML = "";' +
+            '        innerWrap.appendChild(newImg);' +
+            '      }' +
+            '    }' +
+            '' +
+            // Remove reactions, reply count, menu buttons
+            '    var remove = clone.querySelectorAll("[class*=\\"Reaction\\"], [class*=\\"reaction\\"], .post__footer, [class*=\\"PostFlagIcon\\"], [class*=\\"DotMenu\\"], [class*=\\"post-pre-header\\"]");' +
+            '    for (var ri = 0; ri < remove.length; ri++) remove[ri].remove();' +
+            '' +
+            // Insert after the last post element in the container
+            '    if (insertAfter && insertAfter.nextSibling) {' +
+            '      container.insertBefore(clone, insertAfter.nextSibling);' +
+            '    } else {' +
+            '      container.appendChild(clone);' +
+            '    }' +
+            '' +
+            // Scroll the post list to show the new message
+            '    var scrollEl = container;' +
+            '    for (var sc = 0; sc < 10 && scrollEl; sc++) {' +
+            '      var ov = window.getComputedStyle(scrollEl).overflowY;' +
+            '      if ((ov === "auto" || ov === "scroll") && scrollEl.scrollHeight > scrollEl.clientHeight) break;' +
+            '      scrollEl = scrollEl.parentElement;' +
+            '    }' +
+            '    if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;' +
+            '' +
+            '    result.strategy = "dom_clone";' +
+            '    result.success = true;' +
             '  } catch(e) { result.error = "dom_clone: " + String(e); }' +
             '' +
             '  return JSON.stringify(result);' +
@@ -1058,6 +1164,7 @@ function onCommand(cmd) {
         activeServerIndex = idx;
         creds = allServers[idx];
         userMap = {};
+        currentTeams = [];
 
         var sList = [];
         for (var si = 0; si < allServers.length; si++) {
@@ -1081,6 +1188,39 @@ function onCommand(cmd) {
                 plugin.sendData('credentials', creds);
                 plugin.sendData('switch_complete', { serverIndex: idx, serverUrl: creds.serverUrl, teamName: creds.teamName });
             });
+        });
+    }
+
+    // Team switching
+    if (action === 'switch_team') {
+        var newTeamId = cmd.teamId;
+        var matched = null;
+        for (var ti = 0; ti < currentTeams.length; ti++) {
+            if (currentTeams[ti].id === newTeamId) { matched = currentTeams[ti]; break; }
+        }
+        if (!matched) {
+            plugin.sendData('_error', { phase: 'switch_team', error: 'Team not found: ' + newTeamId });
+            return;
+        }
+        creds.teamId = matched.id;
+        creds.teamName = matched.display_name || matched.name || '';
+        creds.status = 'syncing';
+        userMap = {};
+
+        plugin.sendData('credentials', creds);
+        plugin.sendData('team_list', {
+            teams: currentTeams.map(function(t) {
+                return { id: t.id, name: t.display_name || t.name || t.id };
+            }),
+            activeTeamId: creds.teamId
+        });
+
+        return fetchUsers().then(function() {
+            return fetchChannels();
+        }).then(function() {
+            creds.status = 'ready';
+            plugin.sendData('credentials', creds);
+            plugin.sendData('team_switch_complete', { teamId: creds.teamId, teamName: creds.teamName });
         });
     }
 

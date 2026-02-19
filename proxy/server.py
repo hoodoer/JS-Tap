@@ -43,11 +43,6 @@ _pending_requests = {}
 _pending_responses = {}
 _pending_lock = threading.Lock()
 
-# beacon_uuid -> dict of per-domain spoofing config
-# { "example.com": True, ... }   True = spoof credentials
-_spoof_config = {}
-_spoof_lock = threading.Lock()
-
 # CA key/cert (loaded once)
 _ca_key = None
 _ca_cert = None
@@ -676,19 +671,3 @@ def has_ws_connection(beacon_uuid):
         return beacon_uuid in _ws_connections
 
 
-def set_spoof_config(beacon_uuid, domain, enabled):
-    with _spoof_lock:
-        if beacon_uuid not in _spoof_config:
-            _spoof_config[beacon_uuid] = {}
-        _spoof_config[beacon_uuid][domain] = enabled
-
-
-def get_spoof_config(beacon_uuid):
-    with _spoof_lock:
-        return dict(_spoof_config.get(beacon_uuid, {}))
-
-
-def get_all_spoof_domains(beacon_uuid):
-    """Return the spoof config dict for a beacon."""
-    with _spoof_lock:
-        return dict(_spoof_config.get(beacon_uuid, {}))

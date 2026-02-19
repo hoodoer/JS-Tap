@@ -19,6 +19,9 @@ var _injectPollTimer = null;
 var _activeDownloads = {};
 var servers = [];
 var activeServerIndex = 0;
+var mmTeams = [];
+var activeTeamId = '';
+var _teamSwitchPending = false;
 var _serverSwitchTime = 0;
 var _serverGeneration = 0;
 var _switchPending = false;
@@ -114,6 +117,24 @@ function renderTopbar() {
     } else if (selectEl && credData) {
         selectEl.innerHTML = '<option value="0">' + esc(credData.teamName || credData.serverUrl || 'Server') + '</option>';
     }
+}
+
+function renderTeamSelector() {
+    var selectEl = pluginUI.container.querySelector('#mm-team-select');
+    if (!selectEl) return;
+
+    if (mmTeams.length <= 1) {
+        selectEl.style.display = 'none';
+        return;
+    }
+
+    selectEl.style.display = '';
+    var html = '';
+    for (var i = 0; i < mmTeams.length; i++) {
+        var t = mmTeams[i];
+        html += '<option value="' + esc(t.id) + '"' + (t.id === activeTeamId ? ' selected' : '') + '>' + esc(t.name) + '</option>';
+    }
+    selectEl.innerHTML = html;
 }
 
 function renderChannels() {
@@ -550,6 +571,21 @@ function loadData() {
         }
     });
 
+    // Load team list
+    pluginUI.fetchData('team_list', 5, 0).then(function(result) {
+        var rows = result.rows || [];
+        if (rows.length > 0) {
+            var latest = rows[0].data || {};
+            if (latest.teams && latest.teams.length > 0) {
+                mmTeams = latest.teams;
+                if (latest.activeTeamId && !_teamSwitchPending) {
+                    activeTeamId = latest.activeTeamId;
+                }
+                renderTeamSelector();
+            }
+        }
+    });
+
     // Load credentials
     pluginUI.fetchData('credentials', 5, 0).then(function(result) {
         var rows = result.rows || [];
@@ -567,7 +603,7 @@ function loadData() {
             chContainer.innerHTML = '<div class="text-muted small p-2"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Syncing server...</div>';
         }
     }
-    if (!_switchPending) pluginUI.fetchData('channel_list', 5, 0).then(function(result) {
+    if (!_switchPending && !_teamSwitchPending) pluginUI.fetchData('channel_list', 5, 0).then(function(result) {
         var rows = result.rows || [];
         if (rows.length > 0) {
             var latest = rows[0].data || {};
@@ -577,7 +613,7 @@ function loadData() {
     });
 
     // Load users
-    if (!_switchPending) pluginUI.fetchData('user_list', 5, 0).then(function(result) {
+    if (!_switchPending && !_teamSwitchPending) pluginUI.fetchData('user_list', 5, 0).then(function(result) {
         var rows = result.rows || [];
         if (rows.length > 0) {
             var latest = rows[0].data || {};
@@ -595,6 +631,35 @@ function loadData() {
                 var latest = rows[0].data || {};
                 if (latest.serverIndex === activeServerIndex) {
                     _switchPending = false;
+                    pluginUI.fetchData('channel_list', 5, 0).then(function(chResult) {
+                        var chRows = chResult.rows || [];
+                        if (chRows.length > 0) {
+                            channels = (chRows[0].data || {}).channels || [];
+                            renderChannels();
+                        }
+                    });
+                    pluginUI.fetchData('user_list', 5, 0).then(function(uResult) {
+                        var uRows = uResult.rows || [];
+                        if (uRows.length > 0) {
+                            var uLatest = uRows[0].data || {};
+                            if (uLatest.users && uLatest.users.length > 0) {
+                                users = uLatest.users;
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    // Check if team switch is complete
+    if (_teamSwitchPending) {
+        pluginUI.fetchData('team_switch_complete', 5, 0).then(function(result) {
+            var rows = result.rows || [];
+            if (rows.length > 0) {
+                var latest = rows[0].data || {};
+                if (latest.teamId === activeTeamId) {
+                    _teamSwitchPending = false;
                     pluginUI.fetchData('channel_list', 5, 0).then(function(chResult) {
                         var chRows = chResult.rows || [];
                         if (chRows.length > 0) {
@@ -679,11 +744,15 @@ if (serverSelect) {
         users = [];
         selectedInjectUser = null;
         searchResults = null;
+        mmTeams = [];
+        activeTeamId = '';
+        _teamSwitchPending = false;
         var searchPanel = pluginUI.container.querySelector('#mm-search-panel');
         if (searchPanel) searchPanel.style.display = 'none';
 
         renderChannels();
         renderMessages();
+        renderTeamSelector();
 
         var labelEl = pluginUI.container.querySelector('#mm-inject-selected-user');
         if (labelEl) labelEl.textContent = '1. Search for a sender, 2. Select a channel from the sidebar';
@@ -702,6 +771,53 @@ if (serverSelect) {
             polls++;
             if (polls > 15 || !pluginUI.container || !pluginUI.container.parentNode) {
                 clearInterval(switchPollTimer);
+                return;
+            }
+            loadData();
+        }, 1000);
+    };
+}
+
+// Team switcher
+var teamSelect = pluginUI.container.querySelector('#mm-team-select');
+if (teamSelect) {
+    teamSelect.onchange = function() {
+        var newTeamId = teamSelect.value;
+        if (!newTeamId || newTeamId === activeTeamId) return;
+        activeTeamId = newTeamId;
+        _teamSwitchPending = true;
+        _serverGeneration++;
+
+        channels = [];
+        currentMessages = [];
+        currentChannelId = null;
+        currentChannelName = '';
+        users = [];
+        selectedInjectUser = null;
+        searchResults = null;
+        var searchPanel = pluginUI.container.querySelector('#mm-search-panel');
+        if (searchPanel) searchPanel.style.display = 'none';
+
+        renderChannels();
+        renderMessages();
+
+        var labelEl = pluginUI.container.querySelector('#mm-inject-selected-user');
+        if (labelEl) labelEl.textContent = '1. Search for a sender, 2. Select a channel from the sidebar';
+        updateInjectControls();
+
+        var statusEl = pluginUI.container.querySelector('#mm-status');
+        if (statusEl) {
+            statusEl.className = 'badge bg-secondary';
+            statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Syncing...';
+        }
+
+        sendCommand({ action: 'switch_team', teamId: newTeamId });
+
+        var polls = 0;
+        var teamPollTimer = setInterval(function() {
+            polls++;
+            if (polls > 15 || !pluginUI.container || !pluginUI.container.parentNode) {
+                clearInterval(teamPollTimer);
                 return;
             }
             loadData();

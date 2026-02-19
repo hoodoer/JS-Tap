@@ -3760,7 +3760,7 @@ async function getClientDetails(id, autoRefresh)
             }
 
             // Proxy panel -> tools stack (rendered first, above sidecar; browser-extension only)
-            var proxyState = { isActive: false, spoofConfig: {} };
+            var proxyState = { isActive: false };
             if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
                 try { proxyState = await renderProxyPanel(toolsStack, id, client) || proxyState; } catch(e) { console.error('Proxy panel error:', e); }
             }
@@ -3895,40 +3895,6 @@ async function getClientDetails(id, autoRefresh)
                     captureBtn.onclick = function() { toggleDomainDetails(d.id, this); };
                     controlsArea.appendChild(captureBtn);
 
-                    // Spoof Creds toggle (pushed to right)
-                    const spoofWrap = document.createElement('div');
-                    spoofWrap.className = 'form-check form-switch mb-0 ms-auto';
-                    const spoofInput = document.createElement('input');
-                    spoofInput.className = 'form-check-input spoof-creds-toggle';
-                    spoofInput.type = 'checkbox';
-                    spoofInput.setAttribute('data-domain', d.domain);
-                    spoofInput.checked = !!proxyState.spoofConfig[d.domain];
-                    spoofInput.disabled = !proxyState.isActive;
-                    spoofInput.id = 'spoof-card-' + d.domain.replace(/[^a-zA-Z0-9]/g, '-');
-                    spoofInput.addEventListener('change', async function() {
-                        var domain = this.getAttribute('data-domain');
-                        var enabled = this.checked;
-                        await fetch('/api/proxy/spoof', {
-                            method: 'POST',
-                            body: JSON.stringify({ beaconID: id, domain: domain, enabled: enabled }),
-                            headers: { "Content-type": "application/json; charset=UTF-8" }
-                        });
-                        showToast((enabled ? 'Spoofing enabled for ' : 'Spoofing disabled for ') + domain);
-                    });
-                    const spoofLabel = document.createElement('label');
-                    spoofLabel.className = 'form-check-label small text-muted';
-                    spoofLabel.setAttribute('for', spoofInput.id);
-                    spoofLabel.textContent = 'Proxy Credential Spoofing';
-                    spoofWrap.appendChild(spoofInput);
-                    spoofWrap.appendChild(spoofLabel);
-                    controlsArea.appendChild(spoofWrap);
-                }
-
-                // Update spoof toggle state on every refresh
-                const spoofToggle = controlsArea.querySelector('.spoof-creds-toggle');
-                if (spoofToggle) {
-                    spoofToggle.checked = proxyState.isActive && !!proxyState.spoofConfig[d.domain];
-                    spoofToggle.disabled = !proxyState.isActive;
                 }
 
                 // 4. Update Children Summary
@@ -4325,7 +4291,6 @@ async function renderProxyPanel(cardStack, beaconId, client) {
         }
     }
 
-    var spoofConfig = proxyStatus.spoofConfig || {};
     var panelTitle = isAtom ? 'App Proxy' : 'Browser Proxy';
     var panelDesc = isAtom
         ? "Route your browser traffic through this Electron app. Requests execute with the app's full session cookies and network context."
@@ -4381,7 +4346,7 @@ async function renderProxyPanel(cardStack, beaconId, client) {
         };
     }
 
-    return { isActive: isActive, spoofConfig: spoofConfig };
+    return { isActive: isActive };
 }
 
 

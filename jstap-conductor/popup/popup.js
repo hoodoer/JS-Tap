@@ -18,6 +18,40 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Pick the best URL from a clone ticket for the Open button.
+// SPAs make tons of API/asset requests so urls[0] is often a bad choice.
+// Prefer short path, non-API, non-asset URLs.  Fall back to domain root.
+function pickBestUrl(ticket) {
+  const urls = ticket.urls || [];
+  const domain = ticket.domain || '';
+
+  // Patterns that indicate API/asset endpoints rather than navigable pages
+  const apiPatterns = /\/(api|graphql|_next|__webpack|static|assets|sockjs|ws)\b/i;
+  const assetExts = /\.(js|css|json|map|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)(\?|$)/i;
+
+  // Score each URL — lower is better
+  function score(urlStr) {
+    try {
+      const u = new URL(urlStr);
+      if (apiPatterns.test(u.pathname)) return 100;
+      if (assetExts.test(u.pathname)) return 100;
+      // Prefer shorter paths (closer to a real page)
+      return u.pathname.split('/').filter(Boolean).length;
+    } catch (_) {
+      return 200;
+    }
+  }
+
+  if (urls.length > 0) {
+    const sorted = [...urls].sort((a, b) => score(a) - score(b));
+    if (score(sorted[0]) < 100) return sorted[0];
+  }
+
+  // All URLs are API endpoints — just open the domain root
+  const proto = domain.includes('localhost') ? 'http' : 'https';
+  return proto + '://' + domain + '/';
+}
+
 function refreshTickets() {
   browser.runtime.sendMessage({ type: 'GET_TICKET_HISTORY' }).then(response => {
     const history = response.history || [];
@@ -82,13 +116,13 @@ function refreshTickets() {
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'actions';
 
-      // Open button (clone tickets with URLs only)
-      if (entry.type === 'clone' && ticket.urls && ticket.urls.length > 0) {
+      // Open button (clone tickets only — navigate to the best page URL)
+      if (entry.type === 'clone') {
         const openBtn = document.createElement('button');
         openBtn.className = 'btn btn-open';
         openBtn.textContent = 'Open';
         openBtn.addEventListener('click', () => {
-          browser.tabs.create({ url: ticket.urls[0] });
+          browser.tabs.create({ url: pickBestUrl(ticket) });
         });
         actionsDiv.appendChild(openBtn);
       }
