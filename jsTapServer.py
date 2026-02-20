@@ -5193,6 +5193,9 @@ if __name__ == '__main__':
 
     logger.info("Python main running....")
 
+    # Clean up any proxy instances from previous runs
+    stop_all_proxies()
+
     # Response configuration
     WSGIRequestHandler.protocol_version = "HTTP/1.1"
     WSGIRequestHandler.server_version   = "nginx"

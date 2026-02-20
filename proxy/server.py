@@ -351,6 +351,8 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
     def _handle_plain_http(self, method, url, headers, body, wfile, beacon_uuid):
         """Forward a plain HTTP request through the beacon."""
         logger.info(f"Proxy: {method} {url}")
+        cookie_val = headers.get('Cookie', headers.get('cookie', ''))
+        logger.info(f"Proxy DEBUG: Cookie from browser: {cookie_val[:80]}..." if cookie_val else "Proxy DEBUG: NO Cookie header from browser")
         origin = headers.get('Origin', headers.get('origin', ''))
 
         # Handle CORS preflight locally — no need to round-trip to beacon
@@ -430,6 +432,8 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
                 # Reconstruct the full URL
                 url = f"https://{host}{path}"
                 logger.info(f"Proxy: {method} {url}")
+                cookie_val = headers.get('Cookie', headers.get('cookie', ''))
+                logger.info(f"Proxy DEBUG: Cookie from browser: {cookie_val[:80]}..." if cookie_val else "Proxy DEBUG: NO Cookie header from browser")
 
                 origin = headers.get('Origin', headers.get('origin', ''))
                 logger.info(f"Proxy: Origin header for {method} {url}: '{origin}'")

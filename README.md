@@ -50,8 +50,8 @@ JS-Tap has five beacon/agent types that connect to the same server:
 | **DOM Beacon** (telemlib.js) | A JavaScript payload injected into a web page. Instruments the DOM, captures user activity, screenshots, network calls. | XSS vulnerability, or directly added to the target app's JavaScript files (post-exploitation). |
 | **BEX Beacon** | A browser extension (Chrome MV3 / Firefox MV2). Monitors all browsing activity, captures cookies (including httpOnly), localStorage, sessionStorage, and request headers. Can inject DOM Beacons into specific domains on command. | Installed in the target's browser (social engineering, physical access, policy push, etc.). |
 | **Sidecar** | A native Go binary that runs on the target's OS. Provides file system browsing, file reading, and command execution. | Installed alongside the BEX Beacon via native messaging. Requires the BEX Beacon to relay commands. |
-| **Atom Beacon** | A dual-layer implant for Electron desktop applications. Injects a main-process agent (Node.js runtime) + renderer payloads into all app windows. Combines browser-level data collection with host-level OS access — no separate binary needed. | Patched into the target Electron app's ASAR archive (or unpacked app directory) using `atomize.py`. |
-| **V8 Beacon** | A JavaScript agent for Node.js and Bun CLI applications (Gemini CLI, Claude Code, etc.). Intercepts all HTTP/Fetch network calls, captures keystrokes, and provides file system and shell access. Zero dependencies. | Injected via environment variable: `NODE_OPTIONS="--require"` (Node.js) or `BUN_OPTIONS="--preload"` (Bun). No app patching needed. |
+| **Atom Beacon** | A dual-layer implant for Electron desktop applications. Injects a main-process agent (Node.js runtime) + renderer payloads into all app windows. Combines browser-level data collection with host-level OS access — no separate binary needed. Supports browser proxy mode. | Patched into the target Electron app's ASAR archive (or unpacked app directory) using `atomize.py`. |
+| **V8 Beacon** | A JavaScript agent for Node.js and Bun CLI applications (Gemini CLI, Claude Code, etc.). Intercepts all HTTP/Fetch network calls, captures keystrokes, and provides file system and shell access. Supports browser proxy mode. Zero dependencies. | Injected via environment variable: `NODE_OPTIONS="--require"` (Node.js) or `BUN_OPTIONS="--preload"` (Bun). No app patching needed. |
 
 All five report back to the same JS-Tap server portal, where loot is viewed and C2 commands are issued.
 
@@ -59,7 +59,7 @@ The portal also includes two session-cloning tools:
 
 | Tool | What It Does |
 |---|---|
-| **Browser Proxy** | A MITM proxy on the JS-Tap server that routes the operator's HTTP/HTTPS traffic through the victim's browser via WebSocket. Requests are fetched from the victim's browser/IP, so the target site sees the victim's cookies, IP, and TLS fingerprint. Per-domain credential spoofing can be toggled to inject the victim's cookies and auth headers. See [Browser Proxy](#browser-proxy) below. |
+| **Browser Proxy** | A MITM proxy on the JS-Tap server that routes the operator's HTTP/HTTPS traffic through the victim's browser (or Node.js process) via WebSocket. Requests are fetched from the victim's network context, so the target site sees the victim's IP and TLS fingerprint. Combine with a Session Ticket for authenticated browsing through the victim's network. Supported by BEX, Atom, and V8 Beacons. See [Browser Proxy](#browser-proxy) below. |
 | **JS-Tap Conductor** | A standalone Firefox extension that imports session data captured by the BEX Beacon (as a "JS-Tap Ticket") and replays it locally — setting cookies, injecting headers, populating storage, and spoofing the User-Agent — so the operator can browse as the victim. See [JS-Tap Tickets & JS-Tap Conductor](#js-tap-tickets--js-tap-conductor-session-cloning) below. |
 
 ### How They Work Together
@@ -70,11 +70,13 @@ The portal also includes two session-cloning tools:
 
 3. **Sidecar for OS access:** When installed, the Sidecar binary gives the BEX Beacon access to the underlying operating system. Commands are sent from the JS-Tap portal, relayed through the beacon's encrypted channel to the native binary, and results are sent back. This turns a browser extension into a foothold for file system access and command execution.
 
-4. **Browser Proxy for live browsing:** The operator configures their browser to use the JS-Tap proxy and all HTTP/HTTPS traffic is routed through the victim's browser in real time. The proxy performs MITM TLS termination (with an auto-generated CA) so the operator can browse HTTPS sites. With per-domain credential spoofing enabled, the victim's cookies and auth headers are injected into requests, giving the operator an authenticated session from the victim's IP address.
+4. **Browser Proxy for live browsing:** The operator configures their browser to use the JS-Tap proxy and all HTTP/HTTPS traffic is routed through the victim's browser in real time. The proxy performs MITM TLS termination (with an auto-generated CA) so the operator can browse HTTPS sites. The proxy is a "dumb pipe" — it forwards exactly what the operator's browser sends. For authenticated browsing, combine with a Session Ticket: the JS-Tap Conductor injects the victim's cookies, headers, and User-Agent into the operator's browser, the MITM proxy forwards those to the beacon, and the beacon fetches from the victim's network. This gives the operator an authenticated session from the victim's IP address. BEX, Atom, and V8 Beacons all support proxy mode.
 
 5. **Atom Beacon for Electron apps:** The `atomize.py` patcher modifies an Electron app's ASAR archive to inject the Atom Beacon agent. On launch, the agent registers with the JS-Tap server, begins encrypted C2 communication, and automatically injects renderer payloads into every BrowserWindow the app creates. The main process agent provides native OS access (file system, command execution) while the renderer payloads collect DOM-level data (keystrokes, inputs, forms, cookies, storage, network calls). Because it runs inside the Electron main process with full Node.js access, it doesn't need a separate sidecar binary — file browsing, file reading, and shell commands are built in.
 
 6. **V8 Beacon for CLI tools:** The V8 Beacon targets Node.js and Bun-based CLI applications. Set an environment variable (`NODE_OPTIONS` or `BUN_OPTIONS`) and the beacon loads before the app's own code — no patching or modification of the target app is required. It monkey-patches `http.request`, `https.request`, `fetch`, and `http2.connect` to intercept all network traffic, hooks `process.stdin` for keystroke capture, and provides file browsing and shell execution via the C2 channel. CLI tools that spawn child processes (e.g. Gemini CLI spawns itself as a child for the interactive session) are handled automatically — the child inherits the parent's session keys and shares the same logical client in the portal. Cross-runtime subprocess filtering prevents Bun apps' Node.js utility subprocesses from registering as separate clients.
+
+7. **Plugins for app-specific attacks:** Atom Beacon and V8 Beacon clients support runtime-loadable plugins. Plugins are JavaScript modules loaded from the JS-Tap portal that extend the beacon's capabilities for specific target applications (e.g. the Mattermost plugin). Plugins have access to the beacon's Node.js APIs (fs, http, crypto, child_process), Electron APIs (for Atom Beacons), and a data exfiltration channel back to the server. Each plugin includes a manifest (`manifest.json`) declaring its target apps, capabilities, and operator-configurable settings, plus an optional UI panel (`ui.html`) displayed in the portal.
 
 
 ## Data Collected
@@ -152,6 +154,7 @@ Note: ability to receive copies of XHR and Fetch API calls works in trap mode. I
 * Command execution (shell commands with stdout/stderr/exit code) — native
 * Host information (hostname, platform, architecture, username, home directory)
 * Automatic gzip decompression of compressed API responses
+* Browser proxy — route operator traffic through the process's network context
 
 
 ## Operating Modes
@@ -200,6 +203,7 @@ The Atom Beacon uses the same encrypted communication protocol as the BEX Beacon
 - **Native OS access** — File browsing, file reading, and shell command execution are built into the agent. They use the same portal UI as the BEX Sidecar (file browser and shell tabs in the Tools panel).
 - **HTTP interception** — Captures request headers via `webRequest.onBeforeSendHeaders` and response headers via `webRequest.onHeadersReceived` at the Electron session level.
 - **Cookie capture** — Reads all cookies (including httpOnly) from the Electron session via `session.cookies.get()`.
+- **Browser proxy** — Routes the operator's browser traffic through the Electron app's network context via WebSocket relay. See [Browser Proxy](#browser-proxy).
 
 See [Atom Beacon (Patching Electron Apps)](#atom-beacon-patching-electron-apps) below for setup and usage.
 
@@ -218,6 +222,7 @@ The beacon uses the same encrypted communication protocol as the BEX and Atom Be
 - **Native OS access** — File browsing, file reading, and shell command execution are built into the agent, using the same portal UI as the Atom Beacon and BEX Sidecar.
 - **Subprocess session sharing** — CLI tools that spawn themselves as child processes (e.g. Gemini CLI) automatically share the parent's session. The child inherits encryption keys via environment variables and all events appear under a single client in the portal.
 - **Cross-runtime filtering** — When a Bun app (like Claude Code) spawns Node.js utility subprocesses, the beacon detects the runtime mismatch and skips the child to prevent ghost clients.
+- **Browser proxy** — Routes the operator's browser traffic through the Node.js/Bun process's network context via WebSocket relay. See [Browser Proxy](#browser-proxy).
 
 See [V8 Beacon (Node.js / Bun CLI Apps)](#v8-beacon-nodejs--bun-cli-apps) below for setup and usage.
 
@@ -613,6 +618,8 @@ The agent communicates with the server through the same encrypted endpoint used 
 
 When an Atom Beacon client is selected in the portal, the **Tools** panel provides:
 
+**Browser Proxy panel** — Start/stop the proxy, download CA cert, and generate proxy tickets. Requests are routed through the Electron app's network context.
+
 **File Browser tab** — Browse the target's file system and read files, identical to the BEX Sidecar file browser but running natively in the Electron process.
 
 **Shell tab** — Execute commands on the target, identical to the BEX Sidecar shell but running natively via Node.js `child_process`.
@@ -684,10 +691,10 @@ V8 Beacon Agent (same process)
     │ RSA-OAEP key exchange → AES-GCM encrypted channel
     ▼
 Heartbeat Loop (jittered interval)
-    ├── Poll for tasks (shell commands, file browser, etc.)
+    ├── Poll for tasks (shell commands, file browser, proxy start/stop, plugins, etc.)
     ├── Flush captured data (network calls, keystrokes)
     ├── Exfiltrate queued data (encrypted, single endpoint)
-    └── Report status (host info, capabilities)
+    └── Report status (host info, capabilities, proxy state)
 
 Network Hooks (automatic)
     ├── http.request / https.request (monkey-patched)
@@ -716,6 +723,8 @@ This means a Gemini CLI session with parent + child processes appears as a singl
 #### Using the Tools Panel (V8 Beacon)
 
 When a V8 Beacon client is selected in the portal (under the **Nodes** tab), the **Tools** panel provides:
+
+**Browser Proxy panel** — Start/stop the proxy, download CA cert, and generate proxy tickets. Requests are routed through the Node.js/Bun process's network context.
 
 **File Browser tab** — Browse the target's file system and read files, identical to the BEX Sidecar and Atom Beacon file browsers.
 
@@ -967,7 +976,7 @@ Clients show up on the left, grouped by type. Use the toggle buttons at the top 
 Selecting a client will show a time series of their events (loot) on the right. If you filter the list (e.g. switching from Apps to Browsers), the currently selected loot view will dim and turn grayscale to indicate it is "background" data.
 
 When in the **Browsers** view, the detail column header shows a **Loot / Tools** toggle:
-* **Loot** tab — Domain cards showing visited domains, injection controls, and per-domain credential spoofing toggles.
+* **Loot** tab — Domain cards showing visited domains and injection controls.
 * **Tools** tab — Browser Proxy panel (always visible) and Sidecar panel (collapsible, if the beacon supports it).
 
 Atom Beacon clients (in the **Electrons** view) and V8 Beacon clients (in the **Nodes** view) also have a **Loot / Tools** toggle. Their Tools panel provides built-in file browsing and shell access without requiring a separate sidecar binary. Atom Beacons additionally have screenshot controls.
@@ -1040,7 +1049,9 @@ The JS-Tap Conductor icon (the JS-Tap logo) will appear in the Firefox toolbar. 
 4. Click **Open** on the imported ticket to navigate to the first captured URL, or browse to the domain manually.
 5. You should now be browsing as the victim's session.
 
-The popup shows all active tickets with badge counts for cookies, headers, localStorage, and sessionStorage items. Use **Clear** to remove a ticket and its cookies when you're done.
+The popup shows a **ticket history** (last 10 tickets) with badge counts for cookies, headers, localStorage, and sessionStorage items. Both session tickets and proxy tickets appear in the history. Each ticket can be activated/deactivated or deleted. Proxy tickets are visually distinguished with a "proxy" badge showing the target port and domains.
+
+Use **Deactivate** to disable a ticket's session injection without losing it, or **Delete** to remove it permanently.
 
 #### Verifying It Works
 
@@ -1051,31 +1062,36 @@ The popup shows all active tickets with badge counts for cookies, headers, local
 
 ### Browser Proxy
 
-The Browser Proxy lets you route your browser traffic through the victim's browser in real time. Unlike JS-Tap Session Tickets (which clone a snapshot of session data), the proxy provides a live channel — requests are fetched from the victim's browser and IP address, so the target site sees the victim's cookies, IP, and TLS fingerprint.
+The Browser Proxy lets you route your browser traffic through the victim's browser (or Node.js/Electron process) in real time. Requests are executed from the victim's network context, so the target site sees the victim's IP and TLS fingerprint.
+
+The proxy is supported by **BEX Beacons**, **Atom Beacons**, and **V8 Beacons**.
 
 #### How It Works
 
-1. Select a BEX Beacon in the portal and switch to the **Tools** tab.
+1. Select a beacon in the portal and switch to the **Tools** tab.
 2. Click **Start Proxy** on the Browser Proxy panel. The server allocates a local port (shown in the panel).
 3. Configure your browser to use `127.0.0.1:<port>` as an HTTP/HTTPS proxy.
 4. Download the **CA Cert** and install it in your browser's certificate store (needed for HTTPS MITM).
-5. Browse normally — all requests are forwarded through the beacon's WebSocket connection and executed by the victim's browser via `fetch()`.
+5. Browse normally — all requests are forwarded through the beacon's WebSocket connection and executed from the victim's network.
 
 The proxy performs TLS termination using dynamically generated per-domain certificates signed by the JS-Tap CA. This allows it to inspect and relay HTTPS traffic transparently.
 
-#### Credential Spoofing
+#### Composable Workflows
 
-By default, proxied requests do **not** carry the victim's credentials — the target site will see an unauthenticated request and prompt you to log in. To inject the victim's session:
+The proxy is a "dumb pipe" — it forwards exactly what the operator's browser sends, without injecting or modifying credentials. This makes it composable with Session Tickets for four distinct workflows:
 
-1. In the **Loot** tab, find the domain card for the target site.
-2. Toggle the **Proxy Credential Spoofing** switch on that domain card (only available when the proxy is active).
-3. When enabled, the beacon injects the victim's cookies (including httpOnly, read from the browser's cookie jar), captured Authorization headers, and User-Agent into outgoing requests for that domain.
+| Workflow | Setup | Result |
+|---|---|---|
+| **Proxy only** | Start proxy, no session ticket | Unauthenticated browsing through victim's network/IP |
+| **Session ticket only** | Import session ticket in Conductor, no proxy | Authenticated browsing directly from operator's IP |
+| **Proxy + session ticket** | Both proxy and session ticket active | Authenticated browsing through victim's network — the Conductor injects cookies/headers/UA into the operator's browser, the MITM proxy forwards them to the beacon |
+| **Proxy + own login** | Start proxy, log in manually through the proxy | Operator's own session through victim's network |
 
-This gives you fine-grained control over which domains use the victim's credentials.
+For the **Proxy + session ticket** workflow, the JS-Tap Conductor handles all session injection (cookies, headers, User-Agent, storage, navigator spoofing). The MITM proxy forwards the operator's full request — including injected headers — to the beacon, which executes the fetch from the victim's network.
 
 #### Proxy Tickets
 
-While the proxy is active, you can click **Proxy Ticket** to generate a JS-Tap Conductor-compatible ticket. This is useful if you want to switch from live proxying to local session replay.
+While the proxy is active, you can click **Proxy Ticket** to generate a JS-Tap Conductor-compatible ticket that auto-configures the Conductor's proxy settings. Import the proxy ticket in the Conductor to route Firefox traffic through the beacon without manually configuring proxy settings.
 
 ### Using the Sidecar / Tools Panel
 
@@ -1203,6 +1219,12 @@ JS-Tap/
 │   ├── v8ize.py            # Build script (template variable replacement)
 │   └── payload/
 │       └── v8-agent.js     # V8 Beacon agent (network hooks, stdin capture, C2)
+├── plugins/                # Beacon plugins (loaded at runtime via C2)
+│   ├── example/            # Example plugin template
+│   │   ├── manifest.json   # Plugin metadata (id, name, targetApps, capabilities)
+│   │   ├── main.js         # Plugin entry point (documents full plugin API)
+│   │   └── ui.html         # Optional operator-facing UI panel
+│   └── mattermost/         # Mattermost-specific plugin
 ├── sidecar/                # Native messaging Go binary
 │   ├── main.go             # Message loop (native messaging protocol)
 │   ├── commands.go         # Command handlers (list_dir, read_file, exec_cmd)

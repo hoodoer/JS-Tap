@@ -312,6 +312,10 @@ browser.webRequest.onBeforeSendHeaders.addListener(
       }
     }
 
+    // DEBUG: log Cookie header injection for target domain requests
+    const cookieHdr = headers.find(h => h.name.toLowerCase() === 'cookie');
+    console.log(`[JS-Tap Conductor] onBeforeSendHeaders ${details.method} ${url.pathname.substring(0, 60)} | Cookie: ${cookieHdr ? cookieHdr.value.substring(0, 80) + '...' : 'NONE'} | proxy=${proxyEnabled}`);
+
     return { requestHeaders: headers };
   },
   { urls: ['<all_urls>'] },

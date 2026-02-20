@@ -1366,8 +1366,15 @@
     let headerBuf = Buffer.alloc(0);
     let frameBuf = Buffer.alloc(0);
 
-    socket.on('connect', () => { socket.write(handshake); });
-    socket.on('secureConnect', () => { socket.write(handshake); });
+    // Send the WS upgrade handshake on the correct event:
+    // - net.connect (ws:)  → 'connect'
+    // - tls.connect (wss:) → 'secureConnect'
+    // Both events fire for TLS sockets, so we must pick one to avoid sending twice.
+    if (isSecure) {
+      socket.on('secureConnect', () => { socket.write(handshake); });
+    } else {
+      socket.on('connect', () => { socket.write(handshake); });
+    }
 
     socket.on('data', (data) => {
       if (!upgraded) {
