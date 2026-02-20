@@ -18,7 +18,7 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Pick the best URL from a clone ticket for the Open button.
+// Pick the best URL from a session ticket for the Open button.
 // SPAs make tons of API/asset requests so urls[0] is often a bad choice.
 // Prefer short path, non-API, non-asset URLs.  Fall back to domain root.
 function pickBestUrl(ticket) {
@@ -72,7 +72,7 @@ function refreshTickets() {
       const ticket = entry.ticket;
 
       // Type badge
-      const typeBadgeClass = entry.type === 'proxy' ? 'badge-type-proxy' : 'badge-type-clone';
+      const typeBadgeClass = entry.type === 'proxy' ? 'badge-type-proxy' : 'badge-type-session';
       let typeBadge = '<span class="badge badge-type ' + typeBadgeClass + '">' + entry.type + '</span>';
 
       // Active badge
@@ -116,8 +116,8 @@ function refreshTickets() {
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'actions';
 
-      // Open button (clone tickets only — navigate to the best page URL)
-      if (entry.type === 'clone') {
+      // Open button (session tickets only — navigate to the best page URL)
+      if (entry.type === 'session') {
         const openBtn = document.createElement('button');
         openBtn.className = 'btn btn-open';
         openBtn.textContent = 'Open';
@@ -186,11 +186,11 @@ importBtn.addEventListener('click', () => {
 
   browser.runtime.sendMessage({ type: 'IMPORT_TICKET', data: data }).then(response => {
     if (response && response.success) {
-      const ticketType = response.ticketType || 'clone';
+      const ticketType = response.ticketType || 'session';
       if (ticketType === 'proxy') {
         showStatus('Proxy ticket imported (port ' + response.port + ')', false);
       } else {
-        showStatus('Clone ticket imported for ' + response.domain, false);
+        showStatus('Session ticket imported for ' + response.domain, false);
       }
       ticketInput.value = '';
       refreshTickets();

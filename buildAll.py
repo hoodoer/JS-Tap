@@ -32,6 +32,7 @@ import zipfile
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 BEX_BEACON_DIR = os.path.join(PROJECT_ROOT, 'bex-beacon')
 SIDECAR_DIR = os.path.join(PROJECT_ROOT, 'sidecar')
+V8_BEACON_DIR = os.path.join(PROJECT_ROOT, 'v8-beacon')
 BUILD_DIR = os.path.join(PROJECT_ROOT, 'build')
 DEPLOY_DIR = os.path.join(BUILD_DIR, 'deploy')
 
@@ -450,6 +451,17 @@ def copy_build_outputs(config, include_legacy, include_sidecar):
         if os.path.isdir(sidecar_build):
             shutil.copytree(sidecar_build, os.path.join(BUILD_DIR, 'sidecar'))
             print("  Copied sidecar/")
+
+    # V8 beacon is always included if it exists (no external build step needed)
+    v8_payload = os.path.join(V8_BEACON_DIR, 'payload', 'v8-agent.js')
+    if os.path.isfile(v8_payload):
+        v8_build = os.path.join(BUILD_DIR, 'v8-beacon')
+        os.makedirs(v8_build, exist_ok=True)
+        shutil.copy2(v8_payload, os.path.join(v8_build, 'v8-agent.js'))
+        v8ize_src = os.path.join(V8_BEACON_DIR, 'v8ize.py')
+        if os.path.isfile(v8ize_src):
+            shutil.copy2(v8ize_src, os.path.join(v8_build, 'v8ize.py'))
+        print("  Copied v8-beacon/")
 
 
 # ---------------------------------------------------------------------------
@@ -1544,6 +1556,8 @@ def print_summary(config, include_legacy, include_sidecar):
                 print(f"  {name}/")
     if include_sidecar and os.path.isdir(os.path.join(BUILD_DIR, 'sidecar')):
         print("  sidecar/")
+    if os.path.isdir(os.path.join(BUILD_DIR, 'v8-beacon')):
+        print("  v8-beacon/")
 
     # Packed extensions
     if os.path.exists(os.path.join(BUILD_DIR, 'extension.crx')):

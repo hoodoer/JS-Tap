@@ -878,7 +878,7 @@ if (msgInput) {
     };
 }
 
-// Generate clone ticket
+// Generate session ticket
 var ticketBtn = pluginUI.container.querySelector('#mm-ticket-btn');
 if (ticketBtn) {
     ticketBtn.onclick = function() {
@@ -925,7 +925,7 @@ if (ticketBtn) {
 
         var ticket = {
             version: 1,
-            type: 'clone',
+            type: 'session',
             generated: new Date().toISOString(),
             domain: hostname,
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',

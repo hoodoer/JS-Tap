@@ -128,11 +128,11 @@ async function clearCookies(domain) {
 // ---------------------------------------------------------------------------
 
 function addToHistory(ticket, active) {
-  const type = ticket.type || 'clone';
-  // Key for dedup: domain for clone tickets, 'proxy:'+domains for proxy tickets
+  const type = ticket.type || 'session';
+  // Key for dedup: domain for session tickets, 'proxy:'+domains for proxy tickets
   const key = type === 'proxy'
     ? 'proxy:' + (ticket.domains || []).sort().join(',')
-    : 'clone:' + ticket.domain;
+    : 'session:' + ticket.domain;
 
   // Remove existing entry with same key
   ticketHistory = ticketHistory.filter(h => h.key !== key);
@@ -230,7 +230,7 @@ browser.webRequest.onAuthRequired.addListener(
 // Activate / deactivate tickets
 // ---------------------------------------------------------------------------
 
-async function activateCloneTicket(ticket) {
+async function activateSessionTicket(ticket) {
   ticketsByDomain[ticket.domain] = ticket;
   saveTickets();
   // Always set cookies in the operator's browser, even in proxy mode.
@@ -241,7 +241,7 @@ async function activateCloneTicket(ticket) {
   await setCookies(ticket);
 }
 
-async function deactivateCloneTicket(domain) {
+async function deactivateSessionTicket(domain) {
   if (ticketsByDomain[domain]) {
     await clearCookies(domain);
     delete ticketsByDomain[domain];
@@ -282,7 +282,7 @@ function deactivateProxyTicket() {
 // Header injection via blocking webRequest
 // In proxy mode, headers flow: operator browser → Conductor injects →
 // MITM proxy captures → beacon fetchHeaders → fetch() to target.
-// Clone tickets provide Authorization, API keys, and User-Agent.
+// Session tickets provide Authorization, API keys, and User-Agent.
 // ---------------------------------------------------------------------------
 
 browser.webRequest.onBeforeSendHeaders.addListener(
@@ -330,7 +330,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         ticketJson = msg.data;
       }
       const ticket = JSON.parse(ticketJson);
-      const ticketType = ticket.type || 'clone';
+      const ticketType = ticket.type || 'session';
 
       if (ticketType === 'proxy') {
         // Proxy ticket — auto-configure proxy
@@ -347,14 +347,14 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           port: ticket.proxy.port,
         });
       } else {
-        // Clone ticket — existing behavior
+        // Session ticket — existing behavior
         if (!ticket.domain) {
           sendResponse({ success: false, error: 'Invalid ticket: missing domain' });
           return;
         }
-        activateCloneTicket(ticket).then(() => {
+        activateSessionTicket(ticket).then(() => {
           addToHistory(ticket, true);
-          sendResponse({ success: true, ticketType: 'clone', domain: ticket.domain });
+          sendResponse({ success: true, ticketType: 'session', domain: ticket.domain });
         });
         return true; // async response
       }
@@ -441,10 +441,10 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       saveHistory();
       sendResponse({ success: true, ticketType: 'proxy' });
     } else {
-      activateCloneTicket(entry.ticket).then(() => {
+      activateSessionTicket(entry.ticket).then(() => {
         entry.active = true;
         saveHistory();
-        sendResponse({ success: true, ticketType: 'clone' });
+        sendResponse({ success: true, ticketType: 'session' });
       });
       return true; // async
     }
@@ -461,10 +461,10 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       deactivateProxyTicket();
       sendResponse({ success: true, ticketType: 'proxy' });
     } else {
-      deactivateCloneTicket(entry.ticket.domain).then(() => {
+      deactivateSessionTicket(entry.ticket.domain).then(() => {
         entry.active = false;
         saveHistory();
-        sendResponse({ success: true, ticketType: 'clone' });
+        sendResponse({ success: true, ticketType: 'session' });
       });
       return true; // async
     }
@@ -478,7 +478,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (entry.type === 'proxy') {
           deactivateProxyTicket();
         } else {
-          deactivateCloneTicket(entry.ticket.domain).then(() => {
+          deactivateSessionTicket(entry.ticket.domain).then(() => {
             ticketHistory = ticketHistory.filter(h => h.key !== msg.key);
             saveHistory();
             sendResponse({ success: true });

@@ -309,7 +309,7 @@ function extractCredentials() {
                     var cookieDomain = (cookies[c].domain || '').replace(/^\./, '');
                     if (cookieDomain && (serverHost.indexOf(cookieDomain) !== -1 ||
                         cookieDomain.indexOf(serverHost) !== -1)) {
-                        // Store full cookie object for clone ticket
+                        // Store full cookie object for session ticket
                         domainCookies.push({
                             name: cookies[c].name,
                             value: cookies[c].value,

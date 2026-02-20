@@ -1,6 +1,6 @@
 // JS-Tap Conductor - Content Script
 // Injects localStorage, sessionStorage, and spoofs navigator properties
-// Works in both direct and proxy mode — clone tickets provide auth context
+// Works in both direct and proxy mode — session tickets provide auth context
 
 (function() {
   const hostname = location.hostname;

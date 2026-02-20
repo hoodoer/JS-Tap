@@ -1634,7 +1634,7 @@ def keyExchange(identifier):
 
     encryptionData = {}
 
-    if appSettings.obfuscateTraffic or (client and client.clientType in ('bex-beacon', 'atom-beacon')):
+    if appSettings.obfuscateTraffic or (client and client.clientType in ('bex-beacon', 'atom-beacon', 'v8-beacon')):
         # Generate AES keys if they don't exist yet for this session
         if client.receiveKey is None or client.sendKey is None:
             receiveKey = os.urandom(32)
@@ -1864,11 +1864,15 @@ def receiveEncryptedMessage(identifier):
         client = Client.query.filter_by(uuid=identifier).first()
         if client:
             client.sidecarSupported = jsonData.get('supported', False)
-            # Atom-beacon has built-in capabilities — treat as always connected
-            if client.clientType == 'atom-beacon':
+            # Atom-beacon and v8-beacon have built-in capabilities — treat as always connected
+            if client.clientType in ('atom-beacon', 'v8-beacon'):
                 client.sidecarConnected = client.sidecarSupported
             elif 'connected' in jsonData:
                 client.sidecarConnected = jsonData.get('connected', False)
+            # For v8-beacon, show Node version instead of "Other" browser
+            if client.clientType == 'v8-beacon' and jsonData.get('nodeVersion'):
+                client.browser = 'Node ' + jsonData['nodeVersion']
+                client.platform = jsonData.get('platform', client.platform or '')
             client.lastSeen = datetime.datetime.now(datetime.timezone.utc)
             dbCommit()
 
@@ -3470,7 +3474,7 @@ def getBexTicket(domainID):
 
     ticket = {
         'version': 1,
-        'type': 'clone',
+        'type': 'session',
         'generated': datetime.datetime.utcnow().isoformat() + 'Z',
         'domain': domain.domain,
         'userAgent': client.rawUserAgent or '',
@@ -4112,7 +4116,7 @@ def getAllClientNotes():
         }
 
         # Include domains for beacon clients
-        if client.clientType in ('bex-beacon', 'atom-beacon'):
+        if client.clientType in ('bex-beacon', 'atom-beacon', 'v8-beacon'):
             domains = BeaconDomain.query.filter_by(clientID=client.uuid).all()
             entry['domains'] = [d.domain for d in domains]
 
