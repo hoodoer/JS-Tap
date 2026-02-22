@@ -1290,7 +1290,25 @@ function loadAllData() {
                         var btn = pluginUI.container.querySelector('#vsc-gh-user-btn');
                         if (btn) { btn.disabled = false; btn.textContent = 'Load User'; }
                     } else if (d.endpoint === '/user/repos?per_page=100&sort=updated' || d.endpoint.indexOf('/orgs/') === 0) {
-                        renderGitHubRepos(d.data || []);
+                        if (d.error) {
+                            var repoEl = pluginUI.container.querySelector('#vsc-gh-repos');
+                            if (repoEl) {
+                                var errMsg = esc(d.error);
+                                if (d.tokenScopes) errMsg += '<br><small class="text-muted">Token scopes: ' + esc(d.tokenScopes) + '</small>';
+                                if (d.body) errMsg += '<br><small class="text-muted">' + esc(d.body.substring(0, 200)) + '</small>';
+                                repoEl.innerHTML = '<span class="text-danger">' + errMsg + '</span>';
+                            }
+                        } else {
+                            renderGitHubRepos(d.data || []);
+                            // Show scope hint when repos are empty — helps diagnose token scope issues
+                            if ((!d.data || d.data.length === 0) && d.tokenScopes) {
+                                var scopeEl = pluginUI.container.querySelector('#vsc-gh-repos');
+                                if (scopeEl) {
+                                    scopeEl.innerHTML += '<br><small class="text-muted">Token scopes: ' + esc(d.tokenScopes) +
+                                        (d.tokenScopes.indexOf('repo') === -1 ? ' — missing <strong>repo</strong> scope (only public repos visible)' : '') + '</small>';
+                                }
+                            }
+                        }
                         var btn2 = pluginUI.container.querySelector('#vsc-gh-repos-btn');
                         if (btn2) { btn2.disabled = false; btn2.textContent = 'Load Repos'; }
                         // Re-enable any org repo buttons

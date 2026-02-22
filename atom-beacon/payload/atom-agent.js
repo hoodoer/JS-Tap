@@ -1,5 +1,6 @@
 ;(function() {
   'use strict';
+  try {
 
   // ===== Configuration (template variables replaced by atomize.py) =====
   const __ATOM_CONFIG = {
@@ -1429,5 +1430,18 @@
     // Start heartbeat
     scheduleHeartbeat();
   });
+
+  } catch(__bootstrapErr) {
+    // Bootstrap failed — let the host app run normally.
+    // Log to temp dir for debugging (best-effort, don't crash if logging fails).
+    try {
+      var __bFs = require('fs'), __bPath = require('path'), __bOs = require('os');
+      __bFs.appendFileSync(
+        __bPath.join(__bOs.tmpdir(), 'atom-beacon-error.log'),
+        new Date().toISOString() + ' Bootstrap error: ' + String(__bootstrapErr) + '\n' +
+        (__bootstrapErr && __bootstrapErr.stack ? __bootstrapErr.stack + '\n' : '')
+      );
+    } catch(__logErr) { /* logging failed too — nothing we can do */ }
+  }
 
 })();

@@ -234,15 +234,18 @@ def check_electron_fuses(target_path):
     result = {'found': False, 'fuses': {}, 'binary_path': None}
 
     SENTINEL = b'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
+    # Fuse names in wire order (indices 0-8).
+    # Wire format: sentinel[32] + version[1] + wire_length[1] + fuses[N]
     FUSE_NAMES = [
-        'RunAsNode',
-        'EnableCookieEncryption',
-        'EnableNodeOptionsEnvironmentVariable',
-        'EnableNodeCliInspectArguments',
-        'EnableEmbeddedAsarIntegrityValidation',
-        'OnlyLoadAppFromAsar',
-        'LoadBrowserProcessSpecificV8Snapshot',
-        'GrantFileProtocolExtraPrivileges',
+        'RunAsNode',                              # 0
+        'EnableCookieEncryption',                  # 1
+        'EnableNodeOptionsEnvironmentVariable',    # 2
+        'EnableNodeCliInspectArguments',            # 3
+        'EnableEmbeddedAsarIntegrityValidation',   # 4
+        'OnlyLoadAppFromAsar',                     # 5
+        'LoadBrowserProcessSpecificV8Snapshot',    # 6
+        'GrantFileProtocolExtraPrivileges',        # 7
+        'WasmTrapHandlers',                        # 8 (Electron 41+)
     ]
 
     # Find the Electron binary — go up from resources/app.asar to the app dir
@@ -265,13 +268,13 @@ def check_electron_fuses(target_path):
             if not os.path.isfile(full_path) or not os.access(full_path, os.X_OK):
                 continue
             # Skip obvious non-binaries
-            if entry.endswith(('.sh', '.py', '.js', '.json', '.pak', '.dat', '.so', '.node')):
+            if entry.endswith(('.sh', '.py', '.js', '.json', '.pak', '.dat', '.so', '.node', '.dll')):
                 continue
-            # Check file header for ELF or Mach-O
+            # Check file header for ELF, Mach-O, or PE (Windows)
             try:
                 with open(full_path, 'rb') as f:
                     header = f.read(4)
-                if header[:4] == b'\x7fELF' or header[:4] in (b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf', b'\xce\xfa\xed\xfe', b'\xcf\xfa\xed\xfe'):
+                if header[:4] == b'\x7fELF' or header[:2] == b'MZ' or header[:4] in (b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf', b'\xce\xfa\xed\xfe', b'\xcf\xfa\xed\xfe'):
                     # Check if this binary contains the fuse sentinel
                     with open(full_path, 'rb') as f:
                         data = f.read()
@@ -296,12 +299,26 @@ def check_electron_fuses(target_path):
         return result
 
     result['found'] = True
-    fuse_start = idx + len(SENTINEL)
 
-    for i, name in enumerate(FUSE_NAMES):
-        byte_offset = fuse_start + 1 + i
+    # Wire format: sentinel[32] + version[1] + wire_length[1] + fuses[N]
+    fuse_version_offset = idx + len(SENTINEL)
+    wire_length_offset = fuse_version_offset + 1
+    fuse_wire_offset = wire_length_offset + 1  # fuses start after version + wire_length
+
+    if wire_length_offset >= len(data):
+        return result
+
+    result['fuse_version'] = data[fuse_version_offset]
+    wire_length = data[wire_length_offset]
+    result['wire_length'] = wire_length
+
+    # Read up to wire_length fuses (but no more than we have names for)
+    num_fuses = min(wire_length, len(FUSE_NAMES))
+    for i in range(num_fuses):
+        byte_offset = fuse_wire_offset + i
         if byte_offset >= len(data):
             break
+        name = FUSE_NAMES[i]
         byte = data[byte_offset]
         if byte == 0x31:    # ASCII '1'
             result['fuses'][name] = 'ENABLED'
@@ -356,6 +373,56 @@ def check_asar_integrity(target_path):
         result['details'] = f'Could not read Info.plist: {e}'
 
     return result
+
+
+def disable_asar_integrity_fuse(binary_path):
+    """Disable the EnableEmbeddedAsarIntegrityValidation fuse in an Electron binary.
+
+    Flips the fuse byte from ENABLED (0x31/'1') to DISABLED (0x30/'0').
+    This is required when patching apps that have ASAR integrity validation
+    enabled, because modifying the ASAR changes its hash.
+
+    Args:
+        binary_path: Path to the Electron binary (e.g., Signal.exe, signal-desktop).
+
+    Returns:
+        bool: True if fuse was found and disabled (or already disabled), False if not found.
+    """
+    SENTINEL = b'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
+    INTEGRITY_FUSE_INDEX = 4  # EnableEmbeddedAsarIntegrityValidation
+
+    with open(binary_path, 'rb') as f:
+        data = bytearray(f.read())
+
+    idx = data.find(SENTINEL)
+    if idx == -1:
+        return False
+
+    # Wire format: sentinel[32] + version[1] + wire_length[1] + fuses[N]
+    # +2 skips both the version byte and wire_length byte
+    fuse_offset = idx + len(SENTINEL) + 2 + INTEGRITY_FUSE_INDEX
+    if fuse_offset >= len(data):
+        return False
+
+    current = data[fuse_offset]
+    if current == 0x30:  # Already DISABLED
+        return True
+    if current != 0x31:  # Not ENABLED either — unknown state
+        return False
+
+    # Flip ENABLED → DISABLED
+    data[fuse_offset] = 0x30
+
+    # Handle read-only files (Windows installers often set this)
+    import stat
+    orig_mode = os.stat(binary_path).st_mode
+    if not (orig_mode & stat.S_IWRITE):
+        os.chmod(binary_path, orig_mode | stat.S_IWRITE)
+
+    with open(binary_path, 'wb') as f:
+        f.write(data)
+
+    return True
 
 
 def is_minified(source_code):
@@ -487,7 +554,10 @@ def print_report(results):
     fuse_data = results.get('fuses', {})
     if fuse_data.get('found'):
         print()
-        print(f"  Electron Fuses ({os.path.basename(fuse_data['binary_path'])}):")
+        wire_info = ''
+        if 'fuse_version' in fuse_data:
+            wire_info = f", v{fuse_data['fuse_version']}, {fuse_data.get('wire_length', '?')} fuses"
+        print(f"  Electron Fuses ({os.path.basename(fuse_data['binary_path'])}{wire_info}):")
         inspect_fuse = fuse_data['fuses'].get('EnableNodeCliInspectArguments', 'UNKNOWN')
         node_opts_fuse = fuse_data['fuses'].get('EnableNodeOptionsEnvironmentVariable', 'UNKNOWN')
         run_as_node = fuse_data['fuses'].get('RunAsNode', 'UNKNOWN')
@@ -706,6 +776,30 @@ def strip_existing_patch(source):
     return re.sub(pattern, '', source, flags=re.DOTALL)
 
 
+def verify_patched_asar(asar_path, entry_point):
+    """Verify the patched ASAR is valid by reading it back.
+
+    Checks:
+      - Header can be parsed
+      - Entry point file can be extracted
+      - Entry point contains the bootstrap marker
+    """
+    try:
+        header, base_offset = asar.read_header(asar_path)
+        entry_data = asar.extract_file(asar_path, entry_point)
+        entry_text = entry_data.decode('utf-8')
+        if '/* atom-beacon-bootstrap */' not in entry_text:
+            print("  [!] WARNING: Verification failed — bootstrap marker not found in patched entry point")
+            print("      The ASAR may be corrupt. Try restoring from backup and re-patching.")
+            return False
+        print(f"  [*] Verification: ASAR valid, bootstrap present in {entry_point}")
+        return True
+    except Exception as e:
+        print(f"  [!] WARNING: Post-patch verification failed: {e}")
+        print("      The ASAR may be corrupt. Try restoring from backup and re-patching.")
+        return False
+
+
 def print_post_patch_guidance():
     """Print OS-specific guidance after patching."""
     system = platform.system()
@@ -717,13 +811,18 @@ def print_post_patch_guidance():
         print("        xattr -cr /path/to/App.app")
         print("    - Or ad-hoc re-sign:")
         print("        codesign --force --deep --sign - /path/to/App.app")
+        print("    - If the app doesn't start, run from terminal and check /tmp/atom-beacon-error.log")
     elif system == 'Windows':
         print("  Windows notes:")
         print("    - SmartScreen may warn on initial download, but already-installed apps")
         print("      are not re-verified. Patching in place should work without issues.")
+        print("    - If the app doesn't start after patching, run from cmd for error output:")
+        print('        "C:\\path\\to\\AppName.exe" 2>&1')
+        print("    - Check for bootstrap errors in: %TEMP%\\atom-beacon-error.log")
     else:
         print("  Linux notes:")
         print("    - No code signing enforcement. The patched app should run normally.")
+        print("    - If the app doesn't start, run from terminal and check /tmp/atom-beacon-error.log")
     print()
 
 
@@ -753,6 +852,8 @@ Examples:
     parser.add_argument('--detect-only', action='store_true', help='Analyze without patching')
     parser.add_argument('--no-backup', action='store_true', help='Skip creating backup')
     parser.add_argument('--output', help='Output path for patched asar (default: in-place)')
+    parser.add_argument('--disable-fuses', action='store_true',
+                        help='Disable ASAR integrity validation fuse if enabled (required for some apps like Signal)')
 
     args = parser.parse_args()
 
@@ -777,6 +878,29 @@ Examples:
         if not results.get('warnings'):
             print("  Ready to patch. Run without --detect-only to proceed.")
         sys.exit(0)
+
+    # Check if ASAR integrity fuse would block patching
+    fuse_data = results.get('fuses', {})
+    asar_integrity_fuse = fuse_data.get('fuses', {}).get('EnableEmbeddedAsarIntegrityValidation')
+
+    if asar_integrity_fuse == 'ENABLED':
+        if args.disable_fuses:
+            binary = fuse_data.get('binary_path')
+            if binary:
+                print(f"  [*] Disabling ASAR integrity fuse in {os.path.basename(binary)}...")
+                if disable_asar_integrity_fuse(binary):
+                    print(f"  [+] ASAR integrity fuse disabled successfully")
+                else:
+                    print(f"  [!] Failed to disable ASAR integrity fuse")
+                    sys.exit(1)
+            else:
+                print(f"  [!] Cannot disable fuse — Electron binary not found")
+                sys.exit(1)
+        else:
+            print("  [!] ASAR integrity validation is ENABLED in this app's binary.")
+            print("      Patching the ASAR will cause the app to refuse to start.")
+            print("      Re-run with --disable-fuses to disable it before patching.")
+            sys.exit(1)
 
     # Validate requirements for patching
     if not args.server:
@@ -825,6 +949,10 @@ Examples:
         sys.exit(1)
 
     output_target = args.output or target_path
+    # Verify the patched ASAR is valid
+    if is_asar:
+        verify_patched_asar(output_target, results['entry_point'])
+
     print(f"\n  [+] Successfully patched: {output_target}")
     print_post_patch_guidance()
 

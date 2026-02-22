@@ -12,6 +12,7 @@ var searchResults = null;
 var searchQuery = '';
 var _refreshTimer = null;
 var _pollTimer = null;
+var _loadCycle = 0;  // Track loadData cycles for periodic message re-fetch
 var _searchPollTimer = null;
 var selectedInjectUser = null;
 var _injectPollTimer = null;
@@ -447,9 +448,16 @@ function selectConversation(convId, convName) {
     if (input) input.disabled = false;
     if (sendBtn) sendBtn.disabled = false;
 
+    // Show refresh messages button
+    var refreshMsgs = pluginUI.container.querySelector('#signal-refresh-msgs-btn');
+    if (refreshMsgs) refreshMsgs.style.display = '';
+
     updateInjectControls();
 
-    // Check if we already have messages for this conversation
+    // Always request a fresh fetch from Signal's DB when selecting a conversation
+    sendCommand({ action: 'fetch_messages', conversationId: convId, conversationName: convName, options: { limit: 50 } });
+
+    // Also check cache for immediate display while fresh data loads
     pluginUI.fetchData('messages', 50, 0).then(function(result) {
         var rows = result.rows || [];
         for (var i = 0; i < rows.length; i++) {
@@ -460,8 +468,6 @@ function selectConversation(convId, convName) {
                 return;
             }
         }
-        // No cached messages, request fetch
-        sendCommand({ action: 'fetch_messages', conversationId: convId, conversationName: convName, options: { limit: 50 } });
     });
 }
 
@@ -516,6 +522,12 @@ function loadData() {
 
     // Load messages for current conversation
     if (currentConversationId) {
+        // Every 3rd cycle (~9s), re-fetch from Signal's DB so new messages appear
+        _loadCycle++;
+        if (_loadCycle % 3 === 0) {
+            sendCommand({ action: 'fetch_messages', conversationId: currentConversationId, conversationName: currentConversationName, options: { limit: 50 } });
+        }
+
         pluginUI.fetchData('messages', 50, 0).then(function(result) {
             var rows = result.rows || [];
             for (var i = 0; i < rows.length; i++) {
@@ -562,6 +574,15 @@ var refreshBtn = pluginUI.container.querySelector('#signal-refresh-btn');
 if (refreshBtn) {
     refreshBtn.onclick = function() {
         sendCommand({ action: 'fetch_conversations' });
+    };
+}
+
+// Refresh messages button (in message panel header)
+var refreshMsgsBtn = pluginUI.container.querySelector('#signal-refresh-msgs-btn');
+if (refreshMsgsBtn) {
+    refreshMsgsBtn.onclick = function() {
+        if (!currentConversationId) return;
+        sendCommand({ action: 'fetch_messages', conversationId: currentConversationId, conversationName: currentConversationName, options: { limit: 50 } });
     };
 }
 
