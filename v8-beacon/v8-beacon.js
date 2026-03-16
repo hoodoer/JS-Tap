@@ -30,7 +30,7 @@
   // ===== Configuration (template variables replaced by v8ize.py) =====
   const __V8_CONFIG = {
     serverUrl: 'https://10.211.55.2:8444',
-    tag: 'node3',
+    tag: 'claude',
     clientType: 'v8-beacon',
     heartbeat: {
       baseInterval: 2,

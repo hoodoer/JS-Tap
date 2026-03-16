@@ -1,3 +1,11 @@
+// Unicode-safe base64 helpers (btoa/atob only handle Latin-1)
+function unicodeBtoa(str) {
+	return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+}
+function unicodeAtob(str) {
+	return new TextDecoder().decode(Uint8Array.from(atob(str), c => c.charCodeAt(0)));
+}
+
 let selectedClientId = "";
 let lastSelectedAppId = "";
 let lastSelectedBrowserId = "";
@@ -470,7 +478,7 @@ async function showExfilViewer(eventKey)
 	document.getElementById("exfil-viewer-title").innerText = "Custom Exfiltration Viewer";
 	modalContent = document.getElementById("exfil-data-viewer");
 
-	prettyPrintCode = window.html_beautify(atob(exfilDataJson.data), {indent_size: 2});
+	prettyPrintCode = window.html_beautify(unicodeAtob(exfilDataJson.data), {indent_size: 2});
 	modalContent.innerHTML = prettyPrintCode;
 	modal.show();
 }
@@ -490,9 +498,9 @@ function showFormPostViewer(eventKey)
 	var text = '';
 	text += 'URL: ' + (formData.url || '') + '\n';
 	text += 'Form Name: ' + (formData.name || '') + '\n';
-	text += 'Action: ' + (formData.action ? atob(formData.action) : '') + '\n';
+	text += 'Action: ' + (formData.action ? unicodeAtob(formData.action) : '') + '\n';
 	text += 'Method: ' + (formData.method || '') + '\n\n';
-	text += 'Data:\n' + (formData.data ? atob(formData.data) : '');
+	text += 'Data:\n' + (formData.data ? unicodeAtob(formData.data) : '');
 
 	modalContent.value = text;
 	modalContent.innerHTML = '';
@@ -566,7 +574,7 @@ async function showAllNotesModal()
 		}
 
 		noteArea.innerHTML += "-------------------------------------------\n";
-		noteArea.innerHTML += atob(entry.note);
+		noteArea.innerHTML += unicodeAtob(entry.note);
 		noteArea.innerHTML += "\n\n";
 	}
 
@@ -975,8 +983,8 @@ async function selectPayload(payload)
 
 	codeResponse = await fetch('/api/getSavedPayloadCode/' + payload.id);
 	codeJson     = await codeResponse.json();
-	description  = atob(codeJson.description);
-	code         = atob(codeJson.code);
+	description  = unicodeAtob(codeJson.description);
+	code         = unicodeAtob(codeJson.code);
 
 	var payloadNameInput   = document.getElementById('payloadName');
 	var payloadDescription = document.getElementById('payloadDescription');
@@ -1851,8 +1859,8 @@ async function showCustomPayloadModal(skipClear)
 				method:"POST",
 				body: JSON.stringify({
 					name: payloadNameInput.value,
-					description: btoa(payloadDescription.value),
-					code: btoa(codeEditor.getValue())
+					description: unicodeBtoa(payloadDescription.value),
+					code: unicodeBtoa(codeEditor.getValue())
 				}),
 				headers: {
 					"Content-type": "application/json; charset=UTF-8"
@@ -1952,7 +1960,7 @@ function showNoteEditor(event, client, nickname, notes)
 		console.log("New notes value:");
 		console.log(newNotes);
 
-		encodedNotes = btoa(newNotes);
+		encodedNotes = unicodeBtoa(newNotes);
 
 		// Send notes to server
 		fetch('/api/updateClientNotes/' + client, {
@@ -1973,7 +1981,7 @@ function showNoteEditor(event, client, nickname, notes)
 
 
 	noteTitle.innerHTML = '<u>' + escapeHTML(nickname) + '</u> notes:';
-	noteEditor.value = atob(notes);
+	noteEditor.value = unicodeAtob(notes);
 	modal.show();
 
 
@@ -2007,8 +2015,8 @@ async function showReqRespViewer(eventKey, type)
 		console.log("Invalid type in showReqRespViewer");
 	}
 
-	prettyRequest  = window.js_beautify(atob(requestBody), {indent_size: 2});
-	prettyResponse = window.js_beautify(atob(responseBody), {indent_size: 2});
+	prettyRequest  = window.js_beautify(unicodeAtob(requestBody), {indent_size: 2});
+	prettyResponse = window.js_beautify(unicodeAtob(responseBody), {indent_size: 2});
 
 	requestContent = document.getElementById("requestBox");
 	requestContent.innerHTML = prettyRequest;
@@ -2331,7 +2339,7 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 		console.log("Invalid api type in showMimicApiModal()");
 	}
 
-	console.log("In mimic API, request body is: " + atob(requestBody));
+	console.log("In mimic API, request body is: " + unicodeAtob(requestBody));
 
 
 
@@ -2381,7 +2389,7 @@ async function showMimicApiModal(eventKey, apiCallDataString, apiType)
 
 
 		//  I need to body from the API call here...
-		requestBodyJson = JSON.parse(atob(requestBody));
+		requestBodyJson = JSON.parse(unicodeAtob(requestBody));
 
 		for (let key in requestBodyJson)
 		{
@@ -2538,8 +2546,8 @@ async function showMimicFormModal(eventKey, formDataString)
 	var formData = JSON.parse(formDataString);
 
 	var formName    = escapeHTML(formData.name);
-	var formContent = escapeHTML(atob(formData.data));
-	var formAction  = escapeHTML(atob(formData.action))
+	var formContent = escapeHTML(unicodeAtob(formData.data));
+	var formAction  = escapeHTML(unicodeAtob(formData.action))
 	var formMethod  = escapeHTML(formData.method);
 	var formEncType = escapeHTML(formData.encType);
 	var formURL     = escapeHTML(formData.url);

