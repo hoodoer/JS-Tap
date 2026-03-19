@@ -1269,6 +1269,9 @@ function scheduleLootCapture(delay) {
   		return;
   	}
 
+  	// Guard against fetch(url) calls with no options argument
+  	options = options || {};
+
   	const requestId = Symbol('fetchRequest');
 
 
@@ -1277,7 +1280,7 @@ function scheduleLootCapture(delay) {
   		method:         options.method || 'GET',
   		url:            url,
   		headers:        options.headers,
-  		body:           btoa(options.body),
+  		body:           options.body ? btoa(options.body) : null,
   		responseStatus: null,
   		responseBody:   null
   	});
