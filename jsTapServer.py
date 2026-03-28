@@ -2751,8 +2751,8 @@ def blockClientSession(key):
 def getUniqueClientValues():
     clients = Client.query.all()
 
-    ips = sorted(set(escape(client.ipAddress) for client in clients if client.ipAddress))
-    browsers = sorted(set(escape(client.browser) for client in clients if client.browser))
+    ips = sorted(set(client.ipAddress for client in clients if client.ipAddress))
+    browsers = sorted(set(client.browser for client in clients if client.browser))
 
     return jsonify({'ips': ips, 'browsers': browsers})
 
@@ -3143,9 +3143,9 @@ if __name__ == '__main__':
     # If not proxy mode we'll run self-signed cert for testing
     if (proxyMode):
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-        app.run(debug=False, host='0.0.0.0', port=80)
+        app.run(debug=False, host='0.0.0.0', port=8444)
     else:
-        app.run(debug=False, host='0.0.0.0', port=80, ssl_context='adhoc')
+        app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
        
 
 

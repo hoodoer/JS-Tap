@@ -203,6 +203,31 @@ function blockClient(imgObject, event, client, nickname)
 
 
 
+function populateDeleteSessionDropdowns(data)
+{
+	var ipSelect      = document.getElementById('deleteFilterValue_ip');
+	var browserSelect = document.getElementById('deleteFilterValue_browser');
+
+	// Populate IP dropdown
+	ipSelect.innerHTML = '<option value="">-- Select IP --</option>';
+	data.ips.forEach(function(ip) {
+		var option = document.createElement('option');
+		option.value = ip;
+		option.textContent = ip;
+		ipSelect.appendChild(option);
+	});
+
+	// Populate Browser dropdown
+	browserSelect.innerHTML = '<option value="">-- Select Browser --</option>';
+	data.browsers.forEach(function(browser) {
+		var option = document.createElement('option');
+		option.value = browser;
+		option.textContent = browser;
+		browserSelect.appendChild(option);
+	});
+}
+
+
 async function showDeleteSessionsModal()
 {
 	var modal = new bootstrap.Modal(document.getElementById("deleteSessionsModal"));
@@ -214,26 +239,7 @@ async function showDeleteSessionsModal()
 		if (!req.ok) throw new Error('Server returned ' + req.status);
 		var data = await req.json();
 
-		var ipSelect      = document.getElementById('deleteFilterValue_ip');
-		var browserSelect = document.getElementById('deleteFilterValue_browser');
-
-		// Populate IP dropdown
-		ipSelect.innerHTML = '<option value="">-- Select IP --</option>';
-		data.ips.forEach(function(ip) {
-			var option = document.createElement('option');
-			option.value = ip;
-			option.textContent = ip;
-			ipSelect.appendChild(option);
-		});
-
-		// Populate Browser dropdown
-		browserSelect.innerHTML = '<option value="">-- Select Browser --</option>';
-		data.browsers.forEach(function(browser) {
-			var option = document.createElement('option');
-			option.value = browser;
-			option.textContent = browser;
-			browserSelect.appendChild(option);
-		});
+		populateDeleteSessionDropdowns(data);
 
 		document.getElementById('deleteSessionsResult').textContent = '';
 		modal.show();
@@ -266,40 +272,31 @@ async function deleteSessionsByFilter(filterType)
 		return;
 	}
 
-	var response = await fetch('/api/deleteClientsByFilter', {
-		method: 'POST',
-		headers: {'Content-Type': 'application/json'},
-		body: JSON.stringify({filterType: filterType, filterValue: filterValue})
-	});
+	try
+	{
+		var response = await fetch('/api/deleteClientsByFilter', {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify({filterType: filterType, filterValue: filterValue})
+		});
 
-	var result = await response.json();
-	document.getElementById('deleteSessionsResult').textContent = 'Deleted ' + result.deleted + ' client session(s).';
+		var result = await response.json();
+		document.getElementById('deleteSessionsResult').textContent = 'Deleted ' + result.deleted + ' client session(s).';
 
-	// Refresh the dropdowns
-	var req  = await fetch('/api/getUniqueClientValues');
-	var data = await req.json();
+		// Refresh the dropdowns
+		var req  = await fetch('/api/getUniqueClientValues');
+		var data = await req.json();
 
-	var ipSelect      = document.getElementById('deleteFilterValue_ip');
-	var browserSelect = document.getElementById('deleteFilterValue_browser');
+		populateDeleteSessionDropdowns(data);
 
-	ipSelect.innerHTML = '<option value="">-- Select IP --</option>';
-	data.ips.forEach(function(ip) {
-		var option = document.createElement('option');
-		option.value = ip;
-		option.textContent = ip;
-		ipSelect.appendChild(option);
-	});
-
-	browserSelect.innerHTML = '<option value="">-- Select Browser --</option>';
-	data.browsers.forEach(function(browser) {
-		var option = document.createElement('option');
-		option.value = browser;
-		option.textContent = browser;
-		browserSelect.appendChild(option);
-	});
-
-	// Refresh client list
-	updateClients();
+		// Refresh client list
+		updateClients();
+	}
+	catch (err)
+	{
+		console.error('Failed to delete sessions:', err);
+		alert('Failed to delete sessions. Make sure the server is running and try again.');
+	}
 }
 
 
