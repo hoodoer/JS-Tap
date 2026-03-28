@@ -77,6 +77,10 @@
 				</li>
 
 				<li class="nav-item">
+					<a class="nav-link" href="#deletesessions" id="deleteSessionsLink">&nbsp;Delete Sessions&nbsp;</a>
+				</li>
+
+				<li class="nav-item">
 					<a class="nav-link" href="#guide" id="guideLink">&nbsp;Guide&nbsp;</a>
 				</li>
 
@@ -102,6 +106,12 @@
 					customPayloadLink.addEventListener("click", function(event) {
 						event.preventDefault();
 						showCustomPayloadModal(false);
+					});
+
+					deleteSessionsLink = document.getElementById("deleteSessionsLink");
+					deleteSessionsLink.addEventListener("click", function(event) {
+						event.preventDefault();
+						showDeleteSessionsModal();
 					});
 
 					navAboutLink = document.getElementById("aboutLink");
@@ -468,6 +478,47 @@
 			</div>
 
 
+
+
+
+			<!-- Delete Sessions Modal -->
+			<div id="deleteSessionsModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title">Delete Client Sessions</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body">
+							<p>Permanently delete all client sessions and their loot data matching a specific IP or Browser value.</p>
+							<hr>
+
+							<h6>Delete by IP Address:</h6>
+							<div class="input-group mb-3">
+								<select class="form-select" id="deleteFilterValue_ip">
+									<option value="">-- Select IP --</option>
+								</select>
+								<button class="btn btn-danger" type="button" onclick="deleteSessionsByFilter('ip')">Delete</button>
+							</div>
+
+							<hr>
+
+							<h6>Delete by Browser:</h6>
+							<div class="input-group mb-3">
+								<select class="form-select" id="deleteFilterValue_browser">
+									<option value="">-- Select Browser --</option>
+								</select>
+								<button class="btn btn-danger" type="button" onclick="deleteSessionsByFilter('browser')">Delete</button>
+							</div>
+
+							<div id="deleteSessionsResult" class="text-success fw-bold mt-2"></div>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						</div>
+					</div>
+				</div>
+			</div>
 
 
 
