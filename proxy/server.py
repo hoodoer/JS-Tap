@@ -430,7 +430,7 @@ class ProxyRequestHandler(socketserver.BaseRequestHandler):
                 method, path, http_ver, headers, body = result
 
                 # Reconstruct the full URL
-                url = f"https://{host}{path}"
+                url = f"https://{host}:{port}{path}"
                 logger.info(f"Proxy: {method} {url}")
                 cookie_val = headers.get('Cookie', headers.get('cookie', ''))
                 logger.info(f"Proxy DEBUG: Cookie from browser: {cookie_val[:80]}..." if cookie_val else "Proxy DEBUG: NO Cookie header from browser")
