@@ -3175,21 +3175,21 @@ async function sidecarBrowse(beaconId) {
                     wparts.pop();
                     parent = wparts.length === 0 ? resolvedPath.substring(0, 3) : wparts.join('/');
                 }
-                html += '<tr><td><a href="#" onclick="sidecarNavigate(\'' + beaconId + '\', \'' + escapeHTML(parent).replace(/'/g, "\\'") + '\'); return false;">..</a></td><td></td><td></td><td></td></tr>';
-            }
+				html += '<tr><td><a href="#" onclick="sidecarNavigate(\'' + beaconId + '\', \'' + escapeHTML(parent).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\'); return false;">..</a></td><td></td><td></td><td></td></tr>';            
+			}
 
             entries.forEach(function(e) {
                 var sep = resolvedPath.endsWith('/') || resolvedPath.endsWith('\\') ? '' : '/';
                 var fullPath = resolvedPath + sep + e.name;
                 if (e.isDir) {
-                    html += '<tr><td><a href="#" onclick="sidecarNavigate(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/'/g, "\\'") + '\'); return false;">&#128193; ' + escapeHTML(e.name) + '/</a></td>';
+					html += '<tr><td><a href="#" onclick="sidecarNavigate(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\'); return false;">&#128193; ' + escapeHTML(e.name) + '/</a></td>';
                 } else {
                     html += '<tr><td>' + escapeHTML(e.name) + '</td>';
                 }
                 html += '<td>' + (e.isDir ? '' : formatSidecarBytes(e.size)) + '</td>';
                 html += '<td><small>' + escapeHTML(e.modTime || '') + '</small></td>';
                 if (!e.isDir) {
-                    html += '<td><button class="btn btn-primary btn-sm py-0 px-1" style="font-size:0.75em;" onclick="sidecarReadFile(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/'/g, "\\'") + '\')">Read</button></td>';
+					html += '<td><button class="btn btn-primary btn-sm py-0 px-1" style="font-size:0.75em;" onclick="sidecarReadFile(\'' + beaconId + '\', \'' + escapeHTML(fullPath).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + '\')">Read</button></td>';
                 } else {
                     html += '<td></td>';
                 }
