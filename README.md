@@ -1,5 +1,5 @@
 # JS-Tap
-### v3.0beta
+### v3.0
 
 ## This tool is intended to be used on systems you are authorized to attack and for legal and educational purposes. Do not use this tool for illegal purposes, or I will be very angry in your general direction.
 
@@ -253,10 +253,13 @@ git clone https://github.com/hoodoer/JS-Tap
 cd JS-Tap
 pip3 install -r requirements.txt
 
-run in debug/single thread mode:
-python3 jsTapServer.py
+# generate a self-signed cert for the server:
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 365 -nodes
 
-run with gunicorn multithreaded (production use):
+# run in debug/single thread mode:
+python3 jsTapServer.py
+#or
+# run with gunicorn multithreaded (production use):
 ./jstapRun.sh
 ```
 
