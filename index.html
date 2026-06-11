@@ -3,17 +3,32 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>JS-Tap</title>
+	<link rel="icon" type="image/svg+xml" href="protectedStatic/favicon.svg">
 	<link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
 	<link rel="stylesheet" href="static/node_modules/codemirror/lib/codemirror.css">
 
 
 	<style>
 		.table-active {
-			background-color: #f8f9fa;
+			background-color: rgba(255, 255, 255, 0.15);
+			border-left: 3px solid #6ea8fe !important;
+		}
+
+		/* Custom style for client type toggle to match selected client style */
+		.btn-check:checked + .btn-type-toggle {
+			background-color: rgba(255, 255, 255, 0.08) !important;
+			border-left: 3px solid #6ea8fe !important;
+			font-weight: bold;
+		}
+
+		.btn-type-toggle {
+			background-color: #343a40;
+			color: #adb5bd;
+			border-color: #52565a;
 		}
 
 		.card-stack {
-			height: calc(95vh - 130px);
+			height: calc(95vh - 85px);
 			overflow-y: auto;
 		}
 
@@ -22,24 +37,205 @@
 		}
 
 		body {
-			padding-top: 130px;
+			padding-top: 85px;
 			overflow: hidden;
 		}
 
+		.navbar {
+			padding-top: 0 !important;
+			padding-bottom: 0 !important;
+            border-bottom: 2px solid #6c757d; /* Salient separator line */
+		}
+
+		.navbar-brand {
+			padding-top: 0 !important;
+			padding-bottom: 0 !important;
+		}
+
 		#searchClientInput {
-			height: 30px; 
+			height: 30px;
 			padding: 3px 8px;
 			background-color: #aaa;
-			color: #000; /* Text color */
+			color: #000;
+			flex: 1;
+			min-width: 0;
+			font-size: 0.85em;
 		}
 
 		#searchClientInput::placeholder {
-			color: #8b8680; /* Placeholder text color */
+			color: #8b8680;
+			font-size: 0.9em;
+		}
+
+		/* Expand filter input on focus: hide label + toggle so input gets full width */
+		.filter-expanded .client-header-label,
+		.filter-expanded .client-type-toggle {
+			display: none !important;
+		}
+
+		/* Ghost Loot effect for background sessions */
+		.ghost-loot {
+			opacity: 0.3 !important;
+			filter: grayscale(100%) !important;
+			pointer-events: none !important;
+			transition: opacity 0.3s ease, filter 0.3s ease;
+		}
+
+		/* Toast notifications */
+		#toast-container {
+			z-index: 9999;
+		}
+
+		/* Active filter indicator dot */
+		.filter-dot {
+			position: absolute;
+			top: -3px;
+			right: -3px;
+			width: 10px;
+			height: 10px;
+			background-color: #ffc107;
+			border-radius: 50%;
+			border: 2px solid #fff;
+		}
+
+		/* New client stats pulse */
+		@keyframes statsPulse {
+			0% { color: #adb5bd; }
+			25% { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.6); }
+			100% { color: #adb5bd; text-shadow: none; }
+		}
+		.stats-pulse {
+			animation: statsPulse 1.5s ease-out;
+		}
+		@keyframes statsFlashApp {
+			0% { color: #adb5bd; }
+			25% { color: #5bc0de; text-shadow: 0 0 8px rgba(91,192,222,0.6); }
+			100% { color: #adb5bd; text-shadow: none; }
+		}
+		.stats-flash-app {
+			animation: statsFlashApp 1.5s ease-out;
+		}
+		@keyframes statsFlashBrowser {
+			0% { color: #adb5bd; }
+			25% { color: #62c462; text-shadow: 0 0 8px rgba(98,196,98,0.6); }
+			100% { color: #adb5bd; text-shadow: none; }
+		}
+		.stats-flash-browser {
+			animation: statsFlashBrowser 1.5s ease-out;
+		}
+		@keyframes statsFlashElectron {
+			0% { color: #adb5bd; }
+			25% { color: #f89406; text-shadow: 0 0 8px rgba(248,148,6,0.6); }
+			100% { color: #adb5bd; text-shadow: none; }
+		}
+		.stats-flash-electron {
+			animation: statsFlashElectron 1.5s ease-out;
+		}
+
+		.modal-content {
+			border: 2px solid #6c757d;
+		}
+
+		#savedPayloadsList > .list-group-item {
+			border-radius: 0.375rem !important;
+			border-top-width: 1px !important;
+		}
+
+		/* Client card overflow handling */
+		#client-stack .card-title {
+			display: flex;
+			align-items: center;
+			min-width: 0;
+		}
+		#client-stack .card-title .client-name {
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			min-width: 0;
+		}
+		#client-stack .card-title .client-card-actions {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-left: auto;
+			flex-shrink: 0;
+			padding-left: 6px;
+		}
+		#client-stack .card-subtitle,
+		#client-stack .card-text {
+			word-break: break-word;
 		}
 	</style>
 </head>
 
-<body>	
+<body>
+	<!-- Toast notification container -->
+	<div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+
+	<!-- Reusable confirm modal -->
+	<div id="confirmModal" class="modal fade" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="confirmModalTitle">Confirm</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body" id="confirmModalBody"></div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+					<button type="button" class="btn btn-primary" id="confirmModalOk">OK</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Reusable prompt modal -->
+	<div id="promptModal" class="modal fade" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="promptModalTitle">Input</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<p id="promptModalBody"></p>
+					<input type="text" class="form-control" id="promptModalInput">
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+					<button type="button" class="btn btn-primary" id="promptModalOk">OK</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Inject options modal -->
+	<div id="injectOptionsModal" class="modal fade" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">Inject DOM Beacon</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<p id="injectOptionsDomain" class="text-muted"></p>
+					<div class="mb-3">
+						<label for="injectTagInput" class="form-label">Tag</label>
+						<input type="text" class="form-control" id="injectTagInput" value="bex-injected">
+					</div>
+					<div class="mb-3">
+						<label for="injectServerInput" class="form-label">C2 Server URL</label>
+						<input type="text" class="form-control" id="injectServerInput">
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+					<button type="button" class="btn btn-primary" id="injectOptionsOk">Inject</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautifier.min.js"></script>
 	<script src="static/node_modules/js-beautify/js/lib/beautify-css.js"></script>
@@ -55,7 +251,7 @@
 
 	<!-- Nav Bar -->
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-		<a class="navbar-brand" href="https://github.com/hoodoer/JS-Tap" target="_blank"><img src="protectedStatic/logo.png" width="140" height="100" class="d-inline-block align-center" alt="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;JS-Tap</a>
+		<a class="navbar-brand" href="https://github.com/hoodoer/JS-Tap" target="_blank"><img src="protectedStatic/logo.png" width="105" height="75" class="d-inline-block align-center" alt="">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;JS-Tap</a>
 
 		<button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
 			<span class="navbar-toggler-icon"></span>
@@ -131,6 +327,9 @@
 					<a class="nav-link" href="/logout">&nbsp;Logout&nbsp;</a>				
 				</li>
 			</ul>
+            <span class="navbar-text ms-auto me-3" style="font-size: 0.9em; color: #adb5bd;">
+                <span id="client-stats">Loading Stats...</span> &nbsp;|&nbsp; <span style="font-size: 0.8em; opacity: 0.7;">v3.0beta</span>
+            </span>
 		</div>
 	</nav>
 
@@ -140,33 +339,61 @@
 	<!-- <div class="d-flex justify-content-between align-items-center"> -->
 
 
-		<div class="container-fluid border">
+		<div class="container-fluid">
 			<div class="row"> 
 
 				<!-- Client Card Stack -->
-				<div class="col-5" id="scrollContainer">
-					<div class="d-flex align-items-center">
-						<label style="margin-top: 8;"><h4><b>&nbsp;&nbsp;Clients</b></h4></label>
-						<div style="width: 25px;"></div>
-						<input type="text" class="form-control" placeholder="Filter clients..." id="searchClientInput">
-						<div style="width: 25px;"></div>
-						<button type="button" class="btn btn-primary" onclick=showClientFilterModal()><img src="/protectedStatic/filter.svg"></button>
+				<div class="col-4" id="scrollContainer">
+					<div class="d-flex align-items-center gap-2" id="clientHeaderBar">
+						<label class="client-header-label" style="margin-top: 8px;"><h4><b>Client</b></h4></label>
+						<div class="btn-group client-type-toggle" role="group" aria-label="Client Type Toggle">
+							<input type="radio" class="btn-check" name="clientTypeToggle" id="toggleApps" autocomplete="off" checked onclick="updateClients()">
+							<label class="btn btn-type-toggle btn-sm" for="toggleApps">Apps</label>
+
+							<input type="radio" class="btn-check" name="clientTypeToggle" id="toggleBrowsers" autocomplete="off" onclick="updateClients()">
+							<label class="btn btn-type-toggle btn-sm" for="toggleBrowsers">Browsers</label>
+
+							<input type="radio" class="btn-check" name="clientTypeToggle" id="toggleElectrons" autocomplete="off" onclick="updateClients()">
+							<label class="btn btn-type-toggle btn-sm" for="toggleElectrons">Electrons</label>
+
+							<input type="radio" class="btn-check" name="clientTypeToggle" id="toggleNodes" autocomplete="off" onclick="updateClients()">
+							<label class="btn btn-type-toggle btn-sm" for="toggleNodes">Nodes</label>
+						</div>
+						<input type="text" class="form-control" placeholder="Filter..." id="searchClientInput">
+						<button type="button" class="btn btn-primary position-relative" id="clientFilterBtn" onclick=showClientFilterModal()><img src="/protectedStatic/filter.svg"></button>
 					</div>
 					<div class="card-stack" id="client-stack"></div>
 				</div>
 
 				<!-- Register filter handler -->
-				<script type="text/javascript">document.getElementById('searchClientInput').addEventListener('input', updateClients);</script>
+				<script type="text/javascript">
+					document.getElementById('searchClientInput').addEventListener('input', updateClients);
+					(function() {
+						var input = document.getElementById('searchClientInput');
+						var bar = document.getElementById('clientHeaderBar');
+						input.addEventListener('focus', function() { bar.classList.add('filter-expanded'); });
+						input.addEventListener('blur', function() { bar.classList.remove('filter-expanded'); });
+						input.addEventListener('keydown', function(e) { if (e.key === 'Enter') input.blur(); });
+					})();
+				</script>
 
 				<!-- Client Event Card Stack, filled in dynamically with JavaScript -->
-				<div class="col-7">
+				<div class="col-8" style="border-left: 1px solid #52565a;">
 
 					<div class="d-flex justify-content-between align-items-center">
-						<label style="margin-top: 8;"><h4><b>&nbsp;&nbsp;Loot</b></h4></label>
-						<button type="button" class="btn btn-primary" onclick=showEventFilterModal()><img src="/protectedStatic/filter.svg"></button>
-
+						<div id="loot-header-area" class="d-flex align-items-center gap-2">
+							<label style="margin-top: 8px;"><h4 id="loot-header-text"><b>&nbsp;&nbsp;Loot</b></h4></label>
+						</div>
+						<div id="loot-toolbar-buttons">
+							<button type="button" class="btn btn-primary position-relative me-1" onclick="showLootSearchModal()" title="Search Loot">
+								<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
+							</button>
+							<button type="button" class="btn btn-primary position-relative" id="eventFilterBtn" onclick=showEventFilterModal()><img src="/protectedStatic/filter.svg"></button>
+						</div>
 					</div>
 					<div class="card-stack" id="detail-stack">
+					</div>
+					<div class="card-stack" id="tools-stack" style="display: none;">
 					</div>
 				</div>
 			</div>
@@ -199,7 +426,7 @@
 				<div class="modal-dialog">
 					<div class="modal-content">
 						<div class="modal-header">
-							<h5 class="modal-title" id="aboutTitle">About JS-Tap</h5>
+							<h5 class="modal-title" id="aboutTitle">About JS-Tap v3.0beta</h5>
 							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
 						<div class="modal-body" id="code-viewer-body">
@@ -351,7 +578,7 @@
 
 							<h5><u>Order clients by date/time they were first seen:</u></h5>
 							<div class="form-check">
-								<input class="form-check-input" type="radio" name="flexRadioDefault" id="firstSeenAscending" checked>
+								<input class="form-check-input" type="radio" name="flexRadioDefault" id="firstSeenAscending">
 								<label class="form-check-label" for="flexRadioDefault1">
 									First Seen - Oldest to most recent
 								</label>
@@ -371,7 +598,7 @@
 								</label>
 							</div>
 							<div class="form-check">
-								<input class="form-check-input" type="radio" name="flexRadioDefault" id="lastSeenDescending">
+								<input class="form-check-input" type="radio" name="flexRadioDefault" id="lastSeenDescending" checked>
 								<label class="form-check-label" for="flexRadioDefault2">
 									Last Seen - Most recent to oldest
 								</label>
@@ -397,17 +624,28 @@
 
 
 
-			<!-- Event Filtering Modal -->
+			<!-- Loot Options Modal -->
 			<div id="eventFilterModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
 				<div class="modal-dialog">
 					<div class="modal-content">
 						<div class="modal-header">
-							<h5 class="modal-title">Event Filtering</h5>
+							<h5 class="modal-title">Loot Options</h5>
 							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
 						<div class="modal-body" id="eventFilterModalBody">
-							<button type="button" class="btn btn-primary" onclick=selectAllEvents()>Select All</button>
-							<button type="button" class="btn btn-primary" onclick=selectNoEvents()>Select None</button><br><br>
+							<h6><u>Sort Order</u></h6>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="lootSortOrder" id="lootSortOldest" checked>
+								<label class="form-check-label" for="lootSortOldest">Oldest first</label>
+							</div>
+							<div class="form-check mb-3">
+								<input class="form-check-input" type="radio" name="lootSortOrder" id="lootSortNewest">
+								<label class="form-check-label" for="lootSortNewest">Newest first</label>
+							</div>
+							<hr>
+							<h6><u>Event Types</u> <small class="text-muted">(App loot only)</small></h6>
+							<button type="button" class="btn btn-primary btn-sm" onclick=selectAllEvents()>Select All</button>
+							<button type="button" class="btn btn-primary btn-sm" onclick=selectNoEvents()>Select None</button><br><br>
 							<div class="form-check">
 								<input class="form-check-input" type="checkbox" value="" id="cookieEvents" checked>
 								<label class="form-check-label" for="flexCheckDefault">
@@ -468,6 +706,18 @@
 									Custom Payload Exfiltrated Data
 								</label>
 							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="pluginEvents" checked>
+								<label class="form-check-label" for="pluginEvents">
+									Plugin Data
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" value="" id="keylogEvents" checked>
+								<label class="form-check-label" for="keylogEvents">
+									Keylogs
+								</label>
+							</div>
 
 						</div>
 						<div class="modal-footer">
@@ -523,103 +773,120 @@
 
 
 			<!-- Application Settings Control Modal -->
-			<div id="clientSessionModal" class="modal fade modal-md" tabindex="-1" aria-hidden="true">
-				<div class="modal-dialog">
+			<div id="clientSessionModal" class="modal fade" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog modal-lg">
 					<div class="modal-content">
 						<div class="modal-header">
 							<h5 class="modal-title">App Settings</h5>
 							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 						</div>
-						<div class="modal-body" id="clientFilterModalBody">
-							<div class="form-check form-switch">
-								<input class="form-check-input" type="checkbox" id="obfuscateTraffic">
-								<label class="form-check-label" for="obfuscateTraffic">Disable/Enable Traffic Obfuscation</label>
-							</div>
-							<hr>
-
-							<div class="form-check form-switch">
-								<input class="form-check-input" type="checkbox" id="allowNewClientSessions" checked>
-								<label class="form-check-label" for="allowNewClientSessions">Disable/Enable New Client Sessions</label>
-							</div>
-							<hr>
-
-							<div class="form-check form-switch">
-								<input class="form-check-input" type="checkbox" id="showFingerprints">
-								<label class="form-check-label" for="showFingerprints">Disable/Enable Show Client Fingerprints</label>
-							</div>
-							<hr>
-
-
-							<!-- Email Settings -->
-							<h6>Email Notifications Settings:</h6>
-							<div class="mb-3">
-								<label for="smtpServer">SMTP Server:Port</label><br>
-								<input type="text" class="form-control" id="smtpServer">
-							</div>
-							<div class="mb-3">
-								<label for="emailUsername">Username</label><br>
-								<input type="text" class="form-control" id="emailUsername">
-								
-								<label for="emailPassword">Password</label><br>
-								<input type="password" class="form-control" id="emailPassword">
-							</div>
-
-							<!-- List of email addresses to notify -->
-							<div class="mb-3">
-								<label for="emailInput">Enter Email</label>
-
-								<div class="input-group mb-3">
-									<input id="emailInput" type="text" class="form-control" placeholder="Enter Email">
-									<button id="addEmail" class="btn btn-primary" type="button">Add</button>
+						<div class="modal-body">
+							<ul class="nav nav-tabs mb-3" role="tablist">
+								<li class="nav-item">
+									<button class="nav-link active" data-bs-toggle="tab" data-bs-target="#settings-general" type="button">General</button>
+								</li>
+								<li class="nav-item">
+									<button class="nav-link" data-bs-toggle="tab" data-bs-target="#settings-email" type="button">Email Notifications</button>
+								</li>
+								<li class="nav-item">
+									<button class="nav-link" data-bs-toggle="tab" data-bs-target="#settings-access" type="button">Access Control</button>
+								</li>
+							</ul>
+							<div class="tab-content">
+								<!-- General Tab -->
+								<div class="tab-pane fade show active" id="settings-general">
+									<div class="form-check form-switch mb-3">
+										<input class="form-check-input" type="checkbox" id="obfuscateTraffic">
+										<label class="form-check-label" for="obfuscateTraffic">Traffic Obfuscation</label>
+									</div>
+									<div class="form-check form-switch mb-3">
+										<input class="form-check-input" type="checkbox" id="allowNewClientSessions" checked>
+										<label class="form-check-label" for="allowNewClientSessions">New Client Sessions</label>
+									</div>
+									<div class="form-check form-switch mb-3">
+										<input class="form-check-input" type="checkbox" id="showFingerprints">
+										<label class="form-check-label" for="showFingerprints">Show Client Fingerprints</label>
+									</div>
+									<div class="form-check form-switch mb-3">
+										<input class="form-check-input" type="checkbox" id="enableSoundNotifications" checked>
+										<label class="form-check-label" for="enableSoundNotifications">Sound Notifications</label>
+									</div>
+									<hr>
+									<div class="mb-3">
+										<label for="clientRefreshDelay" class="form-label">Client List Refresh Interval (seconds)</label>
+										<input type="number" class="form-control" id="clientRefreshDelay" value="5" style="max-width: 120px;">
+									</div>
+									<hr>
+									<h6>Browser Proxy</h6>
+									<p class="text-muted small">Import this CA certificate into your browser to use the MITM proxy for routing traffic through bex-beacon clients.</p>
+									<button class="btn btn-outline-info btn-sm" onclick="downloadCaCert()">Download Proxy CA Certificate</button>
 								</div>
-								<ul id="emailAddressList" class="list-group">
-								</ul>
-								<script>document.getElementById("addEmail").addEventListener('click', addEmail);</script>
-								<br>
-								<div class="form-check form-switch">
-									<input class="form-check-input" type="checkbox" id="enableEmails">
-									<label class="form-check-label" for="enableEmails">Disable/Enable Emails</label>
-								</div>
-								<div class="mb-3">
-									<br>
-									<label for="emailNotificationType">Event Type</label>
-									<select class="form-select" id="emailNotificationType">
-										<option value="newClients">Notify on new clients</option>
-										<option value="newClientsAndEvents">Notify on new clients and events</option>
-									</select>
-								</div>
-								<div class="mb-3">
-									<label for="emailDelay">Delay Between Emails (seconds)</label>
-									<input type="number" class="form-control" placeholder="Delay between emails (minutes)" id="emailDelay">
-								</div>
-								
-								<!-- Buttons for saving settings and sending test email -->
-								<div class="d-grid gap-2 d-md-flex justify-content-md-end">
-									<button class="btn btn-primary" type="button" id="saveEmailSettings">Save Email Settings</button>
-									<button class="btn btn-secondary" type="button" id="sendTestEmail">Test Email</button>
-								</div>
-								<hr>
 
-								<!-- Delay Between Client List Refresh -->
-								<div class="mb-3">
-									<label for="clientRefreshDelay">Delay Between Client List Refresh (seconds):</label><br>
-									<input type="number" class="form-control" id="clientRefreshDelay" value="5">
+								<!-- Email Notifications Tab -->
+								<div class="tab-pane fade" id="settings-email">
+									<div class="row mb-3">
+										<div class="col-12 mb-3">
+											<label for="smtpServer" class="form-label">SMTP Server:Port</label>
+											<input type="text" class="form-control" id="smtpServer" placeholder="smtp.example.com:587">
+										</div>
+										<div class="col-md-6 mb-3">
+											<label for="emailUsername" class="form-label">Username</label>
+											<input type="text" class="form-control" id="emailUsername">
+										</div>
+										<div class="col-md-6 mb-3">
+											<label for="emailPassword" class="form-label">Password</label>
+											<input type="password" class="form-control" id="emailPassword">
+										</div>
+									</div>
+									<hr>
+									<div class="mb-3">
+										<label for="emailInput" class="form-label">Recipients</label>
+										<div class="input-group mb-2">
+											<input id="emailInput" type="text" class="form-control" placeholder="user@example.com">
+											<button id="addEmail" class="btn btn-primary" type="button">Add</button>
+										</div>
+										<ul id="emailAddressList" class="list-group mb-3"></ul>
+										<script>document.getElementById("addEmail").addEventListener('click', addEmail);</script>
+									</div>
+									<hr>
+									<div class="form-check form-switch mb-3">
+										<input class="form-check-input" type="checkbox" id="enableEmails">
+										<label class="form-check-label" for="enableEmails">Email Notifications</label>
+									</div>
+									<div class="row mb-3">
+										<div class="col-md-6 mb-3">
+											<label for="emailNotificationType" class="form-label">Notify On</label>
+											<select class="form-select" id="emailNotificationType">
+												<option value="newClients">New clients</option>
+												<option value="newClientsAndEvents">New clients and events</option>
+											</select>
+										</div>
+										<div class="col-md-6 mb-3">
+											<label for="emailDelay" class="form-label">Delay Between Emails (seconds)</label>
+											<input type="number" class="form-control" id="emailDelay">
+										</div>
+									</div>
+									<div class="d-flex gap-2 justify-content-end">
+										<button class="btn btn-primary" type="button" id="saveEmailSettings">Save Email Settings</button>
+										<button class="btn btn-secondary" type="button" id="sendTestEmail">Test Email</button>
+									</div>
 								</div>
-								<hr>
-								
-								<!-- List of Blocked IPs -->
-								<h6>IPs Blocked From Running JS-Tap Client:</h6>
-								<div class="input-group mb-3">
-									<input id="ipInput" type="text" class="form-control" placeholder="Enter IP">
-									<button id="addBlockIP" class="btn btn-primary" type="button">Add</button>
+
+								<!-- Access Control Tab -->
+								<div class="tab-pane fade" id="settings-access">
+									<h6>Blocked IPs</h6>
+									<p class="text-muted small">Clients from these IPs will not receive a JS-Tap session.</p>
+									<div class="input-group mb-2">
+										<input id="ipInput" type="text" class="form-control" placeholder="Enter IP address">
+										<button id="addBlockIP" class="btn btn-primary" type="button">Add</button>
+									</div>
+									<ul id="blockedIPList" class="list-group"></ul>
+									<script>document.getElementById("addBlockIP").addEventListener('click', blockIP);</script>
 								</div>
-								<ul id="blockedIPList" class="list-group">
-								</ul>
-								<script>document.getElementById("addBlockIP").addEventListener('click', blockIP);</script>
 							</div>
-							<div class="modal-footer">
-								<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
-							</div>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick=updateClientSessions()>Close</button>
 						</div>
 					</div>
 				</div>
@@ -687,6 +954,41 @@
 				</div>
 			</div>
 
+			<!-- Target Rule Modal -->
+			<div id="targetRuleModal" class="modal fade" tabindex="-1" aria-hidden="true">
+				<div class="modal-dialog modal-lg" style="margin-top: 8vh;">
+					<div class="modal-content">
+						<div class="modal-header">
+							<h5 class="modal-title">Add Target Rule</h5>
+							<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+						</div>
+						<div class="modal-body">
+							<label class="form-label">Filter Query:</label>
+							<div class="input-group mb-3">
+								<input type="text" class="form-control" id="targetRuleFilterInput"
+								       placeholder="e.g. linux && chrome && !bex">
+								<button class="btn btn-secondary" id="targetRulePreviewBtn">Preview</button>
+							</div>
+							<div class="mb-3" style="font-size: 0.78em;">
+								Searchable fields: <b>tag</b>, <b>nickname</b>, <b>platform</b>, <b>browser</b>, <b>type</b>, <b>domain</b>, <b>ip</b>, <b>uuid</b>.
+								Use <b>&&</b> for AND, <b>!</b> for NOT.
+							</div>
+							<div id="targetRulePreviewResults" style="display: none;">
+								<div class="d-flex align-items-center mb-2">
+									<span>Matching Clients:</span>
+									<span id="targetRulePreviewCount" class="badge bg-secondary ms-2">0</span>
+								</div>
+								<div id="targetRulePreviewList"
+								    style="max-height: 300px; overflow-y: auto;"></div>
+							</div>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+							<button type="button" class="btn btn-primary" id="targetRuleSaveBtn">Save Rule</button>
+						</div>
+					</div>
+				</div>
+			</div>
 
 
 			<!-- Custom Payload Modal - Single Client -->
@@ -858,6 +1160,76 @@
 			</div>
 		</div>
 
+
+
+		<!-- Loot Search Modal -->
+		<div id="lootSearchModal" class="modal fade modal-xl" tabindex="-1" aria-hidden="true">
+			<div class="modal-dialog modal-xl">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title">Search Loot</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+					</div>
+					<div class="modal-body">
+						<div class="row mb-3">
+							<div class="col-md-5">
+								<label class="form-label"><b>Client Filter</b> <small class="text-muted">(same syntax as client list: && / !)</small></label>
+								<input type="text" class="form-control" id="lootSearchClientFilter" placeholder="e.g. wp5 && linux">
+							</div>
+							<div class="col-md-5">
+								<label class="form-label"><b>Search Query</b></label>
+								<input type="text" class="form-control" id="lootSearchQuery" placeholder="e.g. password">
+							</div>
+							<div class="col-md-2 d-flex flex-column justify-content-end">
+								<div class="mb-1">
+									<select class="form-select form-select-sm" id="lootSearchSortOrder">
+										<option value="newest" selected>Newest first</option>
+										<option value="oldest">Oldest first</option>
+									</select>
+								</div>
+								<button type="button" class="btn btn-primary w-100" onclick="executeLootSearch(1)">Search</button>
+							</div>
+						</div>
+						<div class="mb-3">
+							<label class="form-label"><b>Event Types</b></label>
+							<div class="d-flex mb-2">
+								<button type="button" class="btn btn-outline-secondary btn-sm me-2" onclick="lootSearchSelectAll()">Select All</button>
+								<button type="button" class="btn btn-outline-secondary btn-sm" onclick="lootSearchSelectNone()">Select None</button>
+							</div>
+							<div class="row">
+								<div class="col-md-4">
+									<small class="text-muted">App Events</small>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="USERINPUT" id="ls_USERINPUT" checked><label class="form-check-label" for="ls_USERINPUT">Inputs</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="FORMPOST" id="ls_FORMPOST" checked><label class="form-check-label" for="ls_FORMPOST">Forms</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="COOKIE" id="ls_COOKIE" checked><label class="form-check-label" for="ls_COOKIE">Cookies</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="LOCALSTORAGE" id="ls_LOCALSTORAGE" checked><label class="form-check-label" for="ls_LOCALSTORAGE">Local Storage</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="SESSIONSTORAGE" id="ls_SESSIONSTORAGE" checked><label class="form-check-label" for="ls_SESSIONSTORAGE">Session Storage</label></div>
+								</div>
+								<div class="col-md-4">
+									<small class="text-muted">&nbsp;</small>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="URLVISITED" id="ls_URLVISITED" checked><label class="form-check-label" for="ls_URLVISITED">URLs</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="XHRAPICALL" id="ls_XHRAPICALL" checked><label class="form-check-label" for="ls_XHRAPICALL">XHR Calls</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="FETCHAPICALL" id="ls_FETCHAPICALL" checked><label class="form-check-label" for="ls_FETCHAPICALL">Fetch Calls</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="CUSTOMEXFIL" id="ls_CUSTOMEXFIL" checked><label class="form-check-label" for="ls_CUSTOMEXFIL">Custom Exfil</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="KEYLOG" id="ls_KEYLOG" checked><label class="form-check-label" for="ls_KEYLOG">Keylogs</label></div>
+								</div>
+								<div class="col-md-4">
+									<small class="text-muted">Beacon Events</small>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="BEACON_CAPTURE" id="ls_BEACON_CAPTURE" checked><label class="form-check-label" for="ls_BEACON_CAPTURE">Captures</label></div>
+									<div class="form-check"><input class="form-check-input loot-search-evt" type="checkbox" value="BEACON_VISIT" id="ls_BEACON_VISIT" checked><label class="form-check-label" for="ls_BEACON_VISIT">Visits</label></div>
+								</div>
+							</div>
+						</div>
+						<div id="lootSearchSummary" class="text-muted mb-2" style="display:none;"></div>
+						<div id="lootSearchResults" style="max-height: 450px; overflow-y: auto;"></div>
+					</div>
+					<div class="modal-footer" id="lootSearchFooter">
+						<div id="lootSearchPagination" class="d-flex align-items-center gap-2"></div>
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					</div>
+				</div>
+			</div>
+		</div>
 
 	</body>
 	</html>

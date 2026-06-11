@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "name": "bexBeacon Firefox",
+  "description": "Removes CSP and X-Frame-Options headers and meta tags.",
+  "version": "1.0",
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>JS-Tap Conductor</h1>
+
+    <div class="section">
+      <h2>Import Ticket</h2>
+      <textarea id="ticketInput" placeholder="Paste JS-Tap ticket here (session or proxy)..."></textarea>
+      <button id="importBtn" class="btn btn-import">Import</button>
+    </div>
+
+    <div id="statusBar" class="status" style="display: none;"></div>
+
+    <div class="section">
+      <h2>Saved Tickets</h2>
+      <div id="ticketList" class="ticket-list">
+        <p class="empty">No saved tickets</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

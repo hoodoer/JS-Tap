@@ -1,0 +1,77 @@
+# JS-Tap Network Detection Rules (Suricata/Snort format)
+# https://github.com/hoodoer/JS-Tap
+#
+# These rules detect JS-Tap network traffic patterns.
+# Note: If traffic obfuscation is enabled, the /client/metrics endpoint
+# carries AES-GCM encrypted payloads and individual /loot/* paths won't
+# appear on the wire. The key exchange and token endpoints are still visible.
+#
+# Usage (Suricata):
+#   Copy to /etc/suricata/rules/ and add to suricata.yaml rule-files list.
+#
+# Usage (Snort):
+#   Copy to /etc/snort/rules/ and include in snort.conf.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JS-Tap Implant — Session Registration
+# ─────────────────────────────────────────────────────────────────────────────
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Implant client registration (getToken)"; flow:established,to_server; http.uri; content:"/client/getToken"; startswith; classtype:trojan-activity; sid:2100001; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Key exchange (RSA-OAEP/AES-GCM setup)"; flow:established,to_server; http.uri; content:"/client/keyExchange/"; startswith; classtype:trojan-activity; sid:2100002; rev:1;)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JS-Tap Implant — Loot Exfiltration (cleartext mode)
+# ─────────────────────────────────────────────────────────────────────────────
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Screenshot exfiltration"; flow:established,to_server; http.uri; content:"/loot/screenshot"; startswith; classtype:trojan-activity; sid:2100010; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Form post exfiltration"; flow:established,to_server; http.uri; content:"/loot/formPost"; startswith; classtype:trojan-activity; sid:2100011; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Input capture exfiltration"; flow:established,to_server; http.uri; content:"/loot/input"; startswith; classtype:trojan-activity; sid:2100012; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP URL visited exfiltration"; flow:established,to_server; http.uri; content:"/loot/location"; startswith; classtype:trojan-activity; sid:2100013; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP HTML exfiltration"; flow:established,to_server; http.uri; content:"/loot/html"; startswith; classtype:trojan-activity; sid:2100014; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Cookie exfiltration"; flow:established,to_server; http.uri; content:"/loot/cookie"; startswith; classtype:trojan-activity; sid:2100015; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP LocalStorage exfiltration"; flow:established,to_server; http.uri; content:"/loot/localStorage"; startswith; classtype:trojan-activity; sid:2100016; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP SessionStorage exfiltration"; flow:established,to_server; http.uri; content:"/loot/sessionStorage"; startswith; classtype:trojan-activity; sid:2100017; rev:1;)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JS-Tap — Encrypted Metrics Channel (obfuscated mode)
+# ─────────────────────────────────────────────────────────────────────────────
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Encrypted metrics channel"; flow:established,to_server; http.uri; content:"/client/metrics/"; startswith; http.method; content:"POST"; classtype:trojan-activity; sid:2100020; rev:1;)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JS-Tap — Custom Payload Polling
+# ─────────────────────────────────────────────────────────────────────────────
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP Custom payload task check"; flow:established,to_server; http.uri; content:"/api/getCustomPayloadJobs/"; startswith; classtype:trojan-activity; sid:2100030; rev:1;)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BEX Beacon — Telemetry Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP BEX Beacon capture data (cookies/storage/headers)"; flow:established,to_server; http.uri; content:"/bex/capture"; startswith; classtype:trojan-activity; sid:2100040; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP BEX Beacon domain report"; flow:established,to_server; http.uri; content:"/bex/report"; startswith; classtype:trojan-activity; sid:2100041; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP BEX Beacon screenshot exfil"; flow:established,to_server; http.uri; content:"/bex/screenshot/"; startswith; classtype:trojan-activity; sid:2100042; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"JS-TAP BEX Sidecar result upload"; flow:established,to_server; http.uri; content:"/bex/sidecar/result"; startswith; classtype:trojan-activity; sid:2100043; rev:1;)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JS-Tap Payload Delivery
+# ─────────────────────────────────────────────────────────────────────────────
+
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"JS-TAP Payload delivery (telemlib.js)"; flow:established,to_client; http.uri; content:"/lib/telemlib.js"; classtype:trojan-activity; sid:2100050; rev:1;)

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Camelot Quest Board</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Georgia', serif; background: #1a0f0a; color: #d4c5a9; padding: 20px; }
+
+        nav { background: #2a1a0e; padding: 12px 20px; margin-bottom: 20px; border-radius: 4px; display: flex; align-items: center; gap: 15px; border: 1px solid #4a3520; }
+        nav a { color: #c9a84c; text-decoration: none; padding: 6px 12px; border-radius: 3px; font-family: 'Georgia', serif; }
+        nav a:hover, nav a.active { background: #3d2815; color: #f0d060; }
+        nav .spacer { flex: 1; }
+
+        #inject-btn { background: #8b0000; color: #f0d060; border: 1px solid #c9a84c; padding: 8px 16px; cursor: pointer; border-radius: 3px; font-family: 'Georgia', serif; font-size: 14px; }
+        #inject-btn:hover { background: #a01010; }
+
+        #app { max-width: 700px; }
+        h1 { color: #c9a84c; margin-bottom: 15px; }
+        h2 { color: #8b0000; margin-bottom: 10px; }
+        p { line-height: 1.6; margin-bottom: 10px; }
+        code { background: #2a1a0e; padding: 2px 6px; border-radius: 3px; font-family: monospace; color: #c9a84c; }
+        em { color: #a08050; }
+
+        .filters { margin: 15px 0; display: flex; gap: 8px; }
+        .filters a { color: #a08050; text-decoration: none; padding: 4px 10px; border: 1px solid #4a3520; border-radius: 3px; font-size: 13px; }
+        .filters a:hover, .filters a.active { color: #c9a84c; border-color: #c9a84c; }
+
+        .quest-list { list-style: none; }
+        .quest-list li { background: #2a1a0e; padding: 10px 15px; margin-bottom: 6px; border-radius: 3px; display: flex; align-items: center; gap: 10px; border: 1px solid #3d2815; }
+        .quest-list li.done { border-color: #2a3d15; }
+        .quest-list li.done span.title { text-decoration: line-through; color: #666; }
+        .quest-list li span.title { flex: 1; }
+        .quest-list li button { background: none; border: 1px solid #4a3520; color: #a08050; padding: 3px 8px; cursor: pointer; border-radius: 3px; font-family: 'Georgia', serif; font-size: 12px; }
+        .quest-list li button:hover { border-color: #c9a84c; color: #c9a84c; }
+        .quest-list li button.del:hover { border-color: #8b0000; color: #8b0000; }
+
+        .add-form { display: flex; gap: 8px; margin-top: 15px; }
+        .add-form input { background: #2a1a0e; border: 1px solid #4a3520; color: #d4c5a9; padding: 8px 12px; flex: 1; border-radius: 3px; font-family: 'Georgia', serif; }
+        .add-form button { background: #3d2815; color: #c9a84c; border: 1px solid #4a3520; padding: 8px 16px; cursor: pointer; border-radius: 3px; font-family: 'Georgia', serif; }
+
+        .section { margin-top: 20px; padding-top: 15px; border-top: 1px solid #3d2815; }
+        .section h3 { color: #c9a84c; margin-bottom: 8px; }
+
+        .swallow-box { background: #2a1a0e; border: 1px solid #4a3520; padding: 15px; border-radius: 4px; margin-top: 10px; }
+        .swallow-box select, .swallow-box button { font-family: 'Georgia', serif; padding: 6px 12px; background: #3d2815; color: #c9a84c; border: 1px solid #4a3520; border-radius: 3px; cursor: pointer; }
+        .swallow-box #swallow-answer { margin-top: 10px; color: #c9a84c; font-style: italic; min-height: 20px; }
+
+        #debug-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0d0805; border-top: 1px solid #3d2815; padding: 6px 20px; font-size: 12px; color: #665533; font-family: monospace; }
+        #debug-bar span { color: #c9a84c; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/" data-link>Camelot</a>
+        <a href="/quests" data-link>Quests</a>
+        <a href="/quests?filter=active" data-link>Questing</a>
+        <a href="/quests?filter=done" data-link>Completed</a>
+        <a href="/tavern" data-link>Tavern</a>
+        <a href="/tavern#swallow" data-link>Swallows</a>
+        <span class="spacer"></span>
+        <button id="inject-btn">Inject JS-Tap</button>
+    </nav>
+
+    <div id="app"></div>
+
+    <div id="debug-bar">
+        Current location: <span id="debug-url"></span>
+    </div>
+
+    <script src="/spa.js"></script>
+</body>
+</html>

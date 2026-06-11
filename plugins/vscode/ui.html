@@ -1,0 +1,507 @@
+<style>
+    #vsc-file-path-input, #vsc-write-textarea, #vsc-dir-input {
+        background-color: #aaa !important;
+        color: #000 !important;
+    }
+    #vsc-file-path-input::placeholder, #vsc-dir-input::placeholder {
+        color: #8b8680;
+        font-size: 0.9em;
+    }
+    #vsc-chat-viewer {
+        overflow-y: auto;
+        max-height: 450px;
+        padding: 8px;
+    }
+    .vsc-chat-user {
+        background: #3a3f44;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 6px;
+    }
+    .vsc-chat-ai {
+        background: #272b30;
+        border: 1px solid #52565a;
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 6px;
+    }
+    .vsc-sidebar-item {
+        padding: 4px 8px;
+        cursor: pointer;
+        border-radius: 3px;
+        font-size: 0.85em;
+    }
+    .vsc-sidebar-item:hover {
+        background: rgba(255,255,255,0.08);
+    }
+    .vsc-sidebar-item.active {
+        background: rgba(255,255,255,0.12);
+        border-left: 3px solid #62c462;
+    }
+    .vsc-dir-entry {
+        padding: 3px 6px;
+        cursor: pointer;
+        font-size: 0.85em;
+    }
+    .vsc-dir-entry:hover {
+        background: rgba(255,255,255,0.08);
+    }
+    .vsc-file-link {
+        cursor: pointer;
+        color: #aaa;
+        font-family: monospace;
+        font-size: 0.85em;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    .vsc-file-link:hover {
+        color: #fff;
+        background: rgba(255,255,255,0.08);
+    }
+    /* Mini code viewer on Files tab */
+    #vsc-mini-code-view {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.82em;
+        overflow: auto;
+        padding: 0;
+        border-radius: 4px;
+        min-height: 150px;
+        max-height: 380px;
+        line-height: 1.5;
+        tab-size: 4;
+    }
+    #vsc-mini-code-view .code-line {
+        display: block;
+        padding: 0 8px 0 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    #vsc-mini-code-view .code-line:hover {
+        background: rgba(255,255,255,0.04);
+    }
+    #vsc-mini-code-view .line-number {
+        display: inline-block;
+        width: 40px;
+        min-width: 40px;
+        text-align: right;
+        padding-right: 8px;
+        margin-right: 8px;
+        color: #858585;
+        border-right: 1px solid #333;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    /* Full modal code viewer */
+    #vsc-modal-code-view {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.85em;
+        overflow: auto;
+        padding: 0;
+        border-radius: 4px;
+        counter-reset: line;
+        min-height: 400px;
+        max-height: 80vh;
+        line-height: 1.5;
+        tab-size: 4;
+    }
+    #vsc-modal-code-view .code-line {
+        display: block;
+        padding: 0 12px 0 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    #vsc-modal-code-view .code-line:hover {
+        background: rgba(255,255,255,0.04);
+    }
+    #vsc-modal-code-view .line-number {
+        display: inline-block;
+        width: 50px;
+        min-width: 50px;
+        text-align: right;
+        padding-right: 12px;
+        margin-right: 12px;
+        color: #858585;
+        border-right: 1px solid #333;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    #vsc-modal-edit-area {
+        background: #1e1e1e !important;
+        color: #d4d4d4 !important;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.85em;
+        line-height: 1.5;
+        tab-size: 4;
+        border: 1px solid #52565a;
+        border-radius: 4px;
+        min-height: 400px;
+        max-height: 80vh;
+        resize: vertical;
+    }
+    /* Resizable modal dialog */
+    #vsc-code-modal .modal-dialog {
+        max-width: 92%;
+    }
+    #vsc-code-modal .modal-content {
+        resize: both;
+        overflow: auto;
+        min-width: 500px;
+        min-height: 400px;
+    }
+    /* Basic syntax highlighting */
+    .syn-kw { color: #569cd6; }
+    .syn-str { color: #ce9178; }
+    .syn-num { color: #b5cea8; }
+    .syn-cmt { color: #6a9955; font-style: italic; }
+    .syn-fn { color: #dcdcaa; }
+    .syn-type { color: #4ec9b0; }
+    .syn-op { color: #d4d4d4; }
+    /* Open files quick-access on Files tab */
+    .vsc-open-file-item {
+        display: inline-block;
+        cursor: pointer;
+        color: #aaa;
+        font-family: monospace;
+        font-size: 0.82em;
+        padding: 2px 8px;
+        margin: 2px 4px 2px 0;
+        border: 1px solid #52565a;
+        border-radius: 3px;
+        background: #3a3f44;
+    }
+    .vsc-open-file-item:hover {
+        color: #fff;
+        background: #52565a;
+    }
+    .vsc-open-file-item.active {
+        border-color: #62c462;
+        color: #fff;
+    }
+</style>
+<div class="mt-2">
+    <div class="d-flex align-items-center mb-2">
+        <ul class="nav nav-tabs mb-0 me-auto" id="vsc-tabs">
+            <li class="nav-item">
+                <a class="nav-link active" href="#" data-vsc-tab="project">Project</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-vsc-tab="files">Files</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-vsc-tab="github">GitHub</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-vsc-tab="git">Git &amp; Creds</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-vsc-tab="chat">Chat History</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-vsc-tab="errors">Errors</a>
+            </li>
+        </ul>
+        <span class="badge bg-secondary ms-2" id="vsc-sync-status">
+            <span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>
+            Syncing...
+        </span>
+    </div>
+
+    <!-- ===== Project Tab ===== -->
+    <div id="vsc-tab-project">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted small" id="vsc-project-status">Loading...</span>
+            <div>
+                <button class="btn btn-primary btn-sm" id="vsc-download-open-btn" title="Download all open editor files as zip">Download Open Files</button>
+                <button class="btn btn-primary btn-sm" id="vsc-refresh-btn">Refresh</button>
+                <button class="btn btn-secondary btn-sm" id="vsc-export-btn">Export JSON</button>
+                <button class="btn btn-secondary btn-sm" id="vsc-clear-btn">Clear Data</button>
+                <button class="btn btn-secondary btn-sm" id="vsc-debug-btn" title="Dump DB keys to Errors tab for debugging">Debug</button>
+            </div>
+        </div>
+
+        <div class="row g-2" id="vsc-project-cards">
+            <!-- Workspace Path -->
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Workspace</span>
+                        <div class="text-white" id="vsc-workspace-path" style="font-family:monospace;font-size:0.9em">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Open Editors -->
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Open Editors</span>
+                        <div id="vsc-open-editors" style="max-height:200px;overflow:auto;font-size:0.85em">
+                            <span class="text-muted">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Projects -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Recent Projects</span>
+                        <div id="vsc-recent-projects" style="max-height:180px;overflow:auto;font-size:0.85em">
+                            <span class="text-muted">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Extensions -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body p-2">
+                        <span class="text-muted small">Installed Extensions</span>
+                        <div id="vsc-extensions" style="max-height:180px;overflow:auto;font-size:0.85em">
+                            <span class="text-muted">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Files Tab ===== -->
+    <div id="vsc-tab-files" style="display:none">
+        <!-- Open files quick-access bar -->
+        <div class="mb-2">
+            <span class="text-muted small">Open in Editor:</span>
+            <div id="vsc-files-open-bar" style="max-height:60px;overflow:auto">
+                <span class="text-muted small">Waiting for data...</span>
+            </div>
+        </div>
+
+        <div class="d-flex" style="gap:12px;min-height:500px">
+            <!-- Left panel: directory browser -->
+            <div style="width:220px;min-width:220px;display:flex;flex-direction:column">
+                <div class="d-flex mb-1" style="gap:4px">
+                    <input type="text" class="form-control form-control-sm" placeholder="Path..." id="vsc-dir-input" style="flex:1">
+                    <button class="btn btn-primary btn-sm" id="vsc-dir-go-btn">Go</button>
+                </div>
+                <div class="text-muted small mb-1" id="vsc-dir-breadcrumb" style="font-family:monospace;word-break:break-all"></div>
+                <button class="btn btn-secondary btn-sm mb-1" id="vsc-dir-up-btn" style="display:none">.. (Parent)</button>
+                <div id="vsc-dir-listing" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:4px">
+                    <div class="text-muted small p-2">Navigate to browse files</div>
+                </div>
+            </div>
+
+            <!-- Right panel: file viewer -->
+            <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+                <div class="d-flex align-items-center mb-1" style="gap:8px">
+                    <span class="text-white small fw-bold text-truncate" id="vsc-file-name" style="flex:1;min-width:0">No file selected</span>
+                    <span class="text-muted small" id="vsc-file-size"></span>
+                    <button class="btn btn-primary btn-sm" id="vsc-expand-btn" style="display:none;white-space:nowrap" title="Open in full viewer">Expand</button>
+                </div>
+                <!-- Mini syntax-highlighted viewer -->
+                <div id="vsc-mini-code-view" style="flex:1">
+                    <div class="text-muted p-3" style="font-family:sans-serif">Select a file to view its contents</div>
+                </div>
+
+                <!-- Direct path input -->
+                <div class="d-flex mt-2" style="gap:8px">
+                    <input type="text" class="form-control form-control-sm" placeholder="Or enter file path directly..." id="vsc-file-path-input" style="flex:1">
+                    <button class="btn btn-primary btn-sm" id="vsc-read-file-btn" style="min-width:70px">Open</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== GitHub Tab ===== -->
+    <div id="vsc-tab-github" style="display:none">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span id="vsc-gh-token-status" class="text-muted small">Token not extracted</span>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm" id="vsc-gh-extract-btn">Extract Token</button>
+                <button class="btn btn-primary btn-sm" id="vsc-gh-user-btn" disabled>Load User</button>
+                <button class="btn btn-primary btn-sm" id="vsc-gh-repos-btn" disabled>Load Repos</button>
+                <button class="btn btn-primary btn-sm" id="vsc-gh-orgs-btn" disabled>Load Orgs</button>
+            </div>
+        </div>
+
+        <!-- Token info -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">GitHub Token</span>
+                <div id="vsc-gh-token-info" style="font-size:0.85em">
+                    <span class="text-muted">Click "Extract Token" to search state.vscdb</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- User info -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">User</span>
+                <div id="vsc-gh-user-info" style="font-size:0.85em">
+                    <span class="text-muted">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Repos -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="text-muted small">Repositories <span class="badge bg-secondary" id="vsc-gh-repo-count">0</span></span>
+                    <input type="text" class="form-control form-control-sm" placeholder="Filter repos..." id="vsc-gh-repo-filter" style="max-width:200px;background-color:#aaa !important;color:#000 !important">
+                </div>
+                <div id="vsc-gh-repos" style="max-height:350px;overflow:auto;font-size:0.85em">
+                    <span class="text-muted">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Orgs -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">Organizations</span>
+                <div id="vsc-gh-orgs" style="max-height:200px;overflow:auto;font-size:0.85em">
+                    <span class="text-muted">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Git & Creds Tab ===== -->
+    <div id="vsc-tab-git" style="display:none">
+        <div class="d-flex justify-content-end mb-2" style="gap:8px">
+            <button class="btn btn-primary btn-sm" id="vsc-git-refresh-btn">Collect Git Info</button>
+            <button class="btn btn-primary btn-sm" id="vsc-secrets-btn">Extract Secrets</button>
+            <button class="btn btn-primary btn-sm" id="vsc-ssh-btn">Scan SSH Keys</button>
+            <button class="btn btn-primary btn-sm" id="vsc-cookies-btn">Dump Cookies</button>
+        </div>
+
+        <!-- Git Info -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">Git Info</span>
+                <div id="vsc-git-info" style="font-size:0.85em">
+                    <span class="text-muted">Click "Collect Git Info" to fetch</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Secrets -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">VS Code Secrets (state.vscdb)</span>
+                <div class="table-responsive" style="max-height:250px;overflow:auto">
+                    <table class="table table-sm table-dark table-striped mb-0">
+                        <thead style="position:sticky;top:0;z-index:1">
+                            <tr><th>Key</th><th>Value</th></tr>
+                        </thead>
+                        <tbody id="vsc-secrets-body">
+                            <tr><td colspan="2" class="text-muted">Not collected</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SSH Keys -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">SSH Keys</span>
+                <div id="vsc-ssh-keys" style="font-size:0.85em">
+                    <span class="text-muted">Not collected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cookies -->
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <span class="text-muted small">Cookies</span>
+                <div class="table-responsive" style="max-height:200px;overflow:auto">
+                    <table class="table table-sm table-dark table-striped mb-0">
+                        <thead style="position:sticky;top:0;z-index:1">
+                            <tr><th>Host</th><th>Name</th><th>Path</th><th>Secure</th><th>HttpOnly</th></tr>
+                        </thead>
+                        <tbody id="vsc-cookies-body">
+                            <tr><td colspan="5" class="text-muted">Not collected</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Chat History Tab ===== -->
+    <div id="vsc-tab-chat" style="display:none">
+        <div class="d-flex justify-content-end mb-2">
+            <button class="btn btn-primary btn-sm" id="vsc-chat-refresh-btn">Scan Sessions</button>
+        </div>
+
+        <div class="d-flex" style="gap:12px;height:500px">
+            <!-- Session sidebar -->
+            <div style="width:240px;min-width:240px;display:flex;flex-direction:column">
+                <span class="text-muted small mb-1">Sessions <span class="badge bg-secondary" id="vsc-chat-count">0</span></span>
+                <div id="vsc-chat-session-list" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:4px">
+                    <div class="text-muted small p-2">Click "Scan Sessions" to find chats</div>
+                </div>
+            </div>
+
+            <!-- Chat viewer -->
+            <div style="flex:1;display:flex;flex-direction:column">
+                <div class="d-flex align-items-center mb-1">
+                    <span class="text-white fw-bold" id="vsc-chat-title">Select a session</span>
+                </div>
+                <div id="vsc-chat-viewer" style="flex:1;border:1px solid #52565a;border-radius:4px;background:#272b30">
+                    <div class="text-muted small p-2">Select a session to view the conversation</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Errors Tab ===== -->
+    <div id="vsc-tab-errors" style="display:none">
+        <div class="table-responsive" style="max-height:400px;overflow:auto">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead style="position:sticky;top:0;z-index:1">
+                    <tr><th>Phase</th><th>Error</th><th>Time</th></tr>
+                </thead>
+                <tbody id="vsc-errors-body">
+                    <tr><td colspan="3" class="text-muted">No errors</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Code Viewer/Editor Modal -->
+<div class="modal fade" id="vsc-code-modal" tabindex="-1">
+    <div class="modal-dialog modal-xl" id="vsc-code-modal-dialog">
+        <div class="modal-content bg-dark" style="border:2px solid #6c757d">
+            <div class="modal-header border-secondary py-2">
+                <div class="d-flex align-items-center" style="gap:12px;flex:1;min-width:0">
+                    <h6 class="modal-title text-white mb-0 text-truncate" id="vsc-modal-file-title">File</h6>
+                    <span class="text-muted small" id="vsc-modal-file-size"></span>
+                </div>
+                <div class="d-flex align-items-center" style="gap:8px">
+                    <span class="badge bg-secondary" id="vsc-modal-mode-badge">Read Only</span>
+                    <button class="btn btn-primary btn-sm" id="vsc-modal-enable-edit-btn" style="min-width:110px">Enable Editing</button>
+                    <button class="btn btn-success btn-sm" id="vsc-modal-save-btn" style="display:none;min-width:60px">Save</button>
+                    <button class="btn btn-secondary btn-sm" id="vsc-modal-cancel-edit-btn" style="display:none">Cancel</button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0">
+                <div id="vsc-modal-code-view">
+                    <div class="text-muted p-3">Loading file...</div>
+                </div>
+                <textarea id="vsc-modal-edit-area" class="form-control" style="display:none;width:100%" rows="25"></textarea>
+            </div>
+        </div>
+    </div>
+</div>

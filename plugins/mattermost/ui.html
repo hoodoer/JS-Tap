@@ -1,0 +1,109 @@
+<style>
+    #mm-search-input, #mm-inject-user-search, #mm-inject-text,
+    #mm-channel-filter, #mm-msg-input, #mm-server-select, #mm-team-select {
+        background-color: #aaa !important;
+        color: #000 !important;
+    }
+    #mm-search-input::placeholder, #mm-inject-user-search::placeholder,
+    #mm-inject-text::placeholder, #mm-channel-filter::placeholder,
+    #mm-msg-input::placeholder {
+        color: #8b8680;
+        font-size: 0.9em;
+    }
+</style>
+<div class="mt-2">
+    <div class="d-flex justify-content-between align-items-center mb-2" id="mm-topbar">
+        <div class="d-flex align-items-center">
+            <select id="mm-server-select" class="form-select form-select-sm" style="width:auto;min-width:180px;border-color:#52565a">
+                <option value="">Server: --</option>
+            </select>
+            <select id="mm-team-select" class="form-select form-select-sm ms-2" style="width:auto;min-width:150px;border-color:#52565a;display:none">
+            </select>
+            <span class="text-muted ms-3" id="mm-user">User: --</span>
+        </div>
+        <div>
+            <span class="badge bg-secondary" id="mm-status"><span class="spinner-border spinner-border-sm me-1" role="status" style="width:0.7rem;height:0.7rem"></span>Syncing...</span>
+            <button class="btn btn-secondary btn-sm ms-2" id="mm-refresh-btn">Refresh Channels</button>
+            <button class="btn btn-secondary btn-sm" id="mm-ticket-btn">Session Ticket</button>
+            <button class="btn btn-secondary btn-sm" id="mm-export-btn">Export JSON</button>
+            <button class="btn btn-secondary btn-sm" id="mm-clear-btn">Clear Data</button>
+        </div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="d-flex mb-2" style="gap:8px">
+        <input type="text" class="form-control form-control-sm" placeholder="Search messages..." id="mm-search-input" style="max-width:500px">
+        <button class="btn btn-outline-secondary btn-sm" id="mm-search-btn" style="min-width:70px">Search</button>
+        <span class="text-muted small align-self-center" id="mm-search-status"></span>
+    </div>
+
+    <!-- Search results (hidden by default) -->
+    <div id="mm-search-panel" style="display:none" class="mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="text-white small fw-bold" id="mm-search-title">Search Results</span>
+            <div>
+                <button class="btn btn-secondary btn-sm ms-2" id="mm-search-close">Close</button>
+            </div>
+        </div>
+        <div id="mm-search-results" style="max-height:300px;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:8px;background:#272b30">
+        </div>
+    </div>
+
+    <!-- Inject Fake Message panel -->
+    <div class="mb-2 p-2" style="background:#272b30;border:1px solid #52565a;border-radius:4px">
+        <div class="d-flex align-items-center mb-1" style="gap:8px">
+            <span class="text-white small fw-bold">Inject Fake Message</span>
+            <span class="text-muted small ms-auto" style="color:#7a8288;font-size:0.75rem">Commands depend on beacon heartbeat round trip</span>
+        </div>
+        <div class="text-muted small mb-2" style="color:#7a8288;font-size:0.75rem">Spoof a message from any user in the currently selected channel</div>
+        <div class="d-flex align-items-center mb-2" style="gap:8px">
+            <div style="position:relative;width:250px">
+                <input type="text" class="form-control form-control-sm" placeholder="Search for a sender..." id="mm-inject-user-search">
+                <div id="mm-inject-user-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:#3a3f44;border:1px solid #52565a;border-radius:0 0 4px 4px;z-index:100"></div>
+            </div>
+            <span class="text-muted small" id="mm-inject-selected-user">1. Search for a sender, 2. Select a channel from the sidebar</span>
+        </div>
+        <div class="d-flex" style="gap:8px">
+            <input type="text" class="form-control form-control-sm" placeholder="Message text..." id="mm-inject-text" disabled style="flex:1">
+            <button class="btn btn-secondary btn-sm" id="mm-inject-btn" disabled style="min-width:70px">Inject</button>
+            <button class="btn btn-secondary btn-sm" id="mm-clear-injected-btn" style="min-width:120px;display:none">Clean Up <span class="badge bg-danger ms-1" id="mm-injected-count">0</span></button>
+        </div>
+        <div id="mm-inject-status" class="small mt-1" style="display:none"></div>
+    </div>
+
+    <div class="d-flex" style="gap:12px;height:520px">
+        <!-- Channel sidebar -->
+        <div style="width:220px;min-width:220px;display:flex;flex-direction:column">
+            <input type="text" class="form-control form-control-sm mb-2" placeholder="Filter channels..." id="mm-channel-filter">
+            <div id="mm-channel-list" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:4px">
+                <div class="text-muted small p-2">No channels loaded</div>
+            </div>
+        </div>
+
+        <!-- Message area -->
+        <div style="flex:1;display:flex;flex-direction:column">
+            <div class="d-flex align-items-center mb-2">
+                <span class="text-white fw-bold" id="mm-channel-name">Select a channel</span>
+                <span class="text-muted small ms-2" id="mm-channel-topic"></span>
+            </div>
+            <div id="mm-messages" style="flex:1;overflow-y:auto;border:1px solid #52565a;border-radius:4px;padding:8px;background:#272b30">
+                <div class="text-muted small">Select a channel to view messages</div>
+            </div>
+            <div class="d-flex mt-2" style="gap:8px">
+                <input type="text" class="form-control form-control-sm" placeholder="Type a message..." id="mm-msg-input" disabled>
+                <button class="btn btn-primary btn-sm" id="mm-send-btn" disabled style="min-width:60px">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Errors section (collapsible) -->
+    <div class="mt-2">
+        <a href="#" class="text-muted small" id="mm-errors-toggle" style="display:none">Show errors (<span id="mm-error-count">0</span>)</a>
+        <div id="mm-errors-panel" style="display:none;max-height:150px;overflow-y:auto" class="mt-1">
+            <table class="table table-sm table-dark table-striped mb-0">
+                <thead><tr><th>Phase</th><th>Error</th><th>Time</th></tr></thead>
+                <tbody id="mm-errors-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>

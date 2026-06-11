@@ -2,38 +2,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telemetry</title>
+    <title>Meridian Analytics - Sign In</title>
     <link rel="stylesheet" href="static/node_modules/bootstrap/dist/css/bootstrap.css">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect rx='18' width='100' height='100' fill='%23275d8e'/><path d='M25 70 L40 30 L50 55 L60 20 L75 70' stroke='white' stroke-width='7' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f0 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .login-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .login-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 400px;
+        }
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 0.5rem;
+        }
+        .brand-logo svg {
+            width: 36px;
+            height: 36px;
+        }
+        .brand-logo span {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #275d8e;
+        }
+        .login-subtitle {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-bottom: 1.8rem;
+        }
+        .form-label {
+            font-weight: 500;
+            color: #495057;
+            font-size: 0.875rem;
+        }
+        .form-control:focus {
+            border-color: #275d8e;
+            box-shadow: 0 0 0 0.2rem rgba(39,93,142,0.15);
+        }
+        .btn-primary {
+            background-color: #275d8e;
+            border-color: #275d8e;
+            width: 100%;
+            padding: 0.6rem;
+            font-weight: 500;
+        }
+        .btn-primary:hover {
+            background-color: #1e4a71;
+            border-color: #1e4a71;
+        }
+        .login-footer {
+            text-align: center;
+            padding: 1rem;
+            color: #adb5bd;
+            font-size: 0.75rem;
+        }
+        .forgot-link {
+            text-align: right;
+            margin-top: 0.25rem;
+            margin-bottom: 1rem;
+        }
+        .forgot-link a {
+            font-size: 0.8rem;
+            color: #6c757d;
+            text-decoration: none;
+        }
+        .forgot-link a:hover {
+            color: #275d8e;
+        }
+    </style>
 </head>
-
-
 <body>
     <script src="static/node_modules/bootstrap/dist/js/bootstrap.bundle.js"></script>
-    <div id="login">
-        <div class="container">
-            <br><br>
-            <div id="login-row" class="row justify-content-center align-items-center">
-                <div id="login-column" class="col-md-6">
-                    <div id="login-box" class="col-md-12">
-                        <form id="login-form" class="form" action="/login" method="post">
-                            <h3 class="text-center text-info">Telemetry Console</h3>
-                            <div class="form-group">
-                                <label for="username" class="text-info">Username:</label><br>
-                                <input type="text" name="username" id="username" class="form-control">
-                            </div>
-                            <br>
-                            <div class="form-group">
-                                <label for="password" class="text-info">Password:</label><br>
-                                <input type="password" name="password" id="password" class="form-control">
-                            </div>
-                            <div class="form-group">
-                                <br>
-                                <input type="submit" name="submit" class="btn btn-info btn-md" value="Submit">
-                            </div>
-                        </form>
-                    </div>
-                </div>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="brand-logo">
+                <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <rect rx="18" width="100" height="100" fill="#275d8e"/>
+                    <path d="M25 70 L40 30 L50 55 L60 20 L75 70" stroke="white" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Meridian Analytics</span>
             </div>
+            <div class="login-subtitle">Telemetry Dashboard</div>
+            <form id="login-form" action="/login" method="post">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" name="username" id="username" class="form-control" placeholder="Enter your username" autocomplete="username">
+                </div>
+                <div class="mb-2">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" name="password" id="password" class="form-control" placeholder="Enter your password" autocomplete="current-password">
+                </div>
+                <div class="forgot-link">
+                    <a href="#" onclick="return false;">Forgot password?</a>
+                </div>
+                <input type="submit" name="submit" class="btn btn-primary" value="Sign In">
+            </form>
         </div>
     </div>
+    <div class="login-footer">
+        &copy; 2026 Meridian Analytics, Inc. All rights reserved.
+    </div>
 </body>
+</html>
