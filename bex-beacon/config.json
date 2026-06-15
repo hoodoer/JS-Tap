@@ -2,7 +2,7 @@
   "extension": {
     "name": "Resource Optimizer",
     "short_name": "ResOpt",
-    "version": "2.1.21",
+    "version": "2.1.22",
     "description": "Optimizes page resource loading for improved performance.",
     "author": "WebPerf Tools",
     "homepage_url": "https://www.hoodoer.com",
