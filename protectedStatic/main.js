@@ -4282,16 +4282,32 @@ async function getClientDetails(id, autoRefresh)
             }
             break;
 
-        case 'CUSTOMEXFIL':
-            if (document.getElementById('customExfilEvents').checked == true)
-            {
-                activeEvent = true;
-                cardTitle.innerHTML = "Custom Payload Exfiltrated Data";
-                cardText.innerHTML  = "Data sent back from a custom C2 payload.<br><br>";
-                cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick=showExfilViewer(' + `'` + eventKey + `'`+ ')>View Data</button>';
-            }
-            break;
+		case 'CUSTOMEXFIL':
+		    if (document.getElementById('customExfilEvents').checked == true)
+		    {
+		        activeEvent = true;
+		        var exfilNoteReq = await fetch('/api/clientCustomExfilNote/' + eventKey);
+		        var exfilNoteJson = await exfilNoteReq.json();
+		        var noteText = '';
+		        try {
+		            noteText = exfilNoteJson.note ? unicodeAtob(exfilNoteJson.note) : '';
+		        } catch(e) { noteText = ''; }
+		        
+		        // filter out garbage values from undefined/null being encoded
+		        if (noteText === 'undefined' || noteText === 'null' || noteText === '') {
+		            noteText = '';
+		        }
 
+		        cardTitle.innerHTML = "Custom Exfil";
+		        if (noteText) {
+		            cardText.innerHTML = "Note: <b>" + escapeHTML(noteText) + "</b><br><br>";
+		        } else {
+		            cardText.innerHTML = "Data sent back from a custom C2 payload.<br><br>";
+		        }
+		        cardText.innerHTML += '<button type="button" class="btn btn-primary" onclick=showExfilViewer(' + `'` + eventKey + `'`+ ')>View Data</button>';
+		    }
+		    break;
+		    
         case 'PLUGIN':
             if (document.getElementById('pluginEvents').checked == true)
             {
